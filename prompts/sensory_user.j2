@@ -1,0 +1,50 @@
+## 当前世界状态
+
+### 玩家自身行动（本回合你刚做了什么）
+{% if self_action_summary %}
+{{ self_action_summary }}
+{% else %}
+（本回合你还没有做出任何行动）
+{% endif %}
+
+### 环境
+- 时间：{{ environment.time_of_day }}
+- 天气：{{ environment.weather }}
+- 温度：{{ environment.temperature_c }}°C
+
+### 玩家位置
+{{ player_position.x }}, {{ player_position.y }}, {{ player_position.z }}
+
+### 附近的物体
+{% if nearby_objects %}
+{% for obj in nearby_objects %}
+- [{{ obj.object_id }}] {{ obj.name }}：{{ obj.description }}
+  位置：({{ obj.position.x }}, {{ obj.position.y }}, {{ obj.position.z }})
+  状态：{{ obj.state if obj.state else "正常" }}
+{% endfor %}
+{% else %}
+（附近没有物体）
+{% endif %}
+
+### 附近的角色
+{% if nearby_chars %}
+{% for char in nearby_chars %}
+- [{{ char.character_id }}] {{ char.name }}
+  位置：({{ char.position.x }}, {{ char.position.y }}, {{ char.position.z }})
+  当前行为：{{ char.current_action if char.current_action else "无" }}
+{% endfor %}
+{% else %}
+（附近没有其他人）
+{% endif %}
+
+### 最近发生的事件
+{% if recent_events %}
+{% for event in recent_events %}
+- {{ event }}
+{% endfor %}
+{% else %}
+（最近没有发生特别的事件）
+{% endif %}
+
+## 任务
+根据以上世界状态和玩家的感知能力，生成玩家当前能感知到的全部信息。记住：玩家无法感知到视线之外的东西，也无法直接知道其他角色的内心想法。

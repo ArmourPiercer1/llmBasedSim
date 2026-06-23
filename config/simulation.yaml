@@ -1,0 +1,22 @@
+simulation:
+  max_ticks: 100
+  tick_delay_ms: 100
+  log_level: "INFO"
+
+llm:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  api_key_env: "DEEPSEEK_API_KEY"
+  base_url: "https://api.deepseek.com"
+  temperature: 0.7
+  max_tokens: 4096
+
+agents:
+  character:
+    memory_size: 50
+    concurrent: true
+  physics:
+    chain_reaction_depth: 3
+  sensory:
+    default_sight_range_m: 50.0
+    default_hearing_range_m: 100.0

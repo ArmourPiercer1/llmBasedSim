@@ -1,0 +1,12 @@
+character:
+  id: bob
+  name: "Bob"
+  personality:
+    traits: ["沉默寡言", "观察力强", "神秘"]
+    motivations: ["保护自己的秘密", "观察外来者"]
+    speech_style: "简短低沉"
+    background: "Bob是酒馆的常客，总是坐在角落里独自喝酒。很少有人知道他来自哪里或是做什么的。他话不多，但似乎对村庄里发生的一切都了如指掌。"
+  starting_position: {x: -4, y: 0, z: -2}
+  starting_inventory: ["old_letter"]
+  relationships:
+    alice: 0.3

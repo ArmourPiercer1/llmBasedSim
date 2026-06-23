@@ -1,0 +1,75 @@
+world:
+  name: "中世纪村庄"
+  description: "一座坐落在黑暗森林边缘的小村庄，空气中弥漫着木柴烟和新烤面包的香气。村庄中心是一个鹅卵石铺成的广场，周围分布着几栋建筑。"
+  environment:
+    time_of_day: "早晨"
+    weather: "晴朗"
+    temperature_c: 18.0
+  locations:
+    - id: village_square
+      name: "村庄广场"
+      description: "鹅卵石铺成的广场，中央有一口古老的石井。周围有几条小路通向不同的建筑。阳光洒在地面上，偶尔有村民经过。"
+      connections:
+        north: tavern_interior
+        south: village_gate
+      ambient_light: "明亮"
+      ambient_sound: "安静"
+
+    - id: tavern_interior
+      name: "锈钉酒馆"
+      description: "温暖的酒馆内部，光线昏暗。几张老旧的橡木桌子散落在大厅里，壁炉里的火焰噼啪作响。吧台后面摆放着各种酒瓶。"
+      connections:
+        south: village_square
+      ambient_light: "昏暗"
+      ambient_sound: "低语声"
+
+    - id: village_gate
+      name: "村庄入口"
+      description: "村庄的入口，一道木制拱门立在土路上。从这里可以看到村庄广场的全貌。远处是通往森林的道路。"
+      connections:
+        north: village_square
+      ambient_light: "明亮"
+      ambient_sound: "安静"
+
+  objects:
+    - id: well
+      object_type: "decoration"
+      name: "石井"
+      description: "一口古老的石井，井口上悬挂着一个木桶，绳子系在辘轳上。"
+      position: {x: 0, y: 0, z: 0}
+      state: {}
+      properties:
+        immovable: true
+        weight_kg: 5000
+
+    - id: table_1
+      object_type: "furniture"
+      name: "橡木桌"
+      description: "一张结实的橡木桌子，四条桌腿稳稳地立在地上。桌面有些磨损的痕迹。"
+      position: {x: 2, y: 0, z: 1}
+      state:
+        surface_objects: ["vase_1"]
+      properties:
+        weight_kg: 30
+        material: "oak"
+
+    - id: vase_1
+      object_type: "decoration"
+      name: "蓝色瓷花瓶"
+      description: "一只精致的蓝色瓷花瓶，瓶口镶着金边，里面插着几朵野花。"
+      position: {x: 2, y: 1.5, z: 1}
+      state: {}
+      properties:
+        fragile: true
+        weight_kg: 0.5
+        material: "porcelain"
+
+    - id: bar_counter
+      object_type: "furniture"
+      name: "吧台"
+      description: "长长的木质吧台，表面被擦拭得很干净。后面有几个酒桶。"
+      position: {x: -3, y: 0, z: -2}
+      state: {}
+      properties:
+        weight_kg: 80
+        material: "oak"

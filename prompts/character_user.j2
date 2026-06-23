@@ -1,0 +1,59 @@
+## 当前环境
+- 时间：{{ environment.time_of_day }}
+- 天气：{{ environment.weather }}
+- 温度：{{ environment.temperature_c }}°C
+- 你所在位置：{{ current_location.name }} - {{ current_location.description }}
+{% if current_location.ambient_light %}
+- 光线：{{ current_location.ambient_light }}
+{% endif %}
+{% if current_location.ambient_sound %}
+- 环境声音：{{ current_location.ambient_sound }}
+{% endif %}
+
+## 你周围的事物
+{% if nearby_objects %}
+{% for obj in nearby_objects %}
+- [{{ obj.object_id }}] {{ obj.name }}（{{ obj.object_type }}）：{{ obj.description }}
+  位置：({{ obj.position.x }}, {{ obj.position.y }}, {{ obj.position.z }})
+  状态：{{ obj.state if obj.state else "正常" }}
+{% endfor %}
+{% else %}
+（周围没有可见的物体）
+{% endif %}
+
+## 你周围的人
+{% if nearby_chars %}
+{% for char in nearby_chars %}
+- [{{ char.character_id }}] {{ char.name }}：{{ char.personality.background | truncate(100) }}
+  当前位置：({{ char.position.x }}, {{ char.position.y }}, {{ char.position.z }})
+  当前正在做什么：{{ char.current_action if char.current_action else "未知" }}
+{% endfor %}
+{% else %}
+（周围没有其他人）
+{% endif %}
+
+## 你所在的位置
+你当前站在 ({{ char_position.x }}, {{ char_position.y }}, {{ char_position.z }})
+
+## 你的状态
+{% if inventory %}
+你身上带着：{{ inventory | join("、") }}
+{% else %}
+你身上没有带任何东西。
+{% endif %}
+
+{% if player_action %}
+## 玩家刚做出的行动
+- 行动类型：{{ player_action.action_type }}
+- 行动描述：{{ player_action.action_description }}
+{% if player_action.speech_content %}- 玩家说：{{ player_action.speech_content }}{% endif %}
+{% if player_action.target_object_id %}- 目标物体：{{ player_action.target_object_id }}{% endif %}
+{% if player_action.target_character_id %}- 目标角色：{{ player_action.target_character_id }}{% endif %}
+{% if player_action.feasibility %}- 可行性：{{ player_action.feasibility }}{% endif %}
+{% if player_action.feasibility_reason %}- 可行性说明：{{ player_action.feasibility_reason }}{% endif %}
+
+你需要对此做出反应。如果这个行动与你相关或需要你回应，请做出适当的行动。
+{% endif %}
+
+## 任务
+根据以上所有信息，决定你（{{ name }}）这个回合要做什么。记住：你的行为必须符合你的性格设定。

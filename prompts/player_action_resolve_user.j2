@@ -1,0 +1,35 @@
+## 玩家行动
+{{ player_action }}
+
+## 玩家能力
+{{ capabilities }}
+
+## 玩家物理数据
+{{ physical_profile }}
+
+## 当前环境
+{{ environment }}
+
+## 场景中的物体
+{% if objects %}
+{% for obj_id, obj in objects.items() %}
+- [{{ obj_id }}] {{ obj.name }}：{{ obj.description }}
+  位置：{{ obj.position }}
+  状态：{{ obj.state if obj.state else "正常" }}
+  属性：{{ obj.properties if obj.properties else {} }}
+{% endfor %}
+{% else %}
+（当前没有物体信息）
+{% endif %}
+
+## 地点信息
+{% if locations %}
+{% for loc_id, loc in locations.items() %}
+- [{{ loc_id }}] {{ loc.name }}：{{ loc.description }}
+{% endfor %}
+{% else %}
+（当前没有地点信息）
+{% endif %}
+
+## 任务
+判断玩家行动在当前能力和物理条件下是否可行，并返回更新后的同一个玩家行动结构。
