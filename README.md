@@ -1,48 +1,24 @@
 # 基于 LLM Agent 的互动模拟游戏
 
-本工作区旨在实现一个由多个 LLM Agent 协同驱动的互动模拟游戏。游戏世界由结构化状态维护，非玩家角色会根据自身设定和当前世界状态做出行为，物理 Agent 会推演行为造成的环境变化，玩家感官 Agent 再把世界真实状态过滤为玩家可感知的信息。
+本工作区实现了一个由多个 LLM Agent 协同驱动的互动模拟游戏框架。游戏世界由结构化状态维护，NPC 会根据自身设定和世界状态自主做出行为，物理 Agent 推演环境变化，玩家感官 Agent 再将世界真实状态过滤为玩家可感知的信息。
 
-项目当前处于**可运行原型阶段**：已经具备命令行交互、初始化对话或文件开局、玩家输入结构化与潜意识处理、行动可行性判断、多角色并发行为决策、物理变化推演、游戏时间推进、关系数值变化、玩家感官输出、行动时长截断与延续、CLI 处理进度展示和基础状态维护能力。
+项目当前处于**可运行原型阶段**。
 
-## 项目定位
+## 主要特色
 
-本项目不是固定剧本的文字冒险游戏，而是一个面向实验和扩展的 LLM 模拟游戏框架。核心目标是验证以下工作流：
+**多 Agent 协同推演。** 6 个 LangGraph 节点构成完整 tick 管道：玩家意图处理 → 行动可行性判断 → NPC 并发生成行动 → 物理推演 → 确定性状态应用 → 玩家感官过滤。每轮输入驱动一轮完整的模拟推演，不再是固定剧本的"选择分支"。
 
-```text
-初始化 Agent
-  ↓
-玩家意图处理
-  ↓
-玩家行动可行性判断
-  ↓
-角色变化 Agent（并发）
-  ↓
-物理变化 Agent
-  ↓
-状态应用
-  ↓
-玩家感官 Agent
-  ↓
-玩家输入
-  ↓
-下一回合
-```
+**玩家潜意识系统。** 玩家输入的不仅是"想做什么"，还会被人设潜意识修正。一个傲娇大小姐即使心里想说"我爱你"，说出口的也可能是"哼，才没有喜欢你呢"。潜意识规则和记忆可以被游戏中的经历逐步更新。
 
-长期目标是让角色、物理世界、玩家感知和世界状态形成一个可持续演化的模拟系统。
+**行动可行性判断（双轨制）。** 玩家行动同时经过 Python 确定性规则预判（能力约束、物理约束、技能检定）和 LLM 综合判断，产生 `allowed`/`blocked`/`uncertain` 三个结果。`uncertain` 的行动由随机检定决定成败。
 
-## 当前状态
+**NPC 自主行为与关系演化。** NPC 根据性格、记忆、当前世界状态和玩家行动并发决策。好感度随行动情感波动，关系中积累的 ±0.05 最终会反映在 NPC 对玩家的行为上。
 
-当前代码已经可以运行一个 CLI 原型：
+**开放式世界设计。** 通过单个 YAML 文件定义完整的世界（地点、物体、角色、环境），零编码即可创建全新的剧情场景。支持文件开局、对话开局和分散配置文件开局三种模式。
 
-- 通过初始化对话或 `--init-file` 参数从 YAML 文件直接开局；
-- 玩家自然语言输入被结构化为 `PlayerAction`，支持模糊表达细化和可选潜意识修正；
-- 行动可行性节点判断玩家行动在当前世界和能力约束下是否可行；
-- NPC 根据性格、记忆、上下文和结构化玩家行动并发产生行动；
-- 物理 Agent 根据玩家和 NPC 行动推演环境变化；
-- 感官 Agent 输出玩家可感知信息，并反馈"玩家角色实际做了什么"；
-- 玩家可以输入自然语言动作推动下一回合。
+**存档/读档。** 游戏状态可随时保存为 JSON，支持 `/save <name>` 和 `--load <path>`。
 
-当前仍不是完整游戏产品，很多系统还处于原型阶段，详见“当前限制”。
+**玩家感知过滤。** 世界真实状态和玩家能感知到的是两回事。感官 Agent 根据视野、听力、光线、遮挡等条件过滤信息——你不知道角落里那个 NPC 在想什么，除非他开口说。
 
 ## 快速开始
 
@@ -72,7 +48,7 @@ pip install -r requirements.txt
 复制 `.env.example` 为 `.env`，并填入真实 API Key：
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
 `.env` 内容示例：
@@ -80,6 +56,37 @@ copy .env.example .env
 ```env
 DEEPSEEK_API_KEY=sk-your-key-here
 ```
+
+### 切换 API 后端
+
+本项目使用 OpenAI 兼容客户端（`langchain_openai.ChatOpenAI`），任何兼容 OpenAI API 格式的服务都可以直接使用。切换只需修改两个文件：
+
+**[`config/simulation.yaml`](config/simulation.yaml) — LLM 配置：**
+
+```yaml
+llm:
+  provider: "deepseek"              # 任意标识，仅用于日志
+  model: "deepseek-chat"            # 目标 API 的模型名
+  api_key_env: "DEEPSEEK_API_KEY"   # .env 中对应的环境变量名
+  base_url: "https://api.deepseek.com"  # API 端点 URL
+  temperature: 0.7
+  max_tokens: 16384
+```
+
+**[`.env`](.env) — API 密钥：**
+
+确保 `api_key_env` 对应的环境变量已设置。
+
+**常见后端示例：**
+
+| 后端 | model | base_url | api_key_env |
+|---|---|---|---|
+| DeepSeek | `deepseek-chat` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` |
+| OpenAI | `gpt-4o` | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
+| 本地 Ollama | `llama3` | `http://localhost:11434/v1` | `OLLAMA_API_KEY` (任意值) |
+| 其他兼容服务 | 按服务文档 | 按服务文档 | 按服务文档 |
+
+核心逻辑在 [`src/main.py:46-52`](src/main.py#L46-L52) —— 所有 LLM 参数都从配置读取，没有硬编码。
 
 ### 启动游戏
 
@@ -90,7 +97,9 @@ python -m src.main
 可用命令：
 
 - `/quit` 或 `/exit`：退出游戏；
-- `/help`：显示帮助。
+- `/help`：显示帮助；
+- `/save <name>`：保存当前进度；
+- `/stop`：终止当前长行动。
 
 ### 从初始化文件直接开局
 
@@ -102,18 +111,33 @@ python -m src.main --init-file config/init_test.yaml
 
 初始化文件格式参见 [`config/init_test.yaml`](config/init_test.yaml)（蔷薇庄园场景，含完整注释）。
 
-## 代码主要任务
+更多场景文件见 [`private_start/files/`](private_start/files/) 目录。
 
-本项目代码主要负责：
+## 项目定位
 
-1. 通过初始化 Agent 创建初始世界，或从 YAML 文件直接加载；
-2. 将玩家自然语言输入结构化为 `PlayerAction`，支持模糊表达细化和可选的潜意识/人设修正；
-3. 判断结构化玩家行动在当前世界中的可行性（能力约束、物理约束、技能检定）；
-4. 维护玩家、NPC、物体、地点、环境等状态；
-5. 驱动 NPC 根据性格、记忆、环境和结构化玩家行动做出行动；
-6. 使用物理 Agent 推演玩家和角色行动造成的物理变化；
-7. 将世界真实状态过滤成玩家可感知的信息，并反馈"玩家角色实际做了什么"；
-8. 通过 CLI 与玩家交互。
+本项目不是固定剧本的文字冒险游戏，而是一个面向实验和扩展的 LLM 模拟游戏框架。核心目标是验证以下工作流：
+
+```text
+初始化 Agent
+  ↓
+玩家意图处理
+  ↓
+玩家行动可行性判断
+  ↓
+角色变化 Agent（并发）
+  ↓
+物理变化 Agent
+  ↓
+状态应用
+  ↓
+玩家感官 Agent
+  ↓
+玩家输入
+  ↓
+下一回合
+```
+
+长期目标是让角色、物理世界、玩家感知和世界状态形成一个可持续演化的模拟系统。
 
 ## 已有架构
 
@@ -216,8 +240,20 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 - `src/ui/cli.py`
 - `src/ui/renderer.py`
+- `src/ui/status.py`
 
-使用 Rich 实现终端交互和玩家感官输出。
+使用 Rich 实现终端交互、双面板玩家感官输出和 tick 处理进度展示。
+
+## 代码主要任务
+
+1. 通过初始化 Agent 创建初始世界，或从 YAML 文件直接加载；
+2. 将玩家自然语言输入结构化为 `PlayerAction`，支持模糊表达细化和可选的潜意识/人设修正；
+3. 判断结构化玩家行动在当前世界中的可行性（能力约束、物理约束、技能检定）；
+4. 维护玩家、NPC、物体、地点、环境等状态；
+5. 驱动 NPC 根据性格、记忆、环境和结构化玩家行动做出行动；
+6. 使用物理 Agent 推演玩家和角色行动造成的物理变化；
+7. 将世界真实状态过滤成玩家可感知的信息，并反馈"玩家角色实际做了什么"；
+8. 通过 CLI 与玩家交互。
 
 ## 已完成开发工作
 
@@ -239,17 +275,16 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - NPC 行为并发生成（`asyncio.gather()`）；
 - NPC 行动状态应用（`apply_npc_actions`）——NPC 移动、交互、对话、使用物品结果写入状态；
 - 对话状态追踪（`conversation_target` / `last_spoken_to`）——NPC 对话有连续性；
-- 关系数值变化（`emotion` 驱动 `relationships` ±0.05，好感度反映在行为中）；
+- 关系数值变化（`emotion` 驱动 `relationships`，好感度反映在行为中）；
 - 游戏时间追踪（`game_time` + `ticks_per_game_minute`，每 tick 推进，`time_of_day` 自动切换）；
 - 行动时长与截断系统——长行动自动跨 tick 延续，`/stop` 终止；
 - 物理结果生成（同时处理玩家与 NPC 行动）；
 - 基础状态应用（物体移动、破坏、状态变化、玩家行动结果应用）；
-- 玩家感官过滤 + 自行动反馈（"你做了什么"黄色面板）；
+- 玩家感官过滤 + 自行动反馈（"你做了什么"面板）；
 - CLI 处理进度展示（`TurnStatus` Live 面板，实时显示管道步骤）；
 - 命令内层循环（`/help` `/save` `/stop` 后即时响应，不触发 NPC 决策）；
-- PlayerAction 字段强制填写 + Schema 嵌入约束（LLM 不再跳过关键字段）；
+- PlayerAction 字段强制填写 + Schema 嵌入约束；
 - 玩家意图处理增强（目标三级匹配：精确→模糊→性格兜底）；
-- LangGraph 内部状态 TypedDict 重构（图内 dict，边界 Pydantic）；
 - 单文件 YAML 直接开局（`--init-file`）；
 - 分散配置 YAML 直接开局（`--from-config`）；
 - 存档/读档（`/save <name>` 与 `--load <path>`）；
@@ -257,19 +292,11 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - 事件日志压缩（超 100 条自动统计摘要）；
 - 节点级容错（全部 5 个 LLM 节点含 try/except 降级）；
 - NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
-- Rich CLI（含"你做了什么"和"你感知到的"双面板渲染）；
+- Rich CLI（双面板渲染）；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
-- `CONTRIBUTING.md` 接口维护约定；
-- 多轮运行中发现的问题修复，包括：
-  - LLM 输出 dict/list 格式波动；
-  - object type 扩展；
-  - `GameState` 导入缺失；
-  - 角色节点未执行导致感知输出重复；
-  - 物体 `state` 为字符串导致状态更新失败。
+- `CONTRIBUTING.md` 接口维护约定。
 
 ## 当前限制
-
-当前实现仍有以下限制：
 
 1. **长行动截断依赖 LLM 设置结构化字段**
    - 已有 Python 距离兜底和关键词兜底；
@@ -294,49 +321,21 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 ## 近期待开发工作
 
-建议优先完成：
-
-1. **增强 NPC 状态应用系统**
-   - 支持 NPC 位置移动；
-   - 支持 NPC 物品拾取、放下、使用；
-   - 支持角色 `current_action` 更新；
-   - 支持角色关系和记忆变化。
-
-2. **扩展确定性规则系统**
-   - 将启发式文本匹配逐步替换为更明确的 action/object/location schema；
-   - 增加门、容器、锁、隐藏物体、视线遮挡等规则；
-   - 增加规则测试样例库。
-
-3. **完善检定系统**
-   - 引入难度等级、角色属性、优势/劣势、重试惩罚；
-   - 将检定结果写入事件日志和角色记忆；
-   - 让感官输出更明确地反馈成功/失败后果。
-
-4. **补齐集成测试**
-   - 增加 mock LLM 的完整 tick 集成测试；
-   - 增加 Prompt 输出样例测试；
-   - 增加 save/load CLI 行为测试。
-
-5. **Prompt 与 schema 收敛**
-   - 为常见行动建立固定示例；
-   - 减少 LLM 输出字段波动；
-   - 明确 `PlayerAction` 与 `PhysicsOutcome` 的职责边界。
+1. **增强 NPC 状态应用系统** — 完善 NPC 位置移动、物品交互、行动更新和关系记忆变化。
+2. **扩展确定性规则系统** — 将启发式文本匹配替换为明确的 action/object/location schema，增加门、容器、锁、隐藏物体、视线遮挡等规则。
+3. **完善检定系统** — 引入难度等级、角色属性、优势/劣势、重试惩罚，将检定结果写入事件日志。
+4. **补齐集成测试** — mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
+5. **Prompt 与 schema 收敛** — 为常见行动建立固定示例，减少 LLM 输出波动。
 
 ## 远期目标
-
-远期目标是把当前 CLI 原型发展为一个稳定、可扩展、可协作开发的 LLM 模拟游戏框架。
-
-包括：
 
 - 更完整的多 Agent 系统；
 - 长期角色记忆；
 - 角色关系与目标冲突；
 - 更严格的世界状态 schema；
 - 事件溯源和 replay；
-- 存档/读档；
 - 确定性规则系统与 LLM 推演结合；
-- Web UI；
-- 地图、角色面板、物品栏、事件时间线；
+- Web UI（地图、角色面板、物品栏、事件时间线）；
 - Prompt 评估用例；
 - CI 与自动化测试。
 
@@ -356,7 +355,6 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 | 修改终端 UI | `src/ui/` |
 | 修改确定性规则 | `src/game/rules.py`, `src/game/state_apply.py` |
 | 修改 CLI 状态显示 | `src/ui/status.py` |
-| 修改示例世界/角色 | `config/world.yaml`, `config/characters/*.yaml` |
 | 编写/使用初始化文件 | `config/init_test.yaml` |
 | 查看接口规范 | `docs/game-flow-interfaces.md` |
 | 查看协作约定 | `CONTRIBUTING.md` |
