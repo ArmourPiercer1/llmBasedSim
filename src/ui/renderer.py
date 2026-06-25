@@ -30,17 +30,17 @@ def render_percept(percept: dict | None) -> None:
     hidden = percept.get("hidden_event_count", 0)
 
     sense_icons = {
-        "sight": "\U0001f441",   # 👁
-        "sound": "\U0001f509",   # 🔊
-        "smell": "\U0001f4ab",   # 💫
-        "touch": "✋",       # ✋
+        "sight": "[看]",
+        "sound": "[听]",
+        "smell": "[闻]",
+        "touch": "[触]",
     }
 
     lines = []
     for s in senses:
         sense_type = s.get("sense", "")
         desc = s.get("description", "")
-        icon = sense_icons.get(sense_type, "•")
+        icon = sense_icons.get(sense_type, "*")
         confidence = s.get("confidence", 1.0)
         if confidence < 1.0:
             lines.append(f"[dim]{icon} {desc} (不太确定)[/dim]")

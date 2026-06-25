@@ -9,7 +9,9 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from src.graph.game_state import GameState
+from src.graph.game_state import GameState, advance_game_time, time_of_day_from_hour
+from src.game.rules import check_action_feasibility
+from src.game.state_apply import apply_npc_actions, apply_player_action, compact_event_log
 from src.llm.parser import generate_structured
 from src.models.events import ActionIntent, PhysicsResolution, PlayerAction, PlayerPercept
 from src.prompts.loader import PromptLoader
@@ -91,31 +93,45 @@ def build_game_graph(
 
     async def player_intent_process(state: GameState) -> dict[str, Any]:
         player_input = state.get("player_input")
+        continuation = state.get("action_continuation")
+
+        if continuation and (not player_input or player_input.strip().lower() != "/stop"):
+            return {"player_action": continuation, "action_continuation": continuation, "event_log": []}
+
+        if continuation and player_input and player_input.strip().lower() == "/stop":
+            return {"player_action": None, "action_continuation": None, "event_log": ["[系统] 行动已终止。"]}
+
         if not player_input:
             return {"player_action": None}
 
         player = state.get("player", {})
-        system_prompt = prompt_loader.render("player_intent_system.j2", {})
-        user_prompt = prompt_loader.render("player_intent_user.j2", {
-            "player_input": player_input,
-            "player": player,
-            "characters": state.get("characters", {}),
-            "objects": state.get("objects", {}),
-            "locations": state.get("locations", {}),
-            "environment": state.get("environment", {}),
-            "recent_events": state.get("event_log", [])[-10:],
-        })
+        try:
+            system_prompt = prompt_loader.render("player_intent_system.j2", {})
+            user_prompt = prompt_loader.render("player_intent_user.j2", {
+                "player_input": player_input,
+                "player": player,
+                "characters": state.get("characters", {}),
+                "objects": state.get("objects", {}),
+                "locations": state.get("locations", {}),
+                "environment": state.get("environment", {}),
+                "recent_events": state.get("event_log", [])[-10:],
+            })
 
-        action = await generate_structured(llm, [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ], PlayerAction)
-        action.raw_input = player_input
+            action = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], PlayerAction)
+            action.raw_input = player_input
 
-        return {
-            "player_action": action.model_dump(),
-            "event_log": [f"[玩家意图] {action.action_description or action.interpreted_intent}"],
-        }
+            return {
+                "player_action": action.model_dump(),
+                "event_log": [f"[玩家意图] {action.action_description or action.interpreted_intent}"],
+            }
+        except Exception:
+            return {
+                "player_action": None,
+                "event_log": ["[错误] 玩家输入处理失败，本轮输入被忽略。"],
+            }
 
     # ── Node: player_action_resolve ──
 
@@ -125,29 +141,88 @@ def build_game_graph(
             return {}
 
         player = state.get("player", {})
-        system_prompt = prompt_loader.render("player_action_resolve_system.j2", {})
-        user_prompt = prompt_loader.render("player_action_resolve_user.j2", {
-            "player_action": player_action,
-            "capabilities": player.get("capabilities", {}) if isinstance(player, dict) else {},
-            "physical_profile": player.get("physical_profile", {}) if isinstance(player, dict) else {},
-            "objects": state.get("objects", {}),
-            "locations": state.get("locations", {}),
-            "environment": state.get("environment", {}),
-        })
+        try:
+            rule_result = check_action_feasibility(
+                player_action,
+                player if isinstance(player, dict) else {},
+                state.get("objects", {}),
+                state.get("locations", {}),
+            )
+            system_prompt = prompt_loader.render("player_action_resolve_system.j2", {})
+            user_prompt = prompt_loader.render("player_action_resolve_user.j2", {
+                "player_action": player_action,
+                "rule_result": rule_result,
+                "capabilities": player.get("capabilities", {}) if isinstance(player, dict) else {},
+                "physical_profile": player.get("physical_profile", {}) if isinstance(player, dict) else {},
+                "objects": state.get("objects", {}),
+                "locations": state.get("locations", {}),
+                "environment": state.get("environment", {}),
+            })
 
-        resolved = await generate_structured(llm, [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ], PlayerAction)
+            resolved = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], PlayerAction)
 
-        event = f"[玩家行动] {resolved.action_description}"
-        if resolved.feasibility:
-            event += f"（{resolved.feasibility}: {resolved.feasibility_reason or '无说明'}）"
+            if rule_result:
+                if resolved.feasibility is None:
+                    resolved.feasibility = rule_result.get("feasibility")
+                if resolved.feasibility_reason is None:
+                    resolved.feasibility_reason = rule_result.get("feasibility_reason")
+                if resolved.success_probability is None:
+                    resolved.success_probability = rule_result.get("success_probability")
+                if not resolved.requires_roll:
+                    resolved.requires_roll = bool(rule_result.get("requires_roll", False))
 
-        return {
-            "player_action": resolved.model_dump(),
-            "event_log": [event],
-        }
+            event = f"[玩家行动] {resolved.action_description}"
+            if resolved.feasibility:
+                event += f"（{resolved.feasibility}: {resolved.feasibility_reason or '无说明'}）"
+
+            # ── Action duration / truncation ──
+            tick_duration_minutes = 1.0 / max(state.get("ticks_per_game_minute", 0.2), 0.01)
+            max_tick_duration = tick_duration_minutes * 3
+            action_duration = resolved.duration_minutes
+            action_continuation = None
+
+            # Deterministic fallback: long-distance move
+            if (not action_duration
+                    and resolved.action_type == "move"
+                    and resolved.target_position
+                    and resolved.feasibility != "blocked"):
+                player_pos = (state.get("player", {}) or {}).get("position") if isinstance(state.get("player"), dict) else None
+                if player_pos and resolved.target_position:
+                    tp = resolved.target_position
+                    pp = player_pos
+                    dist = math.sqrt(
+                        (float(tp.get("x", pp.get("x", 0))) - float(pp.get("x", 0))) ** 2
+                        + (float(tp.get("y", pp.get("y", 0))) - float(pp.get("y", 0))) ** 2
+                        + (float(tp.get("z", pp.get("z", 0))) - float(pp.get("z", 0))) ** 2
+                    )
+                    max_move = 30.0
+                    if dist > max_move:
+                        action_duration = tick_duration_minutes * (dist / max_move)
+                        resolved.duration_minutes = action_duration
+                        resolved.continue_until = "blocked"
+                        event += f"（超长移动 {dist:.0f} 单位，自动截断）"
+
+            if action_duration and action_duration > max_tick_duration:
+                resolved.duration_minutes = tick_duration_minutes
+                remaining = action_duration - tick_duration_minutes
+                action_continuation = {
+                    **(resolved.model_dump()),
+                    "duration_minutes": remaining,
+                }
+
+            return {
+                "player_action": resolved.model_dump(),
+                "action_continuation": action_continuation,
+                "event_log": [event],
+            }
+        except Exception:
+            return {
+                "player_action": player_action,
+                "event_log": ["[错误] 玩家行动可行性判断失败，跳过可行性检查。"],
+            }
 
     # ── Node: characters_all_decide ──
 
@@ -166,6 +241,10 @@ def build_game_graph(
         system_prompt = prompt_loader.render("character_system.j2", {
             "name": char.get("name", char_id),
             "personality": char.get("personality", {}),
+            "speech_examples": char.get("speech_examples", []),
+            "conversation_target": char.get("conversation_target"),
+            "last_spoken_to": char.get("last_spoken_to"),
+            "relationships": char.get("relationships", {}),
             "memory": char.get("memory", [])[-20:],
         })
         user_prompt = prompt_loader.render("character_user.j2", {
@@ -178,16 +257,19 @@ def build_game_graph(
             "player_action": state.get("player_action"),
         })
 
-        intent = await generate_structured(llm, [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ], ActionIntent)
-        intent.character_id = char_id
+        try:
+            intent = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], ActionIntent)
+            intent.character_id = char_id
 
-        return (
-            intent.model_dump(),
-            f"[角色] {char.get('name', char_id)}: {intent.action_description}",
-        )
+            return (
+                intent.model_dump(),
+                f"[角色] {char.get('name', char_id)}: {intent.action_description}",
+            )
+        except Exception:
+            return None, f"[错误] {char.get('name', char_id)} 决策失败，本轮跳过。"
 
     async def characters_all_decide(state: GameState) -> dict[str, Any]:
         char_ids = list(state.get("characters", {}).keys())
@@ -206,25 +288,31 @@ def build_game_graph(
     # ── Node: physics_resolve ──
 
     async def physics_resolve(state: GameState) -> dict[str, Any]:
-        system_prompt = prompt_loader.render("physics_system.j2", {})
-        user_prompt = prompt_loader.render("physics_user.j2", {
-            "objects": state.get("objects", {}),
-            "character_positions": state.get("character_positions", {}),
-            "action_intents": state.get("action_intents", []),
-            "player_action": state.get("player_action"),
-            "environment": state.get("environment", {}),
-        })
+        try:
+            system_prompt = prompt_loader.render("physics_system.j2", {})
+            user_prompt = prompt_loader.render("physics_user.j2", {
+                "objects": state.get("objects", {}),
+                "character_positions": state.get("character_positions", {}),
+                "action_intents": state.get("action_intents", []),
+                "player_action": state.get("player_action"),
+                "environment": state.get("environment", {}),
+            })
 
-        resolution = await generate_structured(llm, [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ], PhysicsResolution)
+            resolution = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], PhysicsResolution)
 
-        outcomes = [o.model_dump() for o in resolution.outcomes]
-        return {
-            "physics_outcomes": outcomes,
-            "event_log": [f"[物理] {o.get('description', '')}" for o in outcomes],
-        }
+            outcomes = [o.model_dump() for o in resolution.outcomes]
+            return {
+                "physics_outcomes": outcomes,
+                "event_log": [f"[物理] {o.get('description', '')}" for o in outcomes],
+            }
+        except Exception:
+            return {
+                "physics_outcomes": [],
+                "event_log": ["[错误] 物理模拟失败，本轮跳过物理结果。"],
+            }
 
     # ── Node: state_apply (deterministic, no LLM) ──
 
@@ -272,6 +360,19 @@ def build_game_graph(
                     if ns:
                         obj["state"].update(ns)
 
+        new_player, new_objects, player_events = apply_player_action(
+            state.get("player", {}),
+            state.get("player_action"),
+            new_objects,
+        )
+
+        new_chars, new_positions, new_objects, npc_events = apply_npc_actions(
+            new_chars,
+            new_positions,
+            state.get("action_intents", []),
+            new_objects,
+        )
+
         recent = state.get("event_log", [])[-10:]
         for cid in new_chars:
             char = new_chars[cid]
@@ -282,14 +383,29 @@ def build_game_graph(
                     mem = mem[-50:]
                 char["memory"] = mem
 
+        # Compact event log if needed
+        current_log = state.get("event_log", [])
+        compacted = compact_event_log(current_log)
+        compaction_event = []
+        if len(compacted) < len(current_log):
+            compaction_event = [compacted[0]]  # The summary line
+
+        new_game_time = advance_game_time(state.get("game_time"), state.get("ticks_per_game_minute", 0.2))
+        new_environment = dict(state.get("environment", {}))
+        new_environment["time_of_day"] = time_of_day_from_hour(new_game_time["hour"])
+
         return {
             "character_positions": new_positions,
             "objects": new_objects,
             "characters": new_chars,
+            "player": new_player,
             "tick": state.get("tick", 0) + 1,
             "action_intents": [],
             "physics_outcomes": [],
             "player_input": None,
+            "game_time": new_game_time,
+            "environment": new_environment,
+            "event_log": [*player_events, *npc_events, *compaction_event],
         }
 
     # ── Node: sensory_filter ──
@@ -326,26 +442,38 @@ def build_game_graph(
                 self_action_parts.append(f"你说：\"{speech}\"")
         self_action_summary = "\n".join(self_action_parts) if self_action_parts else ""
 
-        system_prompt = prompt_loader.render("sensory_system.j2", {
-            "player_capabilities": capabilities,
-        })
-        user_prompt = prompt_loader.render("sensory_user.j2", {
-            "player_position": player_pos,
-            "player_action": player_action,
-            "self_action_summary": self_action_summary,
-            "nearby_objects": nearby_objects,
-            "nearby_chars": nearby_chars,
-            "recent_events": state.get("event_log", [])[-10:],
-            "environment": state.get("environment", {}),
-        })
+        try:
+            system_prompt = prompt_loader.render("sensory_system.j2", {
+                "player_capabilities": capabilities,
+            })
+            user_prompt = prompt_loader.render("sensory_user.j2", {
+                "player_position": player_pos,
+                "player_action": player_action,
+                "self_action_summary": self_action_summary,
+                "nearby_objects": nearby_objects,
+                "nearby_chars": nearby_chars,
+                "recent_events": state.get("event_log", [])[-10:],
+                "environment": state.get("environment", {}),
+                "game_time": state.get("game_time"),
+            })
 
-        percept = await generate_structured(llm, [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ], PlayerPercept)
-        percept.self_action_summary = self_action_summary
+            percept = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], PlayerPercept)
+            percept.self_action_summary = self_action_summary
 
-        return {"player_percept": percept.model_dump()}
+            return {"player_percept": percept.model_dump()}
+        except Exception:
+            return {
+                "player_percept": {
+                    "summary": "你暂时无法感知周围环境。",
+                    "senses": [],
+                    "hidden_event_count": 0,
+                    "self_action_summary": self_action_summary,
+                },
+                "event_log": ["[错误] 感官过滤失败，使用默认感知。"],
+            }
 
     # ── Build the graph ──
 

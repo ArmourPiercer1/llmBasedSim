@@ -1,7 +1,9 @@
 """Main entry point for the LLM-based multi-agent simulation game."""
 
 import asyncio
+import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -15,10 +17,10 @@ _load_dotenv_path = Path(__file__).resolve().parent.parent / ".env"
 if _load_dotenv_path.exists():
     load_dotenv(_load_dotenv_path)
 
-from src.agents.init import init_game, init_file_to_game_state, load_init_file
+from src.agents.init import config_loader_to_game_state, init_game, init_file_to_game_state, load_init_file
 from src.config.loader import ConfigLoader
 from src.graph.game_graph import build_game_graph
-from src.graph.game_state import reset_tick_transients
+from src.graph.game_state import normalize_state, reset_tick_transients, strip_transient_state
 from src.prompts.loader import PromptLoader
 from src.ui.cli import GameUI
 
@@ -52,13 +54,28 @@ async def main():
 
     # ── Init Phase ──
     init_file_arg = None
+    load_arg = None
+    from_config = False
     args = sys.argv[1:]
     for i, arg in enumerate(args):
-        if arg == "--init-file" and i + 1 < len(args):
+        if arg == "--load" and i + 1 < len(args):
+            load_arg = args[i + 1]
+        elif arg == "--init-file" and i + 1 < len(args):
             init_file_arg = args[i + 1]
-            break
+        elif arg == "--from-config":
+            from_config = True
 
-    if init_file_arg:
+    if load_arg:
+        ui.display_title("=== LLM 互动模拟游戏 ===\n")
+        ui.display(f"[dim]从存档加载: {load_arg}[/dim]")
+        try:
+            with open(load_arg, "r", encoding="utf-8") as f:
+                game_state = normalize_state(json.load(f))
+        except Exception as e:
+            console.print(f"[red]加载存档失败: {e}[/red]")
+            logger.exception("save load failed", error=str(e))
+            sys.exit(1)
+    elif init_file_arg:
         ui.display_title("=== LLM 互动模拟游戏 ===\n")
         ui.display(f"[dim]从初始化文件加载: {init_file_arg}[/dim]")
         try:
@@ -67,6 +84,15 @@ async def main():
         except Exception as e:
             console.print(f"[red]加载初始化文件失败: {e}[/red]")
             logger.exception("init file load failed", error=str(e))
+            sys.exit(1)
+    elif from_config:
+        ui.display_title("=== LLM 互动模拟游戏 ===\n")
+        ui.display("[dim]从 config/*.yaml 加载游戏[/dim]")
+        try:
+            game_state = config_loader_to_game_state(config_loader)
+        except Exception as e:
+            console.print(f"[red]加载配置文件失败: {e}[/red]")
+            logger.exception("config load failed", error=str(e))
             sys.exit(1)
     else:
         ui.display_title("=== LLM 互动模拟游戏 ===\n")
@@ -113,15 +139,34 @@ async def main():
 
         # Debug: show recent events
         debug_events = result.get("event_log", [])
-        ui.render_debug(debug_events)
+        if sim_config.debug:
+            ui.render_debug(debug_events)
 
         # Collect player input
         player_input = await ui.collect_input()
+        # Sanitize surrogates that may come from terminal encoding issues
+        if player_input:
+            sanitized = player_input.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
+            player_input = sanitized
 
-        if player_input.strip().lower() in ("/quit", "/exit"):
+        command = player_input.strip()
+        command_lower = command.lower()
+        if command_lower in ("/quit", "/exit"):
             break
-        if player_input.strip().lower() == "/help":
-            ui.display("[dim]命令: /quit 退出, /help 帮助, /save 保存(未实现)[/dim]")
+        if command_lower == "/help":
+            ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /stop 停止长行动[/dim]")
+            player_input = None
+        elif command_lower.startswith("/save "):
+            save_name = command[6:].strip()
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", save_name):
+                ui.display("[red]存档名只能包含字母、数字、下划线和短横线。[/red]")
+            else:
+                saves_dir = Path("saves")
+                saves_dir.mkdir(exist_ok=True)
+                save_path = saves_dir / f"{save_name}.json"
+                with open(save_path, "w", encoding="utf-8") as f:
+                    json.dump(strip_transient_state(result), f, ensure_ascii=False, indent=2)
+                ui.display(f"[green]已保存到 {save_path}[/green]")
             player_input = None
 
         # Build next state from current result + player input

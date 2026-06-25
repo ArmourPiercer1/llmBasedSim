@@ -26,6 +26,10 @@ class GameState(TypedDict, total=False):
     player_percept: dict[str, Any] | None
     player_input: str | None
     player_action: dict[str, Any] | None
+    action_continuation: dict[str, Any] | None
+
+    game_time: dict[str, int]
+    ticks_per_game_minute: float
 
     event_log: Annotated[list[str], operator.add]
 
@@ -64,6 +68,9 @@ def normalize_state(raw: Mapping[str, Any] | BaseModel) -> GameState:
         "player_percept": data.get("player_percept"),
         "player_input": data.get("player_input"),
         "player_action": data.get("player_action"),
+        "action_continuation": data.get("action_continuation"),
+        "game_time": data.get("game_time", {"hour": 18, "minute": 0}),
+        "ticks_per_game_minute": float(data.get("ticks_per_game_minute", 0.2)),
         "event_log": data.get("event_log", []) or [],
     }
 
@@ -80,3 +87,36 @@ def reset_tick_transients(state: Mapping[str, Any], player_input: str | None) ->
     next_state["action_intents"] = []
     next_state["physics_outcomes"] = []
     return next_state
+
+
+def advance_game_time(current: dict[str, Any] | None, ticks_per_minute: float) -> dict[str, int]:
+    c = current or {"hour": 18, "minute": 0}
+    tp = float(ticks_per_minute) if ticks_per_minute else 0.2
+    if tp <= 0:
+        tp = 0.2
+    minutes_to_add = 1.0 / tp
+    total = int(c.get("hour", 18)) * 60 + int(c.get("minute", 0)) + minutes_to_add
+    total = total % (24 * 60)
+    return {"hour": int(total // 60), "minute": int(total % 60)}
+
+
+def time_of_day_from_hour(hour: int) -> str:
+    if 5 <= hour < 8:
+        return "清晨"
+    if 8 <= hour < 12:
+        return "上午"
+    if 12 <= hour < 14:
+        return "中午"
+    if 14 <= hour < 18:
+        return "下午"
+    if 18 <= hour < 20:
+        return "傍晚"
+    if 20 <= hour < 24:
+        return "夜晚"
+    return "深夜"
+
+
+def strip_transient_state(state: Mapping[str, Any]) -> dict[str, Any]:
+    transient = {"player_input", "player_action", "action_intents", "physics_outcomes", "player_percept"}
+    normalized = normalize_state(state)
+    return {k: v for k, v in normalized.items() if k not in transient}

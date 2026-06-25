@@ -17,6 +17,15 @@ T = TypeVar("T", bound=BaseModel)
 logger = structlog.get_logger()
 
 JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _sanitize_surrogates(text: str) -> str:
+    return _SURROGATE_RE.sub("?", text)
+
+
+def _sanitize_json_text(text: str) -> str:
+    return _sanitize_surrogates(text)
 
 
 async def generate_structured(
@@ -35,16 +44,23 @@ async def generate_structured(
     json_instruction = (
         f"\n\n## 输出格式要求\n"
         f"你必须严格按照以下 JSON Schema 输出一个 JSON 对象，不要输出任何其他内容（不要用 markdown 代码块包裹，直接输出原始 JSON）：\n"
+        f"- 所有字符串必须是合法 JSON 字符串。\n"
+        f"- 字符串内容中不要使用英文双引号 `\"` 引用短语；如需引用，请使用中文书名号《》或单引号。\n"
+        f"- 如果必须在字符串中使用英文双引号，必须写成转义形式 `\\\"`。\n"
+        f"- 不要在 reasoning、description、summary 等字段中复制带英文双引号的原文。\n"
         f"```json\n{schema_json}\n```"
     )
-    # Append instruction to the last message
-    messages_with_instruction = list(messages)
+    # Sanitize all input messages and append instruction
+    messages_with_instruction = []
+    for msg in messages:
+        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+        messages_with_instruction.append(msg.__class__(content=_sanitize_surrogates(content)))
     last = messages_with_instruction[-1]
     messages_with_instruction[-1] = last.__class__(content=last.content + json_instruction)
 
     for attempt in range(max_retries + 1):
         response = await llm.ainvoke(messages_with_instruction)
-        text = response.content if isinstance(response.content, str) else str(response.content)
+        text = _sanitize_surrogates(response.content if isinstance(response.content, str) else str(response.content))
 
         # Try to extract JSON from the response
         json_text = _extract_json(text)
@@ -63,6 +79,7 @@ async def generate_structured(
                 retry_msg = (
                     f"上一次输出格式不正确: {e}\n"
                     f"请严格按照 JSON Schema 输出。直接输出 JSON，不要用 markdown 代码块包裹。"
+                    f"字符串内容中不要使用未转义的英文双引号；引用短语请用《》或单引号。"
                 )
                 messages_with_instruction.append(
                     messages_with_instruction[-1].__class__(content=retry_msg)
@@ -73,7 +90,7 @@ async def generate_structured(
 
 def _extract_json(text: str) -> str:
     """Extract JSON from LLM response, handling markdown code blocks."""
-    text = text.strip()
+    text = _sanitize_json_text(text.strip())
     # Try markdown code block extraction first
     match = JSON_BLOCK_RE.search(text)
     if match:

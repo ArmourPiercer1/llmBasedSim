@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from src.graph.game_state import GameState, make_initial_state
+from src.config.loader import ConfigLoader
 from src.llm.parser import generate_structured
 from src.models.events import InitialGameConfig
 from src.prompts.loader import PromptLoader
@@ -127,6 +128,50 @@ def load_init_file(filepath: str | Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def _position_near(position: dict[str, Any], dx: float = 1.0) -> dict[str, float]:
+    return {
+        "x": float(position.get("x", 0)) + dx,
+        "y": float(position.get("y", 0)),
+        "z": float(position.get("z", 0)),
+    }
+
+
+def infer_player_start_position(
+    player_raw: dict[str, Any],
+    locations: dict[str, dict],
+    objects: dict[str, dict],
+    character_positions: dict[str, dict],
+    starting_location_id: str | None = None,
+) -> tuple[dict[str, float], list[str]]:
+    """Infer a reasonable player start position and return warning events."""
+    for key in ("position", "starting_position"):
+        pos = player_raw.get(key)
+        if pos:
+            return {
+                "x": float(pos.get("x", 0)),
+                "y": float(pos.get("y", 0)),
+                "z": float(pos.get("z", 0)),
+            }, []
+
+    if starting_location_id and starting_location_id in locations:
+        for obj_id in locations[starting_location_id].get("objects", []):
+            obj = objects.get(obj_id)
+            if obj and obj.get("position"):
+                return _position_near(obj["position"]), []
+
+    for loc in locations.values():
+        for obj_id in loc.get("objects", []):
+            obj = objects.get(obj_id)
+            if obj and obj.get("position"):
+                return _position_near(obj["position"]), []
+
+    first_char_position = next(iter(character_positions.values()), None)
+    if first_char_position:
+        return _position_near(first_char_position, dx=-1.0), []
+
+    return {"x": 0.0, "y": 0.0, "z": 0.0}, ["[警告] 玩家初始位置缺失，已使用世界原点兜底。"]
+
+
 def init_file_to_game_state(raw: dict[str, Any]) -> GameState:
     """Convert a raw init-file dict into a GameState ready for simulation."""
     w = raw.get("world", {})
@@ -187,12 +232,17 @@ def init_file_to_game_state(raw: dict[str, Any]) -> GameState:
         "subconscious_memory": player_raw.get("subconscious_memory", []) or [],
         "speech_examples": player_raw.get("speech_examples", []) or [],
     }
-    player_pos = player_raw.get("position", {}) or {}
-    if player_pos:
-        player["position"] = {"x": player_pos.get("x", 0), "y": player_pos.get("y", 0), "z": player_pos.get("z", 0)}
+    player_position, position_events = infer_player_start_position(
+        player_raw,
+        locations,
+        objects,
+        character_positions,
+        raw.get("starting_location_id"),
+    )
+    player["position"] = player_position
 
     starting_desc = raw.get("starting_scene_description", "游戏开始。")
-    event_log = [f"[系统] 游戏开始: {starting_desc}"]
+    event_log = [f"[系统] 游戏开始: {starting_desc}", *position_events]
 
     return make_initial_state(
         tick=0,
@@ -206,5 +256,81 @@ def init_file_to_game_state(raw: dict[str, Any]) -> GameState:
         environment=environment,
         characters=characters,
         player=player,
+        game_time=raw.get("game_time", {"hour": 18, "minute": 0}),
+        ticks_per_game_minute=float(raw.get("ticks_per_game_minute", 0.2)),
         event_log=event_log,
+    )
+
+
+def config_loader_to_game_state(config_loader: ConfigLoader) -> GameState:
+    world_config = config_loader.load_world().world
+    player_config = config_loader.load_player().player
+    character_configs = config_loader.load_all_characters()
+
+    locations: dict[str, dict] = {}
+    for loc in world_config.locations:
+        loc_dict = loc.model_dump()
+        locations[loc.id] = loc_dict
+
+    objects: dict[str, dict] = {}
+    for obj in world_config.objects:
+        obj_dict = obj.model_dump()
+        obj_dict["object_id"] = obj.id
+        objects[obj.id] = obj_dict
+
+    characters: dict[str, dict] = {}
+    character_positions: dict[str, dict] = {}
+    for char_config in character_configs:
+        char = char_config.character
+        char_dict = {
+            "character_id": char.id,
+            "id": char.id,
+            "name": char.name,
+            "personality": char.personality.model_dump(),
+            "position": char.starting_position.model_dump(),
+            "inventory": list(char.starting_inventory),
+            "relationships": dict(char.relationships),
+            "speech_examples": list(char.speech_examples),
+            "memory": [],
+            "status_effects": {},
+            "current_action": None,
+        }
+        characters[char.id] = char_dict
+        character_positions[char.id] = char.starting_position.model_dump()
+
+    player_raw = player_config.model_dump()
+    player_position, position_events = infer_player_start_position(
+        player_raw,
+        locations,
+        objects,
+        character_positions,
+    )
+    player = {
+        "player_id": "player_1",
+        "name": player_config.name,
+        "persona": player_config.persona,
+        "position": player_position,
+        "capabilities": player_config.capabilities.model_dump(),
+        "physical_profile": player_config.physical_profile.model_dump(),
+        "knowledge": {},
+        "inventory": list(player_config.starting_inventory),
+        "status_effects": {},
+        "subconscious_rules": list(player_config.subconscious_rules),
+        "subconscious_memory": list(player_config.subconscious_memory),
+        "speech_examples": list(player_config.speech_examples),
+    }
+
+    return make_initial_state(
+        tick=0,
+        max_ticks=100,
+        game_phase="running",
+        world_name=world_config.name,
+        world_description=world_config.description,
+        locations=locations,
+        objects=objects,
+        character_positions=character_positions,
+        environment=world_config.environment.model_dump(),
+        characters=characters,
+        player=player,
+        event_log=["[系统] 从配置文件开始游戏。", *position_events],
     )

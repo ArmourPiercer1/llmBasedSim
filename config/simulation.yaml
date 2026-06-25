@@ -2,6 +2,7 @@ simulation:
   max_ticks: 100
   tick_delay_ms: 100
   log_level: "INFO"
+  debug: true
 
 llm:
   provider: "deepseek"

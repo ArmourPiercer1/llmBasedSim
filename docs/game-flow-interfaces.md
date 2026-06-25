@@ -151,8 +151,11 @@ END
 规则：
 
 - 填充或更新 `feasibility`、`feasibility_reason`、`success_probability`、`requires_roll`。
+- 会先调用 `src/game/rules.py::check_action_feasibility()` 生成系统规则预判。
+- 系统规则预判必须传入 LLM；LLM 不应被跳过。
+- 除非当前场景存在明确、具体、且优先级更高的反例，LLM 应遵循系统规则预判；若反驳预判，必须在 `feasibility_reason` 中说明原因。
 - `blocked` 行动不应直接修改世界。
-- `uncertain` 行动可先记录概率；真实 roll 由后续确定性 Python 逻辑处理。
+- `uncertain` 行动的真实 roll 由 `state_apply` 的 Python 逻辑执行。
 
 ### 4.3 `characters_all_decide`
 
@@ -230,7 +233,10 @@ END
 - 只做确定性状态应用。
 - 不调用 LLM。
 - 不生成玩家感官叙述。
-- blocked/failed 行动可以记录事件，但不应改变对应世界状态。
+- 通过 `src/game/state_apply.py::apply_player_action()` 应用玩家行动结果。
+- `allowed` 的移动行动可更新 `player.position`；可携带物体交互可更新 `player.inventory` 和物体 `state`。
+- `blocked` 行动可以记录事件，但不应改变对应世界状态。
+- `uncertain` 且 `requires_roll=true` 的行动由 Python 侧 roll 决定成功/失败。
 
 ### 4.6 `sensory_filter`
 
@@ -321,6 +327,7 @@ YAML 配置由 `src/config/loader.py` 读取，并由 `src/models/config.py` 校
 玩家配置应逐步支持：
 
 - `name`
+- `starting_position`
 - `capabilities`
 - `starting_inventory`
 - `persona`
@@ -363,8 +370,8 @@ YAML 配置由 `src/config/loader.py` 读取，并由 `src/models/config.py` 校
 规则：
 
 - 默认保存到 `saves/`。
-- 存档应包含 persistent state。
-- tick transient state 可以保存，但加载后应通过 normalization/reset helper 规整。
+- 存档应只包含 persistent state。
+- `player_input`、`player_action`、`action_intents`、`physics_outcomes`、`player_percept` 等 transient state 不写入存档。
 - 存档可能包含玩家设定和对话内容，应视为用户数据。
 - 后续应确保 `saves/` 不被提交。
 

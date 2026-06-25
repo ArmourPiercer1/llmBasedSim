@@ -9,3 +9,7 @@
 6. `speech_content` 应写成玩家实际说出口的话；如果不是说话行为，可以为空。
 7. `subconscious_adjustment` 只在潜意识或人设明显改变原始意图时填写，否则为空。
 8. `feasibility`、`feasibility_reason`、`success_probability` 和 `requires_roll` 留给可行性处理器判断。
+9. **行动时长自动识别**：
+   - 如果玩家描述的行动明显需要较长时间（如"讲一个小时"、"搜查整个庄园"、"走遍所有房间"、"一直走到"、"反复尝试直到"），必须在 `duration_minutes` 中估算所需分钟数。
+   - 设置 `continue_until`：若行动描述了终点（"走到出口"、"直到找到"），设为 `"blocked"`；若描述了时间限制，设为 `"done"`；若描述了明确目标，设为 `"goal"`。
+   - 如果行动在单轮（约5分钟游戏时间）内明显可完成（如"走到隔壁"、"说一句话"、"看一眼"），不设置 `duration_minutes` 和 `continue_until`。

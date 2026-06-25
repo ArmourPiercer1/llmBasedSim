@@ -1,6 +1,14 @@
 ## 玩家行动
 {{ player_action }}
 
+{% if rule_result %}
+## 系统规则预判
+{{ rule_result }}
+
+系统规则预判是基于结构化数据得出的约束判断。除非当前场景中存在明确、具体、且优先级更高的反例，否则你应以该预判为准。
+如果你调整或反驳该预判，必须在 `feasibility_reason` 中说明具体原因。
+{% endif %}
+
 ## 玩家能力
 {{ capabilities }}
 

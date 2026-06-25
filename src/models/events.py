@@ -67,6 +67,8 @@ class PlayerAction(BaseModel):
     requires_roll: bool = False
     confidence: float = 1.0
     notes: str = ""
+    duration_minutes: float | None = None
+    continue_until: Literal["done", "blocked", "goal"] | None = None
 
 
 class InitialWorldConfig(BaseModel):

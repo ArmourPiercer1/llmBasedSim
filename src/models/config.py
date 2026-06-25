@@ -39,6 +39,7 @@ class SimulationConfig(BaseModel):
     max_ticks: int = 100
     tick_delay_ms: int = 100
     log_level: str = "INFO"
+    debug: bool = False
     llm: LLMConfigModel = Field(default_factory=LLMConfigModel)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
 
@@ -104,6 +105,7 @@ class PhysicalProfileConfig(BaseModel):
 class PlayerConfigModel(BaseModel):
     name: str = "玩家"
     persona: str = ""
+    starting_position: Position | None = None
     capabilities: PlayerCapabilitiesConfig = Field(default_factory=PlayerCapabilitiesConfig)
     physical_profile: PhysicalProfileConfig = Field(default_factory=PhysicalProfileConfig)
     starting_inventory: list[str] = Field(default_factory=list)

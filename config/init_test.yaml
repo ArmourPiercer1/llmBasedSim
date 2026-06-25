@@ -402,3 +402,7 @@ starting_scene_description: >
 
 # ── 其他设置 ──
 max_ticks: 50
+game_time:
+  hour: 18
+  minute: 30
+ticks_per_game_minute: 0.2

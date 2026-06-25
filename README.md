@@ -223,13 +223,20 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - 初始化 Agent（对话式 + 文件式）；
 - LangGraph tick 管道（6 节点，含玩家输入处理与行动可行性判断）；
 - 玩家输入结构化（`player_intent_process`）——模糊表达细化、可选潜意识修正；
-- 玩家行动可行性判断（`player_action_resolve`）——能力约束、物理约束、技能检定预留；
+- 玩家行动可行性判断（`player_action_resolve`）——LLM 综合判断 + Python 系统规则预判；
+- Python 侧确定性规则预判（`src/game/rules.py`）——能力约束、物理约束、锁难度与技能概率；
+- 玩家行动状态应用（`src/game/state_apply.py`）——玩家移动、物体交互、使用物品、blocked/uncertain/roll 事件；
+- 概率检定（`requires_roll` + `success_probability`，由 Python 侧执行随机检定）；
 - NPC 行为并发生成（`asyncio.gather()`）；
 - 物理结果生成（同时处理玩家与 NPC 行动）；
-- 基础状态应用（物体移动、破坏、状态变化）；
+- 基础状态应用（物体移动、破坏、状态变化、玩家行动结果应用）；
 - 玩家感官过滤 + 自行动反馈（"你做了什么"黄色面板）；
 - LangGraph 内部状态 TypedDict 重构（图内 dict，边界 Pydantic）；
 - 单文件 YAML 直接开局（`--init-file`）；
+- 分散配置 YAML 直接开局（`--from-config`）；
+- 存档/读档（`/save <name>` 与 `--load <path>`）；
+- 调试输出开关（`simulation.debug`）；
+- NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
 - Rich CLI（含"你做了什么"和"你感知到的"双面板渲染）；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
 - `CONTRIBUTING.md` 接口维护约定；
@@ -244,76 +251,57 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 当前实现仍有以下限制：
 
-1. **状态应用仍较基础**
-   - 已支持物体移动、破坏、状态变化；
-   - 角色位置更新、库存变化、关系数值变化、对话后果等还未完整落地；
-   - 玩家行动结果的状态应用（如移动、拾取）尚未完全接入 `state_apply`。
+1. **状态应用仍不完整**
+   - 已支持玩家移动、可携带物体交互、使用物品记录、物体移动/破坏/状态变化；
+   - 但 NPC 位置更新、NPC 库存变化、关系数值变化、长期对话后果等还未完整落地；
+   - `physics_outcomes` 与 `player_action` 的状态应用仍是基础规则，尚未形成完整规则系统。
 
-2. **玩家行动可行性完全依赖 LLM 判断**
-   - `player_action_resolve` 目前由 LLM 判断 `allowed`/`blocked`/`uncertain`；
-   - 尚无 Python 侧的确定性规则校验（如 `body_width > door_width → blocked`）；
-   - LLM 可能对同一约束在不同回合给出不一致判断。
+2. **确定性规则覆盖有限**
+   - 当前已有超凡行动、禁止行动、力量 vs 重量、身体宽度 vs 通道宽度、开锁技能 vs 锁难度等系统规则预判；
+   - 但规则匹配仍偏启发式，复杂语义约束仍依赖 LLM 判断；
+   - 规则预判只作为 LLM 输入，不是最终裁决。
 
-3. **概率检定（roll）尚未实现**
-   - `uncertain` 行动已记录 `success_probability` 和 `requires_roll`；
-   - 但实际随机检定逻辑未实现，当前即使 `requires_roll=true` 也不会执行 roll。
+3. **概率检定仍较基础**
+   - `uncertain` + `requires_roll` 已由 Python 侧执行随机检定；
+   - 但还没有角色属性、难度等级、优势/劣势、重试惩罚等完整检定系统。
 
-4. **调试信息仍直接显示在 UI 中**
-   - 最近事件日志目前用于开发调试；
-   - 后续应增加 debug 开关。
+4. **自动化测试仍需补齐**
+   - 已新增若干纯函数测试，覆盖规则预判、状态应用、初始化文件和存档 transient stripping；
+   - 但还缺少 mock LLM 的完整 tick 集成测试和 Prompt 输出样例测试。
 
-5. **缺少自动化测试套件**
-   - `pyproject.toml` 已配置 pytest；
-   - 但测试文件尚未补齐。
-
-6. **存档/读档未实现**
-   - `/save` 目前只是帮助中提到，尚无实际功能。
-
-7. **Prompt 和 schema 仍需收敛**
+5. **Prompt 和 schema 仍需收敛**
    - LLM 输出可能出现字段格式波动；
    - 当前靠兼容逻辑兜底，后续需要更严格的输出约束和测试样例。
-
-8. **NPC Prompt 尚未消费语言表达范例**
-   - `CharacterState.speech_examples` 字段已定义，YAML 可配置；
-   - 但 `character_system.j2` 尚未注入此字段，NPC 语言风格仍仅依赖 personality 描述。
 
 ## 近期待开发工作
 
 建议优先完成：
 
-1. **增强状态应用系统**
-   - 支持玩家和 NPC 位置移动；
-   - 支持物品拾取、放下、使用；
+1. **增强 NPC 状态应用系统**
+   - 支持 NPC 位置移动；
+   - 支持 NPC 物品拾取、放下、使用；
    - 支持角色 `current_action` 更新；
    - 支持角色关系和记忆变化。
 
-2. **Python 侧行动可行性确定性校验**
-   - 为物理尺寸约束（如身体宽度 vs 门宽）增加确定性规则；
-   - 为技能检定增加真实的 `random < skill_level` 判断；
-   - 保留 LLM 判断作为复杂语义约束的兜底。
+2. **扩展确定性规则系统**
+   - 将启发式文本匹配逐步替换为更明确的 action/object/location schema；
+   - 增加门、容器、锁、隐藏物体、视线遮挡等规则；
+   - 增加规则测试样例库。
 
-3. **NPC Prompt 消费语言表达范例**
-   - 将 `CharacterState.speech_examples` 注入 `character_system.j2`；
-   - 使 NPC 语言风格更一致、更可配置。
+3. **完善检定系统**
+   - 引入难度等级、角色属性、优势/劣势、重试惩罚；
+   - 将检定结果写入事件日志和角色记忆；
+   - 让感官输出更明确地反馈成功/失败后果。
 
-4. **调试输出开关**
-   - 在配置中增加 debug 选项；
-   - 普通玩家模式隐藏内部事件日志。
+4. **补齐集成测试**
+   - 增加 mock LLM 的完整 tick 集成测试；
+   - 增加 Prompt 输出样例测试；
+   - 增加 save/load CLI 行为测试。
 
-5. **补齐测试**
-   - 测试 `generate_structured()`；
-   - 测试 `init_file_to_game_state()`；
-   - 测试 `state_apply()`；
-   - 测试自行动摘要构建逻辑；
-   - 增加 mock LLM 的完整 tick 集成测试。
-
-6. **完善文件开局模式**
-   - 支持从分散的 `config/world.yaml`、`config/player.yaml`、`config/characters/*.yaml` 直接开局（`--from-config`）；
-   - 与当前单文件 `--init-file` 模式并存。
-
-7. **存档与恢复**
-   - 实现 `/save <name>` 和 `--load <path>`；
-   - 图内状态已是 JSON-friendly dict，存档序列化成本低。
+5. **Prompt 与 schema 收敛**
+   - 为常见行动建立固定示例；
+   - 减少 LLM 输出字段波动；
+   - 明确 `PlayerAction` 与 `PhysicsOutcome` 的职责边界。
 
 ## 远期目标
 
@@ -347,6 +335,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 | 修改 LLM 配置 | `config/simulation.yaml` |
 | 修改 Prompt | `prompts/*.j2` |
 | 修改终端 UI | `src/ui/` |
+| 修改确定性规则 | `src/game/rules.py`, `src/game/state_apply.py` |
 | 修改示例世界/角色 | `config/world.yaml`, `config/characters/*.yaml` |
 | 编写/使用初始化文件 | `config/init_test.yaml` |
 | 查看接口规范 | `docs/game-flow-interfaces.md` |

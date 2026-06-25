@@ -8,7 +8,8 @@
 {% endif %}
 
 ### 环境
-- 时间：{{ environment.time_of_day }}
+- 时段：{{ environment.time_of_day }}
+{% if game_time %}- 当前时间：{{ game_time.hour }}:{{ "%02d" | format(game_time.minute) }}{% endif %}
 - 天气：{{ environment.weather }}
 - 温度：{{ environment.temperature_c }}°C
 
