@@ -237,6 +237,22 @@ player:
     movement_mode: "walk"
     strength: 0.3
 
+  attributes:
+    stamina:
+      name: "体力"
+      value: 70
+      min: 0
+      max: 100
+      natural_delta_per_tick: 1
+      description: "奔跑、跳舞、搬动物体等行动会消耗体力；休息时自然恢复。"
+    mood:
+      name: "心情"
+      value: -10
+      min: -100
+      max: 100
+      natural_delta_per_tick: 0
+      description: "受雷恩、维多利亚和舞会事件影响。"
+
   subconscious_rules:
     - "规则1: 对喜欢的人说反话。如果心里想的是'我很高兴见到你'，嘴巴必须说'你怎么又来了，真是烦人'"
     - "规则2: 绝不先表达好感。如果对方不先示好，就要用冷漠和讽刺来武装自己"
@@ -286,6 +302,14 @@ characters:
       victoria: -0.1
       butler_sebastian: 0.5
       old_green: 0.3
+    attributes:
+      composure:
+        name: "镇定"
+        value: 40
+        min: 0
+        max: 100
+        natural_delta_per_tick: 0
+        description: "雷恩面对艾琳时保持镇定的程度，尴尬或被嘲讽时会下降。"
     speech_examples:
       - "大、大小姐……今晚的月色很美。我是说……嗯，很适合跳舞。"
       - "我并不是有意冒犯。我只是想……唉，我又说错话了。"

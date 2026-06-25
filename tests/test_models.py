@@ -1,4 +1,4 @@
-from src.models.common import Position
+from src.models.common import Position, CharacterAttribute
 from src.models.character import CharacterState, Personality
 from src.models.player import PlayerState, PlayerCapabilities, PhysicalProfile, PlayerKnowledge
 from src.models.world import WorldObject, Location, Environment, WorldState
@@ -16,6 +16,22 @@ class TestPosition:
         p = Position(x=1.5, y=2.5, z=3.5)
         d = p.model_dump()
         assert d == {"x": 1.5, "y": 2.5, "z": 3.5}
+
+
+class TestCharacterAttribute:
+    def test_defaults(self):
+        attr = CharacterAttribute()
+        assert attr.value == 0.0
+        assert attr.natural_delta_per_tick == 0.0
+        assert attr.hidden is False
+        assert attr.tags == []
+
+    def test_model_dump(self):
+        attr = CharacterAttribute(name="体力", value=80, min=0, max=100, natural_delta_per_tick=1)
+        dumped = attr.model_dump()
+        assert dumped["name"] == "体力"
+        assert dumped["value"] == 80
+        assert dumped["max"] == 100
 
 
 class TestPlayerAction:
@@ -47,6 +63,7 @@ class TestPlayerState:
         ps = PlayerState()
         assert ps.player_id == "player_1"
         assert ps.inventory == []
+        assert ps.attributes == {}
         assert ps.subconscious_rules == []
 
     def test_capabilities_defaults(self):
@@ -65,6 +82,7 @@ class TestCharacterState:
     def test_defaults(self):
         cs = CharacterState(character_id="ch1", name="Test")
         assert cs.inventory == []
+        assert cs.attributes == {}
         assert cs.memory == []
         assert cs.relationships == {}
 

@@ -27,6 +27,7 @@
 - [{{ char.character_id }}] {{ char.name }}：{{ char.personality.background | truncate(100) }}
   当前位置：({{ char.position.x }}, {{ char.position.y }}, {{ char.position.z }})
   当前正在做什么：{{ char.current_action if char.current_action else "未知" }}
+  {% if char.attributes %}可见状态：{% for key, attr in char.attributes.items() if not attr.hidden %}{{ attr.name if attr.name else key }}={{ attr.value }}{% if attr.max is not none %}/{{ attr.max }}{% endif %} {% endfor %}{% endif %}
 {% endfor %}
 {% else %}
 （周围没有其他人）

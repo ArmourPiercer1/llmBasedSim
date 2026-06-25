@@ -117,6 +117,6 @@ def time_of_day_from_hour(hour: int) -> str:
 
 
 def strip_transient_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    transient = {"player_input", "player_action", "action_intents", "physics_outcomes", "player_percept"}
+    transient = {"player_input", "player_action", "action_intents", "physics_outcomes"}
     normalized = normalize_state(state)
     return {k: v for k, v in normalized.items() if k not in transient}

@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from src.models.common import Position
+from src.models.common import CharacterAttribute, Position
 from src.models.character import Personality
 
 
@@ -112,6 +112,7 @@ class PlayerConfigModel(BaseModel):
     starting_position: Position | None = None
     capabilities: PlayerCapabilitiesConfig = Field(default_factory=PlayerCapabilitiesConfig)
     physical_profile: PhysicalProfileConfig = Field(default_factory=PhysicalProfileConfig)
+    attributes: dict[str, CharacterAttribute] = Field(default_factory=dict)
     starting_inventory: list[str] = Field(default_factory=list)
     subconscious_rules: list[str] = Field(default_factory=list)
     subconscious_memory: list[str] = Field(default_factory=list)
@@ -125,6 +126,7 @@ class CharacterConfigModel(BaseModel):
     starting_position: Position = Field(default_factory=Position)
     starting_inventory: list[str] = Field(default_factory=list)
     relationships: dict[str, float] = Field(default_factory=dict)
+    attributes: dict[str, CharacterAttribute] = Field(default_factory=dict)
     speech_examples: list[str] = Field(default_factory=list)
 
 

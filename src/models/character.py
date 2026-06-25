@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.models.common import Position
+from src.models.common import CharacterAttribute, Position
 
 
 class Personality(BaseModel):
@@ -19,6 +19,7 @@ class CharacterState(BaseModel):
     position: Position = Field(default_factory=Position)
     inventory: list[str] = Field(default_factory=list)
     status_effects: dict[str, Any] = Field(default_factory=dict)
+    attributes: dict[str, CharacterAttribute] = Field(default_factory=dict)
     current_action: str | None = None
     memory: list[str] = Field(default_factory=list)
     relationships: dict[str, float] = Field(default_factory=dict)

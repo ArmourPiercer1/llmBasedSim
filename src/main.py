@@ -29,6 +29,50 @@ logger = structlog.get_logger()
 console = Console()
 
 
+async def collect_next_player_input(ui: GameUI, result: dict, debug: bool) -> str | None:
+    debug_events = result.get("event_log", [])
+    while True:
+        player_input = await ui.collect_input()
+        if player_input:
+            player_input = player_input.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
+
+        command = player_input.strip()
+        command_lower = command.lower()
+
+        if command_lower in ("/quit", "/exit"):
+            ui.display_goodbye()
+            return None
+
+        if command_lower == "/help":
+            ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /status 查看状态, /stop 停止长行动[/dim]")
+            ui.render_percept(result.get("player_percept"))
+            if debug:
+                ui.render_debug(result)
+            continue
+
+        if command_lower == "/status":
+            ui.render_status(result)
+            continue
+
+        if command_lower.startswith("/save "):
+            save_name = command[6:].strip()
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", save_name):
+                ui.display("[red]存档名只能包含字母、数字、下划线和短横线。[/red]")
+            else:
+                saves_dir = Path("saves")
+                saves_dir.mkdir(exist_ok=True)
+                save_path = saves_dir / f"{save_name}.json"
+                with open(save_path, "w", encoding="utf-8") as f:
+                    json.dump(strip_transient_state(result), f, ensure_ascii=False, indent=2)
+                ui.display(f"[green]已保存到 {save_path}[/green]")
+            ui.render_percept(result.get("player_percept"))
+            if debug:
+                ui.render_debug(result)
+            continue
+
+        return player_input
+
+
 async def main():
     # Load config
     config_loader = ConfigLoader("config")
@@ -56,6 +100,7 @@ async def main():
     # ── Init Phase ──
     init_file_arg = None
     load_arg = None
+    loaded_from_save = False
     from_config = False
     args = sys.argv[1:]
     for i, arg in enumerate(args):
@@ -72,6 +117,7 @@ async def main():
         try:
             with open(load_arg, "r", encoding="utf-8") as f:
                 game_state = normalize_state(json.load(f))
+            loaded_from_save = True
         except Exception as e:
             console.print(f"[red]加载存档失败: {e}[/red]")
             logger.exception("save load failed", error=str(e))
@@ -108,7 +154,7 @@ async def main():
 
     # Show starting scene
     event_log = game_state.get("event_log", [])
-    if event_log:
+    if event_log and not loaded_from_save:
         starting_desc = event_log[0].replace("[系统] 游戏开始: ", "")
         ui.display(f"\n[bold green]{starting_desc}[/bold green]\n")
 
@@ -122,8 +168,17 @@ async def main():
     ui.display("\n[dim]输入 /quit 退出游戏，输入 /help 查看帮助[/dim]")
 
     current_state = game_state
+    start_tick = int(game_state.get("tick", 0))
+    if loaded_from_save:
+        ui.render_percept(game_state.get("player_percept"))
+        if sim_config.simulation.debug:
+            ui.render_debug(game_state)
+        player_input = await collect_next_player_input(ui, game_state, sim_config.simulation.debug)
+        if player_input is None:
+            return
+        current_state = reset_tick_transients(game_state, player_input)
 
-    for tick_num in range(max_ticks):
+    for tick_num in range(start_tick, max_ticks):
         # Fresh thread_id per tick so the graph doesn't short-circuit at END
         thread_config = {"configurable": {"thread_id": f"tick_{tick_num}"}}
         try:
@@ -139,51 +194,12 @@ async def main():
 
         # Render player percept
         ui.render_percept(result.get("player_percept"))
-
-        # Debug: show recent events
-        debug_events = result.get("event_log", [])
         if sim_config.simulation.debug:
-            ui.render_debug(debug_events)
+            ui.render_debug(result)
 
-        # ── Input loop: commands re-render percept and re-prompt without running graph ──
-        while True:
-            player_input = await ui.collect_input()
-            # Sanitize surrogates that may come from terminal encoding issues
-            if player_input:
-                player_input = player_input.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
-
-            command = player_input.strip()
-            command_lower = command.lower()
-
-            if command_lower in ("/quit", "/exit"):
-                ui.display_goodbye()
-                return
-
-            if command_lower == "/help":
-                ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /stop 停止长行动[/dim]")
-                ui.render_percept(result.get("player_percept"))
-                if sim_config.simulation.debug:
-                    ui.render_debug(debug_events)
-                continue
-
-            if command_lower.startswith("/save "):
-                save_name = command[6:].strip()
-                if not re.fullmatch(r"[A-Za-z0-9_-]+", save_name):
-                    ui.display("[red]存档名只能包含字母、数字、下划线和短横线。[/red]")
-                else:
-                    saves_dir = Path("saves")
-                    saves_dir.mkdir(exist_ok=True)
-                    save_path = saves_dir / f"{save_name}.json"
-                    with open(save_path, "w", encoding="utf-8") as f:
-                        json.dump(strip_transient_state(result), f, ensure_ascii=False, indent=2)
-                    ui.display(f"[green]已保存到 {save_path}[/green]")
-                ui.render_percept(result.get("player_percept"))
-                if sim_config.simulation.debug:
-                    ui.render_debug(debug_events)
-                continue
-
-            # Real game action received — exit inner loop and advance state
-            break
+        player_input = await collect_next_player_input(ui, result, sim_config.simulation.debug)
+        if player_input is None:
+            return
 
         current_state = reset_tick_transients(result, player_input)
 

@@ -1,6 +1,12 @@
 ## 玩家状态
 - 名称：{{ player.name }}
 {% if player.persona %}- 人设：{{ player.persona }}{% endif %}
+{% if player.attributes %}
+- 当前属性：
+{% for key, attr in player.attributes.items() %}
+  - {{ attr.name if attr.name else key }}（{{ key }}）：{{ attr.value }}{% if attr.max is not none %}/{{ attr.max }}{% endif %}{% if attr.description %}，{{ attr.description }}{% endif %}
+{% endfor %}
+{% endif %}
 {% if player.subconscious_rules %}
 - 潜意识规则：
 {% for rule in player.subconscious_rules %}

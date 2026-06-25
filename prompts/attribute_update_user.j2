@@ -1,0 +1,43 @@
+## 当前可更新属性
+{{ attribute_summary }}
+
+## 当前环境
+{{ environment }}
+{% if game_time %}- 时间：{{ game_time.hour }}:{{ "%02d" | format(game_time.minute) }}{% endif %}
+
+## 玩家行动
+{% if player_action %}
+{{ player_action }}
+{% else %}
+（本回合没有玩家行动）
+{% endif %}
+
+## NPC 行动
+{% if action_intents %}
+{% for action in action_intents %}
+- {{ action }}
+{% endfor %}
+{% else %}
+（本回合没有 NPC 行动）
+{% endif %}
+
+## 物理后果
+{% if physics_outcomes %}
+{% for outcome in physics_outcomes %}
+- {{ outcome }}
+{% endfor %}
+{% else %}
+（本回合没有额外物理后果）
+{% endif %}
+
+## 最近事件
+{% if recent_events %}
+{% for event in recent_events %}
+- {{ event }}
+{% endfor %}
+{% else %}
+（暂无近期事件）
+{% endif %}
+
+## 任务
+根据以上信息输出需要应用的属性变化补丁。若没有属性需要变化，返回空 changes 数组。

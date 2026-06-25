@@ -9,11 +9,23 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from src.game.attributes import (
+    apply_attribute_changes,
+    apply_natural_attribute_deltas,
+    summarize_attributes_for_prompt,
+    visible_player_attributes,
+)
 from src.graph.game_state import GameState, advance_game_time, time_of_day_from_hour
 from src.game.rules import check_action_feasibility
 from src.game.state_apply import apply_npc_actions, apply_player_action, compact_event_log
 from src.llm.parser import generate_structured
-from src.models.events import ActionIntent, PhysicsResolution, PlayerAction, PlayerPercept
+from src.models.events import (
+    ActionIntent,
+    AttributeUpdateResolution,
+    PhysicsResolution,
+    PlayerAction,
+    PlayerPercept,
+)
 from src.prompts.loader import PromptLoader
 from src.ui.status import TurnStatus
 
@@ -166,6 +178,7 @@ def build_game_graph(
                 "rule_result": rule_result,
                 "capabilities": player.get("capabilities", {}) if isinstance(player, dict) else {},
                 "physical_profile": player.get("physical_profile", {}) if isinstance(player, dict) else {},
+                "attributes": player.get("attributes", {}) if isinstance(player, dict) else {},
                 "objects": state.get("objects", {}),
                 "locations": state.get("locations", {}),
                 "environment": state.get("environment", {}),
@@ -271,6 +284,7 @@ def build_game_graph(
                 "conversation_target": char.get("conversation_target"),
                 "last_spoken_to": char.get("last_spoken_to"),
                 "relationships": char.get("relationships", {}),
+                "attributes": char.get("attributes", {}),
                 "memory": char.get("memory", [])[-20:],
             })
             user_prompt = prompt_loader.render("character_user.j2", {
@@ -438,8 +452,6 @@ def build_game_graph(
             "characters": new_chars,
             "player": new_player,
             "tick": state.get("tick", 0) + 1,
-            "action_intents": [],
-            "physics_outcomes": [],
             "player_input": None,
             "game_time": new_game_time,
             "environment": new_environment,
@@ -488,6 +500,7 @@ def build_game_graph(
             })
             user_prompt = prompt_loader.render("sensory_user.j2", {
                 "player_position": player_pos,
+                "player_attributes": visible_player_attributes(player) if isinstance(player, dict) else {},
                 "player_action": player_action,
                 "self_action_summary": self_action_summary,
                 "nearby_objects": nearby_objects,
@@ -502,8 +515,10 @@ def build_game_graph(
                 HumanMessage(content=user_prompt),
             ], PlayerPercept)
             percept.self_action_summary = self_action_summary
+            percept_dict = percept.model_dump()
+            percept_dict["player_attributes"] = visible_player_attributes(player) if isinstance(player, dict) else {}
 
-            return {"player_percept": percept.model_dump()}
+            return {"player_percept": percept_dict}
         except Exception:
             return {
                 "player_percept": {
@@ -511,8 +526,59 @@ def build_game_graph(
                     "senses": [],
                     "hidden_event_count": 0,
                     "self_action_summary": self_action_summary,
+                    "player_attributes": visible_player_attributes(player) if isinstance(player, dict) else {},
                 },
                 "event_log": ["[错误] 感官过滤失败，使用默认感知。"],
+            }
+
+    # ── Node: attribute_update ──
+
+    async def attribute_update(state: GameState) -> dict[str, Any]:
+        player = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
+        characters = state.get("characters", {}) if isinstance(state.get("characters"), dict) else {}
+        natural_player, natural_characters, natural_events = apply_natural_attribute_deltas(player, characters)
+
+        attribute_summary = summarize_attributes_for_prompt(natural_player, natural_characters)
+        has_attributes = bool(attribute_summary.get("player", {}).get("attributes")) or any(
+            bool(char.get("attributes"))
+            for char in attribute_summary.get("characters", {}).values()
+        )
+        if not has_attributes:
+            return {"player": natural_player, "characters": natural_characters, "event_log": natural_events}
+
+        try:
+            if status:
+                status.update("正在更新角色属性...")
+            system_prompt = prompt_loader.render("attribute_update_system.j2", {})
+            user_prompt = prompt_loader.render("attribute_update_user.j2", {
+                "attribute_summary": attribute_summary,
+                "player_action": state.get("player_action"),
+                "action_intents": state.get("action_intents", []),
+                "physics_outcomes": state.get("physics_outcomes", []),
+                "recent_events": state.get("event_log", [])[-10:],
+                "environment": state.get("environment", {}),
+                "game_time": state.get("game_time"),
+            })
+            resolution = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], AttributeUpdateResolution)
+            changes = [change.model_dump() for change in resolution.changes]
+            updated_player, updated_characters, change_events = apply_attribute_changes(
+                natural_player,
+                natural_characters,
+                changes,
+            )
+            return {
+                "player": updated_player,
+                "characters": updated_characters,
+                "event_log": [*natural_events, *change_events],
+            }
+        except Exception:
+            return {
+                "player": natural_player,
+                "characters": natural_characters,
+                "event_log": [*natural_events, "[错误] 属性更新失败，已跳过本轮属性事件更新。"],
             }
 
     # ── Build the graph ──
@@ -524,6 +590,7 @@ def build_game_graph(
     builder.add_node("characters_all_decide", characters_all_decide)
     builder.add_node("physics_resolve", physics_resolve)
     builder.add_node("state_apply", state_apply)
+    builder.add_node("attribute_update", attribute_update)
     builder.add_node("sensory_filter", sensory_filter)
 
     builder.add_edge(START, "player_intent_process")
@@ -531,7 +598,9 @@ def build_game_graph(
     builder.add_edge("player_action_resolve", "characters_all_decide")
     builder.add_edge("characters_all_decide", "physics_resolve")
     builder.add_edge("physics_resolve", "state_apply")
+    builder.add_edge("state_apply", "attribute_update")
     builder.add_edge("state_apply", "sensory_filter")
+    builder.add_edge("attribute_update", END)
     builder.add_edge("sensory_filter", END)
 
     if checkpointer is None:

@@ -22,7 +22,7 @@ class TestPromptLoader:
         loader = PromptLoader("prompts")
         result = loader.render("player_intent_user.j2", {
             "player_input": "测试输入",
-            "player": {"name": "测试"},
+            "player": {"name": "测试", "attributes": {"stamina": {"name": "体力", "value": 80, "max": 100}}},
             "characters": {},
             "objects": {},
             "locations": {},
@@ -40,7 +40,10 @@ class TestPromptLoader:
         loader = PromptLoader("prompts")
         result = loader.render("player_action_resolve_user.j2", {
             "player_action": {},
-            "player": {"capabilities": {}, "physical_profile": {}},
+            "player": {"capabilities": {}, "physical_profile": {}, "attributes": {}},
+            "capabilities": {},
+            "physical_profile": {},
+            "attributes": {},
             "objects": {},
             "locations": {},
             "environment": {},
@@ -62,6 +65,7 @@ class TestPromptLoader:
             "conversation_target": None,
             "last_spoken_to": None,
             "relationships": {},
+            "attributes": {"mood": {"name": "心情", "value": 10, "max": 100}},
             "memory": [],
         })
         assert "测试角色" in result
@@ -72,7 +76,14 @@ class TestPromptLoader:
             "environment": {"time_of_day": "清晨", "weather": "晴朗", "temperature_c": 20.0},
             "current_location": {"name": "广场", "description": "一个开阔的广场", "ambient_light": "明亮", "ambient_sound": "安静"},
             "nearby_objects": [],
-            "nearby_chars": [],
+            "nearby_chars": [{
+                "character_id": "npc",
+                "name": "NPC",
+                "personality": {"background": "测试背景"},
+                "position": {"x": 1, "y": 0, "z": 0},
+                "current_action": "等待",
+                "attributes": {"mood": {"name": "心情", "value": 5, "max": 100}},
+            }],
             "char_position": {"x": 0, "y": 0, "z": 0},
             "inventory": [],
             "player_action": None,
@@ -93,6 +104,27 @@ class TestPromptLoader:
             "npc_actions_summary": "守卫注视着玩家",
         })
         assert isinstance(result, str)
+
+    def test_attribute_update_system_renders(self):
+        loader = PromptLoader("prompts")
+        result = loader.render("attribute_update_system.j2", {})
+        assert len(result) > 0
+
+    def test_attribute_update_user_renders(self):
+        loader = PromptLoader("prompts")
+        result = loader.render("attribute_update_user.j2", {
+            "attribute_summary": {
+                "player": {"entity_id": "player_1", "name": "测试", "attributes": {"stamina": {"name": "体力", "value": 80}}},
+                "characters": {},
+            },
+            "player_action": {"action_type": "move", "action_description": "跑步"},
+            "action_intents": [],
+            "physics_outcomes": [],
+            "recent_events": [],
+            "environment": {"time_of_day": "清晨"},
+            "game_time": {"hour": 8, "minute": 0},
+        })
+        assert "体力" in result
 
     def test_sensory_system_renders(self):
         loader = PromptLoader("prompts")
@@ -116,6 +148,7 @@ class TestPromptLoader:
             "self_action_summary": "你观察四周",
             "environment": {"time_of_day": "清晨", "weather": "晴朗", "temperature_c": 20.0},
             "player_position": {"x": 0, "y": 0, "z": 0},
+            "player_attributes": {"stamina": {"name": "体力", "value": 80, "max": 100}},
             "current_location": {"name": "广场", "description": "开阔广场", "ambient_light": "明亮", "ambient_sound": "安静"},
             "visible_objects": [],
             "visible_characters": {},

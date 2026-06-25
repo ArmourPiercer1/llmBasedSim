@@ -71,6 +71,19 @@ class PlayerAction(BaseModel):
     continue_until: Literal["", "done", "blocked", "goal"] = Field(default="", description="必填。多步行动标志。空字符串=单步行动即可完成。blocked=持续直到被物理或NPC阻止。done=持续直到玩家手动停止。goal=持续直到目标达成。")
 
 
+class AttributeChange(BaseModel):
+    entity_type: Literal["player", "character"]
+    entity_id: str = ""
+    attribute_key: str
+    delta: float
+    reason: str = ""
+
+
+class AttributeUpdateResolution(BaseModel):
+    changes: list[AttributeChange] = Field(default_factory=list)
+    reasoning: str = ""
+
+
 class InitialWorldConfig(BaseModel):
     name: str = ""
     description: str = ""

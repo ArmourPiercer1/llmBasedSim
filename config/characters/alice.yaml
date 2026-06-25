@@ -9,3 +9,11 @@ character:
   starting_position: {x: 3, y: 0, z: 2}
   starting_inventory: ["flour_bag"]
   relationships: {}
+  attributes:
+    mood:
+      name: "心情"
+      value: 20
+      min: -100
+      max: 100
+      natural_delta_per_tick: 0
+      description: "Alice 的当前情绪状态，会受鼓励、惊吓和尴尬影响。"

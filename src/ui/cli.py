@@ -8,7 +8,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from src.ui.renderer import render_percept, render_event_log
+from src.ui.renderer import render_percept, render_event_log, render_status, render_attribute_debug
 
 console = Console()
 
@@ -29,8 +29,12 @@ class GameUI:
     def render_percept(self, percept: dict[str, Any] | None) -> None:
         render_percept(percept)
 
-    def render_debug(self, event_log: list[str]) -> None:
-        render_event_log(event_log)
+    def render_debug(self, state: dict[str, Any]) -> None:
+        render_event_log(state.get("event_log", []))
+        render_attribute_debug(state)
+
+    def render_status(self, state: dict[str, Any]) -> None:
+        render_status(state)
 
     async def collect_input(self, prompt: str = "\n[bold yellow]> [/bold yellow]") -> str:
         """Collect player input asynchronously."""

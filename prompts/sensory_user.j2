@@ -16,6 +16,15 @@
 ### 玩家位置
 {{ player_position.x }}, {{ player_position.y }}, {{ player_position.z }}
 
+### 玩家自身状态
+{% if player_attributes %}
+{% for key, attr in player_attributes.items() %}
+- {{ attr.name if attr.name else key }}：{{ attr.value }}{% if attr.max is not none %}/{{ attr.max }}{% endif %}{% if attr.unit %} {{ attr.unit }}{% endif %}
+{% endfor %}
+{% else %}
+（没有需要直接感知的数值状态）
+{% endif %}
+
 ### 附近的物体
 {% if nearby_objects %}
 {% for obj in nearby_objects %}

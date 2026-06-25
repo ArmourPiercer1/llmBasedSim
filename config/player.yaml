@@ -17,6 +17,21 @@ player:
     body_width_cm: 45.0
     movement_mode: "walk"
     strength: 0.5
+  attributes:
+    stamina:
+      name: "体力"
+      value: 80
+      min: 0
+      max: 100
+      natural_delta_per_tick: 1
+      description: "进行奔跑、战斗和重体力行动时下降；休息时恢复。"
+    mood:
+      name: "心情"
+      value: 0
+      min: -100
+      max: 100
+      natural_delta_per_tick: 0
+      description: "受对话、威胁和成功事件影响。"
   subconscious_rules: []
   subconscious_memory: []
   speech_examples:

@@ -49,8 +49,8 @@
 | `objects` | `dict[str, dict]` | 物体数据，key 为 object id。 |
 | `character_positions` | `dict[str, dict[str, float]]` | NPC 位置，key 为 character id。 |
 | `environment` | `dict` | 时间、天气、温度等环境信息。 |
-| `characters` | `dict[str, dict]` | NPC 状态，key 为 character id。 |
-| `player` | `dict` | 玩家状态。 |
+| `characters` | `dict[str, dict]` | NPC 状态，key 为 character id；每个角色可包含 `attributes` 数值属性表。 |
+| `player` | `dict` | 玩家状态，可包含 `attributes` 数值属性表。 |
 | `event_log` | `list[str]` | 全局事件日志，只追加。 |
 
 ### 2.2 Tick Transient State
@@ -63,7 +63,7 @@
 | `player_action` | `dict | None` | 结构化玩家行动，是下游节点读取玩家行动的唯一正式入口。 |
 | `action_intents` | `list[dict]` | NPC 行动意图。 |
 | `physics_outcomes` | `list[dict]` | 物理节点输出的物理后果。 |
-| `player_percept` | `dict | None` | 玩家本轮可感知信息。 |
+| `player_percept` | `dict | None` | 玩家最近一次可感知信息；进入存档以便 `--load` 后直接渲染上一轮结果。 |
 
 ### 2.3 Reducer Fields
 
@@ -92,9 +92,9 @@ characters_all_decide
 physics_resolve
   ↓
 state_apply
-  ↓
-sensory_filter
-  ↓
+  ├─ attribute_update
+  └─ sensory_filter
+      ↓
 END
 ```
 
@@ -238,7 +238,36 @@ END
 - `blocked` 行动可以记录事件，但不应改变对应世界状态。
 - `uncertain` 且 `requires_roll=true` 的行动由 Python 侧 roll 决定成功/失败。
 
-### 4.6 `sensory_filter`
+### 4.6 `attribute_update`
+
+职责：根据本 tick 的行动、物理后果、近期事件和自然变化规则更新玩家与 NPC 的任意数值属性。
+
+输入字段：
+
+- `player.attributes`
+- `characters[*].attributes`
+- `player_action`
+- `action_intents`
+- `physics_outcomes`
+- `event_log[-10:]`
+- `environment`
+- `game_time`
+
+输出字段：
+
+- `player`
+- `characters`
+- `event_log`
+
+规则：
+
+- 属性存放在角色自身 dict 的 `attributes` 字段下，不新增顶层属性状态。
+- 每个属性由 init/config 自由定义 key，通用字段包括 `name`、`value`、`min`、`max`、`natural_delta_per_tick`、`description`、`hidden`、`unit`、`tags`、`locked`。
+- Python 先应用 `natural_delta_per_tick` 并执行 min/max 裁剪。
+- LLM 只输出 `AttributeUpdateResolution` 补丁；不存在的属性 key 应被忽略，不自动创建。
+- 与 `sensory_filter` 并行运行；第一版不保证同一 tick 的属性变化会立即出现在玩家感官文本中。
+
+### 4.7 `sensory_filter`
 
 职责：把世界真实状态过滤成玩家可感知信息。
 
@@ -297,7 +326,11 @@ NPC 行动意图，由角色 prompt 输出。它不表示玩家行动。
 
 物理节点输出的物理后果集合。它描述发生了什么，不直接负责写入世界状态。
 
-### 5.4 `PlayerPercept`
+### 5.4 `AttributeUpdateResolution`
+
+属性更新节点输出的属性变化补丁集合。它只能描述已有属性的 delta，不直接返回完整角色状态。
+
+### 5.5 `PlayerPercept`
 
 玩家感官输出。它是 UI 面向玩家展示的主要结构，不应包含 debug reasoning。
 
@@ -309,6 +342,7 @@ NPC 行动意图，由角色 prompt 输出。它不表示玩家行动。
 | `player_action_resolve_system.j2` / `player_action_resolve_user.j2` | `PlayerAction` | 判断玩家行动可行性。 |
 | `character_system.j2` / `character_user.j2` | `ActionIntent` | 生成 NPC 行动。 |
 | `physics_system.j2` / `physics_user.j2` | `PhysicsResolution` | 生成物理后果。 |
+| `attribute_update_system.j2` / `attribute_update_user.j2` | `AttributeUpdateResolution` | 生成角色属性变化补丁。 |
 | `sensory_system.j2` / `sensory_user.j2` | `PlayerPercept` | 生成玩家可感知内容。 |
 
 Prompt 规则：
@@ -335,6 +369,7 @@ YAML 配置由 `src/config/loader.py` 读取，并由 `src/models/config.py` 校
 - `subconscious_memory`
 - `speech_examples`
 - `physical_profile`
+- `attributes`
 - `allowed_extraordinary_actions`
 - `blocked_common_actions`
 - `skill_levels`
@@ -349,6 +384,7 @@ YAML 配置由 `src/config/loader.py` 读取，并由 `src/models/config.py` 校
 - `starting_position`
 - `starting_inventory`
 - `relationships`
+- `attributes`
 - `speech_examples`
 - `physical_profile`
 
@@ -370,8 +406,8 @@ YAML 配置由 `src/config/loader.py` 读取，并由 `src/models/config.py` 校
 规则：
 
 - 默认保存到 `saves/`。
-- 存档应只包含 persistent state。
-- `player_input`、`player_action`、`action_intents`、`physics_outcomes`、`player_percept` 等 transient state 不写入存档。
+- 存档应包含 persistent state 和最近一次 `player_percept`，以便 `--load` 后先渲染上一轮结果再等待新输入。
+- `player_input`、`player_action`、`action_intents`、`physics_outcomes` 等 tick 中间状态不写入存档。
 - 存档可能包含玩家设定和对话内容，应视为用户数据。
 - 后续应确保 `saves/` 不被提交。
 

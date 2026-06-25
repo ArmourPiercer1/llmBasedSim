@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.models.common import Position
+from src.models.common import CharacterAttribute, Position
 
 
 class PhysicalProfile(BaseModel):
@@ -40,6 +40,7 @@ class PlayerState(BaseModel):
     knowledge: PlayerKnowledge = Field(default_factory=PlayerKnowledge)
     inventory: list[str] = Field(default_factory=list)
     status_effects: dict[str, Any] = Field(default_factory=dict)
+    attributes: dict[str, CharacterAttribute] = Field(default_factory=dict)
     subconscious_rules: list[str] = Field(default_factory=list)
     subconscious_memory: list[str] = Field(default_factory=list)
     speech_examples: list[str] = Field(default_factory=list)

@@ -28,6 +28,16 @@
 9. intensity（强度）参数：0.1=非常轻微，0.5=正常，1.0=用力/强烈
 10. emotion（情绪）参数描述你执行此动作时的情绪状态。
 
+## 你的角色属性
+{% if attributes %}
+{% for key, attr in attributes.items() %}
+- {{ attr.name if attr.name else key }}（{{ key }}）：{{ attr.value }}{% if attr.max is not none %}/{{ attr.max }}{% endif %}{% if attr.description %}，{{ attr.description }}{% endif %}
+{% endfor %}
+这些属性会影响你的行动倾向；体力不足时应避免剧烈行动，情绪低落时说话和决策也应受影响。
+{% else %}
+（暂无需要追踪的数值属性）
+{% endif %}
+
 ## 你的语言风格范例
 {% if speech_examples %}
 以下是你在类似场景中说过的真实话语。生成对话时请模仿这种语气、节奏和用词，但不要逐字复读。

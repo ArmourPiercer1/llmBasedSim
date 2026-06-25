@@ -208,6 +208,7 @@ def init_file_to_game_state(raw: dict[str, Any]) -> GameState:
         pos = char.get("position", char.get("starting_position", {})) or {}
         character_positions[cid] = {"x": pos.get("x", 0), "y": pos.get("y", 0), "z": pos.get("z", 0)}
         characters[cid] = dict(char)
+        characters[cid].setdefault("attributes", {})
 
     player_raw = raw.get("player", {}) or {}
     player_caps = player_raw.get("capabilities", {}) or {}
@@ -228,6 +229,7 @@ def init_file_to_game_state(raw: dict[str, Any]) -> GameState:
         "knowledge": player_raw.get("knowledge", {}) or {},
         "inventory": player_raw.get("inventory", player_raw.get("starting_inventory", [])) or [],
         "status_effects": player_raw.get("status_effects", {}) or {},
+        "attributes": player_raw.get("attributes", {}) or {},
         "subconscious_rules": player_raw.get("subconscious_rules", []) or [],
         "subconscious_memory": player_raw.get("subconscious_memory", []) or [],
         "speech_examples": player_raw.get("speech_examples", []) or [],
@@ -290,6 +292,10 @@ def config_loader_to_game_state(config_loader: ConfigLoader) -> GameState:
             "position": char.starting_position.model_dump(),
             "inventory": list(char.starting_inventory),
             "relationships": dict(char.relationships),
+            "attributes": {
+                key: value.model_dump() if hasattr(value, "model_dump") else value
+                for key, value in char.attributes.items()
+            },
             "speech_examples": list(char.speech_examples),
             "memory": [],
             "status_effects": {},
@@ -315,6 +321,10 @@ def config_loader_to_game_state(config_loader: ConfigLoader) -> GameState:
         "knowledge": {},
         "inventory": list(player_config.starting_inventory),
         "status_effects": {},
+        "attributes": {
+            key: value.model_dump() if hasattr(value, "model_dump") else value
+            for key, value in player_config.attributes.items()
+        },
         "subconscious_rules": list(player_config.subconscious_rules),
         "subconscious_memory": list(player_config.subconscious_memory),
         "speech_examples": list(player_config.speech_examples),

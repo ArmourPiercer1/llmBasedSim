@@ -6,7 +6,7 @@
 
 ## 主要特色
 
-**多 Agent 协同推演。** 6 个 LangGraph 节点构成完整 tick 管道：玩家意图处理 → 行动可行性判断 → NPC 并发生成行动 → 物理推演 → 确定性状态应用 → 玩家感官过滤。每轮输入驱动一轮完整的模拟推演，不再是固定剧本的"选择分支"。
+**多 Agent 协同推演。** 7 个 LangGraph 节点构成完整 tick 管道：玩家意图处理 → 行动可行性判断 → NPC 并发生成行动 → 物理推演 → 确定性状态应用 → 属性更新 / 玩家感官过滤。每轮输入驱动一轮完整的模拟推演，不再是固定剧本的"选择分支"。
 
 **玩家潜意识系统。** 玩家输入的不仅是"想做什么"，还会被人设潜意识修正。一个傲娇大小姐即使心里想说"我爱你"，说出口的也可能是"哼，才没有喜欢你呢"。潜意识规则和记忆可以被游戏中的经历逐步更新。
 
@@ -98,6 +98,7 @@ python -m src.main
 
 - `/quit` 或 `/exit`：退出游戏；
 - `/help`：显示帮助；
+- `/status`：显示玩家当前数值状态；
 - `/save <name>`：保存当前进度；
 - `/stop`：终止当前长行动。
 
@@ -177,10 +178,10 @@ characters_all_decide   ← 所有 NPC 并发生成行动意图
 physics_resolve         ← 推演物理后果
   ↓
 state_apply             ← 确定性状态应用
-  ↓
-sensory_filter  ← 生成玩家感知 + 自行动反馈
-  ↓                      ↗ attribute_update（计划中：与感官节点并行）
-END                      ↘ 所有角色任意数值属性的自动更新
+  ├─ attribute_update   ← 所有角色任意数值属性的自动更新
+  └─ sensory_filter     ← 生成玩家感知 + 自行动反馈
+      ↓
+END
 ```
 
 节点说明：
@@ -190,6 +191,7 @@ END                      ↘ 所有角色任意数值属性的自动更新
 - `characters_all_decide`：使用 `asyncio.gather()` 并发生成所有 NPC 的行动意图；
 - `physics_resolve`：根据玩家和 NPC 行动推演物理结果；
 - `state_apply`：用确定性 Python 逻辑应用状态变化；
+- `attribute_update`：根据本 tick 的行动、物理后果和事件更新玩家/NPC 的任意数值属性；
 - `sensory_filter`：生成玩家可感知信息，同时反馈玩家角色本回合实际做了什么/说了什么。
 
 ### Agent 初始化层
@@ -262,11 +264,11 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - 项目依赖配置；
 - Pydantic 数据模型（含玩家潜意识、能力约束、物理数据、语言范例）；
 - YAML 配置加载与 Pydantic 校验；
-- Jinja2 Prompt 模板（11 个模板，覆盖初始化、玩家意图、可行性、角色、物理、感官全链路）；
+- Jinja2 Prompt 模板（13 个模板，覆盖初始化、玩家意图、可行性、角色、物理、属性更新、感官全链路）；
 - DeepSeek 接入；
 - Prompt-based JSON 结构化解析；
 - 初始化 Agent（对话式 + 文件式）；
-- LangGraph tick 管道（6 节点，含玩家输入处理与行动可行性判断）；
+- LangGraph tick 管道（7 节点，含玩家输入处理、行动可行性判断和属性更新）；
 - 玩家输入结构化（`player_intent_process`）——模糊表达细化、可选潜意识修正；
 - 玩家行动可行性判断（`player_action_resolve`）——LLM 综合判断 + Python 系统规则预判；
 - Python 侧确定性规则预判（`src/game/rules.py`）——能力约束、物理约束、锁难度与技能概率；
@@ -276,13 +278,14 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - NPC 行动状态应用（`apply_npc_actions`）——NPC 移动、交互、对话、使用物品结果写入状态；
 - 对话状态追踪（`conversation_target` / `last_spoken_to`）——NPC 对话有连续性；
 - 关系数值变化（`emotion` 驱动 `relationships`，好感度反映在行为中）；
+- 通用角色属性系统（`attributes` + `attribute_update`）——init 文件可为玩家/NPC 定义任意数值属性，节点按行动、事件和自然变化更新；
 - 游戏时间追踪（`game_time` + `ticks_per_game_minute`，每 tick 推进，`time_of_day` 自动切换）；
 - 行动时长与截断系统——长行动自动跨 tick 延续，`/stop` 终止；
 - 物理结果生成（同时处理玩家与 NPC 行动）；
 - 基础状态应用（物体移动、破坏、状态变化、玩家行动结果应用）；
 - 玩家感官过滤 + 自行动反馈（"你做了什么"面板）；
 - CLI 处理进度展示（`TurnStatus` Live 面板，实时显示管道步骤）；
-- 命令内层循环（`/help` `/save` `/stop` 后即时响应，不触发 NPC 决策）；
+- 命令内层循环（`/help` `/status` `/save` `/stop` 后即时响应，不触发 NPC 决策）；
 - PlayerAction 字段强制填写 + Schema 嵌入约束；
 - 玩家意图处理增强（目标三级匹配：精确→模糊→性格兜底）；
 - 单文件 YAML 直接开局（`--init-file`）；
@@ -290,7 +293,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - 存档/读档（`/save <name>` 与 `--load <path>`）；
 - 调试输出开关（`simulation.debug`）；
 - 事件日志压缩（超 100 条自动统计摘要）；
-- 节点级容错（全部 5 个 LLM 节点含 try/except 降级）；
+- 节点级容错（全部 6 个 LLM 节点含 try/except 降级）；
 - NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
 - Rich CLI（双面板渲染）；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
@@ -312,7 +315,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
    - 但还没有角色属性、难度等级、优势/劣势、重试惩罚等完整检定系统。
 
 4. **自动化测试覆盖已大幅提升，但集成测试仍缺失**
-   - 纯函数测试已覆盖 94 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、初始化文件、游戏时间和事件压缩；
+   - 纯函数测试已覆盖 107 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、UI 渲染、初始化文件、游戏时间和事件压缩；
    - 但还没有 mock LLM 的完整 tick 集成测试和 Prompt 输出样例测试。
 
 5. **Prompt 和 schema 仍需收敛**
@@ -325,13 +328,11 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 2. **完善检定系统** — 引入难度等级、角色属性、优势/劣势、重试惩罚等完整检定机制；将检定结果写入事件日志和角色记忆。
 
-3. **通用角色属性系统（RPG 数值层）** — 允许 init 文件为玩家和 NPC 自由定义任意数值属性（如体力、心情、魔法值、饱腹度等），不硬编码属性名。新增 `attribute_update` 节点，在物理节点之后、与感官节点并行运行，根据本 tick 的行动内容自动更新所有角色的属性值。属性定义和初始值由 init YAML 中的 `attributes` 字段指定，每项包含名称、当前值、最大值、自然恢复率等元数据。变动来源包括：行动消耗（跑步扣体力）、情绪驱动（侮辱降心情）、时间流逝（饥饿度随时间增加）、物品效果（吃食物恢复饱腹度）等。
+3. **补齐集成测试** — 在现有 107 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
 
-4. **补齐集成测试** — 在现有 94 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
+4. **Prompt 与 schema 收敛** — 为常见行动建立固定示例库；减少 LLM 输出字段格式波动；明确 `PlayerAction`、`PhysicsOutcome` 与 `AttributeUpdateResolution` 的职责边界。
 
-5. **Prompt 与 schema 收敛** — 为常见行动建立固定示例库；减少 LLM 输出字段格式波动；明确 `PlayerAction` 与 `PhysicsOutcome` 的职责边界。
-
-6. **支持更多 LLM 后端的针对性适配** — 当前依赖 OpenAI 兼容协议；对非 OpenAI 兼容的本地模型（如直接调用 transformers）需要增加适配层。
+5. **支持更多 LLM 后端的针对性适配** — 当前依赖 OpenAI 兼容协议；对非 OpenAI 兼容的本地模型（如直接调用 transformers）需要增加适配层。
 
 ## 远期目标
 
