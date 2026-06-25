@@ -49,13 +49,22 @@
 ### 环境要求
 
 - Python >= 3.12
-- uv 管理的虚拟环境
 - DeepSeek API Key
 
 ### 安装依赖
 
 ```bash
-uv pip install -e .
+# 创建虚拟环境
+python -m venv .venv
+
+# 激活虚拟环境
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+# 安装依赖
+pip install -r requirements.txt
 ```
 
 ### 配置环境变量

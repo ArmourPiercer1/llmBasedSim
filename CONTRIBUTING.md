@@ -18,13 +18,15 @@
 要求：
 
 - Python >= 3.12
-- uv
 - DeepSeek API Key
 
 安装依赖：
 
 ```bash
-uv pip install -e .
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 复制环境变量示例：
