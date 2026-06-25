@@ -2,7 +2,7 @@
 
 本工作区旨在实现一个由多个 LLM Agent 协同驱动的互动模拟游戏。游戏世界由结构化状态维护，非玩家角色会根据自身设定和当前世界状态做出行为，物理 Agent 会推演行为造成的环境变化，玩家感官 Agent 再把世界真实状态过滤为玩家可感知的信息。
 
-项目当前处于**可运行原型阶段**：已经具备命令行交互、初始化对话或文件开局、玩家输入结构化与潜意识处理、行动可行性判断、多角色并发行为决策、物理变化推演、玩家感官输出和基础状态维护能力。
+项目当前处于**可运行原型阶段**：已经具备命令行交互、初始化对话或文件开局、玩家输入结构化与潜意识处理、行动可行性判断、多角色并发行为决策、物理变化推演、游戏时间推进、关系数值变化、玩家感官输出、行动时长截断与延续、CLI 处理进度展示和基础状态维护能力。
 
 ## 项目定位
 
@@ -228,14 +228,25 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - 玩家行动状态应用（`src/game/state_apply.py`）——玩家移动、物体交互、使用物品、blocked/uncertain/roll 事件；
 - 概率检定（`requires_roll` + `success_probability`，由 Python 侧执行随机检定）；
 - NPC 行为并发生成（`asyncio.gather()`）；
+- NPC 行动状态应用（`apply_npc_actions`）——NPC 移动、交互、对话、使用物品结果写入状态；
+- 对话状态追踪（`conversation_target` / `last_spoken_to`）——NPC 对话有连续性；
+- 关系数值变化（`emotion` 驱动 `relationships` ±0.05，好感度反映在行为中）；
+- 游戏时间追踪（`game_time` + `ticks_per_game_minute`，每 tick 推进，`time_of_day` 自动切换）；
+- 行动时长与截断系统——长行动自动跨 tick 延续，`/stop` 终止；
 - 物理结果生成（同时处理玩家与 NPC 行动）；
 - 基础状态应用（物体移动、破坏、状态变化、玩家行动结果应用）；
 - 玩家感官过滤 + 自行动反馈（"你做了什么"黄色面板）；
+- CLI 处理进度展示（`TurnStatus` Live 面板，实时显示管道步骤）；
+- 命令内层循环（`/help` `/save` `/stop` 后即时响应，不触发 NPC 决策）；
+- PlayerAction 字段强制填写 + Schema 嵌入约束（LLM 不再跳过关键字段）；
+- 玩家意图处理增强（目标三级匹配：精确→模糊→性格兜底）；
 - LangGraph 内部状态 TypedDict 重构（图内 dict，边界 Pydantic）；
 - 单文件 YAML 直接开局（`--init-file`）；
 - 分散配置 YAML 直接开局（`--from-config`）；
 - 存档/读档（`/save <name>` 与 `--load <path>`）；
 - 调试输出开关（`simulation.debug`）；
+- 事件日志压缩（超 100 条自动统计摘要）；
+- 节点级容错（全部 5 个 LLM 节点含 try/except 降级）；
 - NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
 - Rich CLI（含"你做了什么"和"你感知到的"双面板渲染）；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
@@ -251,10 +262,9 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 当前实现仍有以下限制：
 
-1. **状态应用仍不完整**
-   - 已支持玩家移动、可携带物体交互、使用物品记录、物体移动/破坏/状态变化；
-   - 但 NPC 位置更新、NPC 库存变化、关系数值变化、长期对话后果等还未完整落地；
-   - `physics_outcomes` 与 `player_action` 的状态应用仍是基础规则，尚未形成完整规则系统。
+1. **长行动截断依赖 LLM 设置结构化字段**
+   - 已有 Python 距离兜底和关键词兜底；
+   - 但"无已知坐标的搜索类行动"（如"一直走直到找到出口"）仍可能在 LLM 不设 `target_position` 时失效。
 
 2. **确定性规则覆盖有限**
    - 当前已有超凡行动、禁止行动、力量 vs 重量、身体宽度 vs 通道宽度、开锁技能 vs 锁难度等系统规则预判；
@@ -336,6 +346,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 | 修改 Prompt | `prompts/*.j2` |
 | 修改终端 UI | `src/ui/` |
 | 修改确定性规则 | `src/game/rules.py`, `src/game/state_apply.py` |
+| 修改 CLI 状态显示 | `src/ui/status.py` |
 | 修改示例世界/角色 | `config/world.yaml`, `config/characters/*.yaml` |
 | 编写/使用初始化文件 | `config/init_test.yaml` |
 | 查看接口规范 | `docs/game-flow-interfaces.md` |

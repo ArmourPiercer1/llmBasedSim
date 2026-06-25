@@ -15,6 +15,7 @@ from src.game.state_apply import apply_npc_actions, apply_player_action, compact
 from src.llm.parser import generate_structured
 from src.models.events import ActionIntent, PhysicsResolution, PlayerAction, PlayerPercept
 from src.prompts.loader import PromptLoader
+from src.ui.status import TurnStatus
 
 
 def _distance(pos1: dict, pos2: dict) -> float:
@@ -85,6 +86,7 @@ def _add_positions(p1: dict, p2: dict) -> dict:
 def build_game_graph(
     llm: ChatOpenAI,
     prompt_loader: PromptLoader,
+    status: TurnStatus | None = None,
     checkpointer: InMemorySaver | None = None,
 ):
     """Build and compile the game simulation StateGraph."""
@@ -96,16 +98,22 @@ def build_game_graph(
         continuation = state.get("action_continuation")
 
         if continuation and (not player_input or player_input.strip().lower() != "/stop"):
+            if status:
+                status.update("正在延续上一轮行动...")
             return {"player_action": continuation, "action_continuation": continuation, "event_log": []}
 
         if continuation and player_input and player_input.strip().lower() == "/stop":
             return {"player_action": None, "action_continuation": None, "event_log": ["[系统] 行动已终止。"]}
 
         if not player_input:
+            if status:
+                status.update("本轮无玩家输入，跳过意图解析")
             return {"player_action": None}
 
         player = state.get("player", {})
         try:
+            if status:
+                status.update("正在理解你的意图...")
             system_prompt = prompt_loader.render("player_intent_system.j2", {})
             user_prompt = prompt_loader.render("player_intent_user.j2", {
                 "player_input": player_input,
@@ -138,10 +146,14 @@ def build_game_graph(
     async def player_action_resolve(state: GameState) -> dict[str, Any]:
         player_action = state.get("player_action")
         if not player_action:
+            if status:
+                status.update("无玩家行动，跳过可行性判断")
             return {}
 
         player = state.get("player", {})
         try:
+            if status:
+                status.update("正在预判行动可行性...")
             rule_result = check_action_feasibility(
                 player_action,
                 player if isinstance(player, dict) else {},
@@ -159,6 +171,8 @@ def build_game_graph(
                 "environment": state.get("environment", {}),
             })
 
+            if status:
+                status.update("正在综合判断行动可行性...")
             resolved = await generate_structured(llm, [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt),
@@ -244,31 +258,33 @@ def build_game_graph(
         if not char:
             return None, None
 
-        char_pos = state.get("character_positions", {}).get(char_id, {"x": 0, "y": 0, "z": 0})
-        current_location = _find_location(state, char_id)
-        nearby_objects = _find_nearby_objects(state, char_pos, radius=20.0)
-        nearby_chars_list = _find_nearby_chars(state, char_id, radius=20.0)
-
-        system_prompt = prompt_loader.render("character_system.j2", {
-            "name": char.get("name", char_id),
-            "personality": char.get("personality", {}),
-            "speech_examples": char.get("speech_examples", []),
-            "conversation_target": char.get("conversation_target"),
-            "last_spoken_to": char.get("last_spoken_to"),
-            "relationships": char.get("relationships", {}),
-            "memory": char.get("memory", [])[-20:],
-        })
-        user_prompt = prompt_loader.render("character_user.j2", {
-            "environment": state.get("environment", {}),
-            "current_location": current_location or {},
-            "nearby_objects": nearby_objects,
-            "nearby_chars": nearby_chars_list,
-            "char_position": char_pos,
-            "inventory": char.get("inventory", []),
-            "player_action": state.get("player_action"),
-        })
-
         try:
+            char_pos = state.get("character_positions", {}).get(char_id, {"x": 0, "y": 0, "z": 0})
+            current_location = _find_location(state, char_id)
+            nearby_objects = _find_nearby_objects(state, char_pos, radius=20.0)
+            nearby_chars_list = _find_nearby_chars(state, char_id, radius=20.0)
+
+            system_prompt = prompt_loader.render("character_system.j2", {
+                "name": char.get("name", char_id),
+                "personality": char.get("personality", {}),
+                "speech_examples": char.get("speech_examples", []),
+                "conversation_target": char.get("conversation_target"),
+                "last_spoken_to": char.get("last_spoken_to"),
+                "relationships": char.get("relationships", {}),
+                "memory": char.get("memory", [])[-20:],
+            })
+            user_prompt = prompt_loader.render("character_user.j2", {
+                "environment": state.get("environment", {}),
+                "current_location": current_location or {},
+                "nearby_objects": nearby_objects,
+                "nearby_chars": nearby_chars_list,
+                "char_position": char_pos,
+                "inventory": char.get("inventory", []),
+                "player_action": state.get("player_action"),
+            })
+
+            if status:
+                status.update(f"NPC 正在思考中...", sub_count=0, sub_total=0)
             intent = await generate_structured(llm, [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt),
@@ -287,7 +303,16 @@ def build_game_graph(
         if not char_ids:
             return {"action_intents": [], "event_log": []}
 
-        results = await asyncio.gather(*(_decide_one_char(state, cid) for cid in char_ids))
+        if status:
+            status.update("NPC 正在思考中...", sub_total=len(char_ids))
+
+        async def _decide_with_counter(cid: str, idx: int):
+            result = await _decide_one_char(state, cid)
+            if status:
+                status.update("NPC 正在思考中...", sub_count=idx + 1, sub_total=len(char_ids))
+            return result
+
+        results = await asyncio.gather(*(_decide_with_counter(cid, i) for i, cid in enumerate(char_ids)))
         all_intents = [intent for intent, _ in results if intent]
         all_events = [event for _, event in results if event]
 
@@ -300,6 +325,8 @@ def build_game_graph(
 
     async def physics_resolve(state: GameState) -> dict[str, Any]:
         try:
+            if status:
+                status.update("正在计算物理变化...")
             system_prompt = prompt_loader.render("physics_system.j2", {})
             user_prompt = prompt_loader.render("physics_user.j2", {
                 "objects": state.get("objects", {}),
@@ -454,6 +481,8 @@ def build_game_graph(
         self_action_summary = "\n".join(self_action_parts) if self_action_parts else ""
 
         try:
+            if status:
+                status.update("正在感知周围环境...")
             system_prompt = prompt_loader.render("sensory_system.j2", {
                 "player_capabilities": capabilities,
             })

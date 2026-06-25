@@ -23,6 +23,7 @@ from src.graph.game_graph import build_game_graph
 from src.graph.game_state import normalize_state, reset_tick_transients, strip_transient_state
 from src.prompts.loader import PromptLoader
 from src.ui.cli import GameUI
+from src.ui.status import TurnStatus
 
 logger = structlog.get_logger()
 console = Console()
@@ -112,7 +113,8 @@ async def main():
         ui.display(f"\n[bold green]{starting_desc}[/bold green]\n")
 
     # ── Build Game Graph ──
-    graph = build_game_graph(llm, prompt_loader)
+    turn_status = TurnStatus(console)
+    graph = build_game_graph(llm, prompt_loader, status=turn_status)
 
     max_ticks = game_state.get("max_ticks", 100)
 
@@ -125,7 +127,8 @@ async def main():
         # Fresh thread_id per tick so the graph doesn't short-circuit at END
         thread_config = {"configurable": {"thread_id": f"tick_{tick_num}"}}
         try:
-            result = await graph.ainvoke(current_state, thread_config)
+            with turn_status.live():
+                result = await graph.ainvoke(current_state, thread_config)
         except Exception as e:
             console.print(f"[red]模拟出错 (tick {tick_num}): {e}[/red]")
             logger.exception("simulation error", tick=tick_num, error=str(e))
@@ -142,34 +145,46 @@ async def main():
         if sim_config.simulation.debug:
             ui.render_debug(debug_events)
 
-        # Collect player input
-        player_input = await ui.collect_input()
-        # Sanitize surrogates that may come from terminal encoding issues
-        if player_input:
-            sanitized = player_input.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
-            player_input = sanitized
+        # ── Input loop: commands re-render percept and re-prompt without running graph ──
+        while True:
+            player_input = await ui.collect_input()
+            # Sanitize surrogates that may come from terminal encoding issues
+            if player_input:
+                player_input = player_input.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
 
-        command = player_input.strip()
-        command_lower = command.lower()
-        if command_lower in ("/quit", "/exit"):
+            command = player_input.strip()
+            command_lower = command.lower()
+
+            if command_lower in ("/quit", "/exit"):
+                ui.display_goodbye()
+                return
+
+            if command_lower == "/help":
+                ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /stop 停止长行动[/dim]")
+                ui.render_percept(result.get("player_percept"))
+                if sim_config.simulation.debug:
+                    ui.render_debug(debug_events)
+                continue
+
+            if command_lower.startswith("/save "):
+                save_name = command[6:].strip()
+                if not re.fullmatch(r"[A-Za-z0-9_-]+", save_name):
+                    ui.display("[red]存档名只能包含字母、数字、下划线和短横线。[/red]")
+                else:
+                    saves_dir = Path("saves")
+                    saves_dir.mkdir(exist_ok=True)
+                    save_path = saves_dir / f"{save_name}.json"
+                    with open(save_path, "w", encoding="utf-8") as f:
+                        json.dump(strip_transient_state(result), f, ensure_ascii=False, indent=2)
+                    ui.display(f"[green]已保存到 {save_path}[/green]")
+                ui.render_percept(result.get("player_percept"))
+                if sim_config.simulation.debug:
+                    ui.render_debug(debug_events)
+                continue
+
+            # Real game action received — exit inner loop and advance state
             break
-        if command_lower == "/help":
-            ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /stop 停止长行动[/dim]")
-            player_input = None
-        elif command_lower.startswith("/save "):
-            save_name = command[6:].strip()
-            if not re.fullmatch(r"[A-Za-z0-9_-]+", save_name):
-                ui.display("[red]存档名只能包含字母、数字、下划线和短横线。[/red]")
-            else:
-                saves_dir = Path("saves")
-                saves_dir.mkdir(exist_ok=True)
-                save_path = saves_dir / f"{save_name}.json"
-                with open(save_path, "w", encoding="utf-8") as f:
-                    json.dump(strip_transient_state(result), f, ensure_ascii=False, indent=2)
-                ui.display(f"[green]已保存到 {save_path}[/green]")
-            player_input = None
 
-        # Build next state from current result + player input
         current_state = reset_tick_transients(result, player_input)
 
     ui.display_goodbye()
