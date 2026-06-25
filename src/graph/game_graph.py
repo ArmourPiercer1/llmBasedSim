@@ -205,6 +205,17 @@ def build_game_graph(
                         resolved.continue_until = "blocked"
                         event += f"（超长移动 {dist:.0f} 单位，自动截断）"
 
+            # If continue_until is set, always treat as multi-tick action
+            if resolved.continue_until:
+                if resolved.feasibility == "uncertain":
+                    resolved.feasibility = "allowed"
+                    resolved.requires_roll = False
+                    resolved.success_probability = None
+                    resolved.feasibility_reason = "多步行动：每步单独执行，直到目标达成或被阻止"
+                    event += "（多步行动，自动延续）"
+                action_duration = action_duration or tick_duration_minutes
+                resolved.duration_minutes = action_duration
+
             if action_duration and action_duration > max_tick_duration:
                 resolved.duration_minutes = tick_duration_minutes
                 remaining = action_duration - tick_duration_minutes

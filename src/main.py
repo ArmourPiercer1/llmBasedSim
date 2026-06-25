@@ -139,7 +139,7 @@ async def main():
 
         # Debug: show recent events
         debug_events = result.get("event_log", [])
-        if sim_config.debug:
+        if sim_config.simulation.debug:
             ui.render_debug(debug_events)
 
         # Collect player input

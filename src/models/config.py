@@ -35,11 +35,15 @@ class AgentsConfig(BaseModel):
     sensory: AgentSensoryConfig = Field(default_factory=AgentSensoryConfig)
 
 
-class SimulationConfig(BaseModel):
+class SimulationConfigData(BaseModel):
     max_ticks: int = 100
     tick_delay_ms: int = 100
     log_level: str = "INFO"
     debug: bool = False
+
+
+class SimulationConfig(BaseModel):
+    simulation: SimulationConfigData = Field(default_factory=SimulationConfigData)
     llm: LLMConfigModel = Field(default_factory=LLMConfigModel)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
 
