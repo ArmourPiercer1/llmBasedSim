@@ -51,6 +51,7 @@
 | `environment` | `dict` | 时间、天气、温度等环境信息。 |
 | `characters` | `dict[str, dict]` | NPC 状态，key 为 character id；每个角色可包含 `attributes` 数值属性表。 |
 | `player` | `dict` | 玩家状态，可包含 `attributes` 数值属性表。 |
+| `world_rules` | `dict` | 从 init YAML 注入的物理/属性规则配置，含 `physics` 和 `attribute` 子字段，各支持 `disable`（禁用默认规则索引）和 `append`（追加自定义规则）。 |
 | `event_log` | `list[str]` | 全局事件日志，只追加。 |
 
 ### 2.2 Tick Transient State
@@ -341,8 +342,8 @@ NPC 行动意图，由角色 prompt 输出。它不表示玩家行动。
 | `player_intent_system.j2` / `player_intent_user.j2` | `PlayerAction` | 结构化和细化玩家输入，可选应用潜意识规则。 |
 | `player_action_resolve_system.j2` / `player_action_resolve_user.j2` | `PlayerAction` | 判断玩家行动可行性。 |
 | `character_system.j2` / `character_user.j2` | `ActionIntent` | 生成 NPC 行动。 |
-| `physics_system.j2` / `physics_user.j2` | `PhysicsResolution` | 生成物理后果。 |
-| `attribute_update_system.j2` / `attribute_update_user.j2` | `AttributeUpdateResolution` | 生成角色属性变化补丁。 |
+| `physics_system.j2` / `physics_user.j2` | `PhysicsResolution` | 生成物理后果。物理规则由 `build_rules_context(PHYSICS_DEFAULT_RULES, world_rules.physics)` 动态生成后注入 `{{ rules }}` 上下文。 |
+| `attribute_update_system.j2` / `attribute_update_user.j2` | `AttributeUpdateResolution` | 生成角色属性变化补丁。属性规则由 `build_rules_context(ATTRIBUTE_DEFAULT_RULES, world_rules.attribute, extra_sections=[...])` 动态生成后注入 `{{ rules }}` 上下文。 |
 | `sensory_system.j2` / `sensory_user.j2` | `PlayerPercept` | 生成玩家可感知内容。 |
 
 Prompt 规则：

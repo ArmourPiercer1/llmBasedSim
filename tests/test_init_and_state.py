@@ -46,3 +46,31 @@ def test_strip_transient_state_round_trip_preserves_attributes():
     assert loaded["player_input"] is None
     assert loaded["player_action"] is None
     assert loaded["action_intents"] == []
+
+
+def test_init_file_preserves_world_rules():
+    state = init_file_to_game_state(load_init_file("config/init_test.yaml"))
+    assert state["world_rules"] == {}
+
+
+def test_world_rules_survive_save_load_round_trip():
+    from src.agents.init import init_file_to_game_state
+    raw = {
+        "world": {"name": "T", "description": "T", "locations": [], "objects": []},
+        "player": {"name": "T"},
+        "characters": [],
+        "starting_scene_description": "S",
+        "world_rules": {
+            "physics": {"disable": [3, 8], "append": ["11. 自定义规则"]},
+            "attribute": {"disable": [2]},
+        },
+    }
+    state = init_file_to_game_state(raw)
+    assert state["world_rules"]["physics"]["disable"] == [3, 8]
+    assert state["world_rules"]["attribute"]["disable"] == [2]
+    assert any("自定义规则" in r for r in state["world_rules"]["physics"]["append"])
+
+    saved = strip_transient_state(state)
+    reloaded = normalize_state(saved)
+    assert reloaded["world_rules"]["physics"]["disable"] == [3, 8]
+    assert reloaded["world_rules"]["attribute"]["disable"] == [2]

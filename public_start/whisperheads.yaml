@@ -879,3 +879,18 @@ game_time:
   hour: 5
   minute: 15
 ticks_per_game_minute: 0.5
+world_rules:
+  physics:
+    disable: [8]
+    append:
+    - 11. **亚空间低语**：Vox通讯中的Samus低语会导致附近电子设备间歇性失灵，特别是靠近远古石碑（ancient_stele）时。
+    - 12. **低温环境**：气温-15°C下，裸露金属表面会结冰。未加温的武器握把和门锁需要先做防滑/解冻判定才能操作。
+    - 13. **深渊回音**：在upper_tunnels和chamber_of_the_well中，任意超过耳语级别的声音都会产生反复回音，可能暴露发声者的精确位置。
+    - 14. **远古石碑的异常光晕**：当ancient_stele的inscriptions_glowing为true时，chamber_of_the_well中获得昏暗照明（半径10米），但该光线无法被任何电子设备记录或增强——影像记录器拍到的只有黑暗。
+    - 15. **冰崖结构脆弱性**：rock_bridges和lower_fortress区域的冰层和风化岩石在承受超过500kg的冲击（如Terminator装甲跳跃、近距离爆炸）时可能碎裂坍塌，导致角色坠落深渊。
+  attribute:
+    disable: []
+    append:
+    - 来自Samus的低语（vox_integrity下降时）、接触远古石碑（ancient_stele）、或在深渊之室停留时：sanity下降2-8点，corruption_resistance下降1-3点。
+    - 深入山腹越深（upper_tunnels及chamber_of_the_well），vox_integrity每tick额外下降3点。
+    - 每当朱巴尔的corruption_level上升超过阈值（50、75、90），所有在场角色的sanity额外下降5-10点。

@@ -1,4 +1,10 @@
-from src.prompts.loader import PromptLoader
+from src.prompts.loader import (
+    ATTRIBUTE_DEFAULT_REFERENCES,
+    ATTRIBUTE_DEFAULT_RULES,
+    PHYSICS_DEFAULT_RULES,
+    PromptLoader,
+    build_rules_context,
+)
 
 
 class TestPromptLoader:
@@ -92,8 +98,11 @@ class TestPromptLoader:
 
     def test_physics_system_renders(self):
         loader = PromptLoader("prompts")
-        result = loader.render("physics_system.j2", {})
+        result = loader.render("physics_system.j2", {
+            "rules": build_rules_context(PHYSICS_DEFAULT_RULES, None),
+        })
         assert len(result) > 0
+        assert "重力" in result
 
     def test_physics_user_renders(self):
         loader = PromptLoader("prompts")
@@ -107,8 +116,15 @@ class TestPromptLoader:
 
     def test_attribute_update_system_renders(self):
         loader = PromptLoader("prompts")
-        result = loader.render("attribute_update_system.j2", {})
+        result = loader.render("attribute_update_system.j2", {
+            "rules": build_rules_context(
+                ATTRIBUTE_DEFAULT_RULES,
+                None,
+                extra_sections=[("常见参考", ATTRIBUTE_DEFAULT_REFERENCES)],
+            ),
+        })
         assert len(result) > 0
+        assert "自然恢复" in result
 
     def test_attribute_update_user_renders(self):
         loader = PromptLoader("prompts")
@@ -158,3 +174,60 @@ class TestPromptLoader:
             "character_positions": {},
         })
         assert isinstance(result, str)
+
+
+class TestBuildRulesContext:
+    def test_returns_default_rules_when_no_config(self):
+        result = build_rules_context(["1. 规则A", "2. 规则B"], None)
+        assert "默认规则" in result
+        assert "规则A" in result
+        assert "规则B" in result
+        assert "自定义规则" not in result
+
+    def test_disables_specified_indices(self):
+        result = build_rules_context(["1. 规则A", "2. 规则B", "3. 规则C"], {"disable": [2]})
+        assert "规则A" in result
+        assert "规则B" not in result
+        assert "规则C" in result
+
+    def test_appends_custom_rules(self):
+        result = build_rules_context(["1. 规则A"], {"append": ["附加规则X"]})
+        assert "规则A" in result
+        assert "自定义规则" in result
+        assert "2. 附加规则X" in result
+
+    def test_combined_disable_and_append(self):
+        result = build_rules_context(
+            ["1. 规则A", "2. 规则B", "3. 规则C"],
+            {"disable": [1, 3], "append": ["新增规则"]},
+        )
+        assert "规则A" not in result
+        assert "规则B" in result
+        assert "规则C" not in result
+        assert "自定义规则" in result
+        assert "新增规则" in result
+
+    def test_preserves_custom_rule_number_prefix(self):
+        result = build_rules_context(["1. X"], {"append": ["5. 已有编号的规则"]})
+        assert "5. 已有编号的规则" in result
+
+    def test_extra_sections_included(self):
+        result = build_rules_context(
+            ["1. 规则A"],
+            None,
+            extra_sections=[("常见参考", ["- 参考项1", "- 参考项2"])],
+        )
+        assert "常见参考" in result
+        assert "参考项1" in result
+        assert "规则A" in result
+
+    def test_empty_config_handled(self):
+        result = build_rules_context([], {"disable": [1], "append": ["X"]})
+        assert "默认规则" not in result
+        assert "X" in result
+
+    def test_physics_default_rules_has_expected_count(self):
+        assert len(PHYSICS_DEFAULT_RULES) == 10
+
+    def test_attribute_default_rules_has_expected_count(self):
+        assert len(ATTRIBUTE_DEFAULT_RULES) == 7

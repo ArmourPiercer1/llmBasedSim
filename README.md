@@ -232,6 +232,29 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 配置由 `src/config/loader.py` 加载并通过 Pydantic 校验。`init_test.yaml` 是包含完整世界、玩家和 NPC 设定的单文件测试场景。
 
+#### 世界规则注入（`world_rules`）
+
+Init YAML 可通过 `world_rules` 字段向物理引擎和属性更新系统注入场景特定规则，或禁用不适用的默认规则。格式如下：
+
+```yaml
+world_rules:
+  physics:
+    disable: [8]                # 禁用默认物理规则（1-based 索引）
+    append:                     # 追加场景特定规则
+      - "11. **亚空间低语**：Vox通讯中的Samus低语会导致附近电子设备间歇性失灵。"
+      - "12. **低温环境**：气温-15°C下，裸露金属表面会结冰，需做防滑/解冻判定。"
+  attribute:
+    disable: []                 # 不禁用默认属性规则
+    append:
+      - "接触远古石碑时：sanity下降2-8点，corruption_resistance下降1-3点。"
+```
+
+- **`disable`**：要禁用的默认规则编号列表（1-based）。被禁用的规则不会出现在 LLM prompt 中。
+- **`append`**：追加的自定义规则列表。规则自动编号（接续默认规则末尾），以"自定义规则"节出现在 prompt 中。
+- 所有字段可选；未声明 `world_rules` 时行为与默认完全一致。
+- 默认物理规则共 10 条（重力、碰撞检测、连锁反应、声音传播等），默认属性规则共 7 条。
+- 完整示例参见 [`public_start/whisperheads.yaml`](public_start/whisperheads.yaml)（耳语山场景：禁用"物理一致性"规则以体现 Warp 影响区域的物理异常，追加 5 条物理规则和 3 条属性规则）。
+
 ### 接口文档
 
 - `docs/game-flow-interfaces.md`
@@ -279,6 +302,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 - 对话状态追踪（`conversation_target` / `last_spoken_to`）——NPC 对话有连续性；
 - 关系数值变化（`emotion` 驱动 `relationships`，好感度反映在行为中）；
 - 通用角色属性系统（`attributes` + `attribute_update`）——init 文件可为玩家/NPC 定义任意数值属性，节点按行动、事件和自然变化更新；
+- 世界规则注入（`world_rules`）——init YAML 可声明 `physics`/`attribute` 的 `disable` 和 `append`，向物理引擎和属性系统注入场景特定规则或屏蔽默认规则；
 - 游戏时间追踪（`game_time` + `ticks_per_game_minute`，每 tick 推进，`time_of_day` 自动切换）；
 - 行动时长与截断系统——长行动自动跨 tick 延续，`/stop` 终止；
 - 物理结果生成（同时处理玩家与 NPC 行动）；
@@ -315,7 +339,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
    - 但还没有角色属性、难度等级、优势/劣势、重试惩罚等完整检定系统。
 
 4. **自动化测试覆盖已大幅提升，但集成测试仍缺失**
-   - 纯函数测试已覆盖 107 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、UI 渲染、初始化文件、游戏时间和事件压缩；
+   - 纯函数测试已覆盖 118 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、初始化文件、游戏时间和事件压缩；
    - 但还没有 mock LLM 的完整 tick 集成测试和 Prompt 输出样例测试。
 
 5. **Prompt 和 schema 仍需收敛**
@@ -328,7 +352,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 2. **完善检定系统** — 引入难度等级、角色属性、优势/劣势、重试惩罚等完整检定机制；将检定结果写入事件日志和角色记忆。
 
-3. **补齐集成测试** — 在现有 107 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
+3. **补齐集成测试** — 在现有 118 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
 
 4. **Prompt 与 schema 收敛** — 为常见行动建立固定示例库；减少 LLM 输出字段格式波动；明确 `PlayerAction`、`PhysicsOutcome` 与 `AttributeUpdateResolution` 的职责边界。
 

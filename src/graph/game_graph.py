@@ -26,7 +26,13 @@ from src.models.events import (
     PlayerAction,
     PlayerPercept,
 )
-from src.prompts.loader import PromptLoader
+from src.prompts.loader import (
+    ATTRIBUTE_DEFAULT_REFERENCES,
+    ATTRIBUTE_DEFAULT_RULES,
+    PHYSICS_DEFAULT_RULES,
+    PromptLoader,
+    build_rules_context,
+)
 from src.ui.status import TurnStatus
 
 
@@ -341,7 +347,12 @@ def build_game_graph(
         try:
             if status:
                 status.update("正在计算物理变化...")
-            system_prompt = prompt_loader.render("physics_system.j2", {})
+            system_prompt = prompt_loader.render("physics_system.j2", {
+                "rules": build_rules_context(
+                    PHYSICS_DEFAULT_RULES,
+                    state.get("world_rules", {}).get("physics") if isinstance(state.get("world_rules"), dict) else None,
+                ),
+            })
             user_prompt = prompt_loader.render("physics_user.j2", {
                 "objects": state.get("objects", {}),
                 "character_positions": state.get("character_positions", {}),
@@ -549,7 +560,13 @@ def build_game_graph(
         try:
             if status:
                 status.update("正在更新角色属性...")
-            system_prompt = prompt_loader.render("attribute_update_system.j2", {})
+            system_prompt = prompt_loader.render("attribute_update_system.j2", {
+                "rules": build_rules_context(
+                    ATTRIBUTE_DEFAULT_RULES,
+                    state.get("world_rules", {}).get("attribute") if isinstance(state.get("world_rules"), dict) else None,
+                    extra_sections=[("常见参考", ATTRIBUTE_DEFAULT_REFERENCES)],
+                ),
+            })
             user_prompt = prompt_loader.render("attribute_update_user.j2", {
                 "attribute_summary": attribute_summary,
                 "player_action": state.get("player_action"),
