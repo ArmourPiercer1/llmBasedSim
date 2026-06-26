@@ -104,6 +104,16 @@ python -m src.web.main
 
 然后打开 `http://127.0.0.1:8000`。
 
+**从手机或其他设备访问：** 使用 `--lan` 参数绑定到所有网络接口：
+
+```bash
+python -m src.web.main --lan
+```
+
+启动后终端会打印 PC 的局域网 IP 地址，手机连同一 WiFi 后在浏览器输入该地址即可。如果 Windows 防火墙弹出提示，放行即可。
+
+完整参数：`--host 0.0.0.0`（自定义绑定地址）、`--port 8080`（自定义端口）。
+
 WebUI 采用暗色蓝灰游戏 HUD 风格，参考 [`UI/reference.png`](UI/reference.png)：三栏布局、小说化叙事主区域、可折叠状态面板、感官/行动 modal、斜杠菜单和本地显示设置持久化。
 
 可用命令：
