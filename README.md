@@ -88,11 +88,23 @@ llm:
 
 核心逻辑在 [`src/main.py:46-52`](src/main.py#L46-L52) —— 所有 LLM 参数都从配置读取，没有硬编码。
 
-### 启动游戏
+### 启动游戏（CLI）
 
 ```bash
 python -m src.main
 ```
+
+### 启动 WebUI
+
+浏览器界面复用同一套 LangGraph 游戏管道，默认从 `public_start/whisperheads.yaml` 开始，也支持读取 `saves/*.json` 存档：
+
+```bash
+python -m src.web.main
+```
+
+然后打开 `http://127.0.0.1:8000`。
+
+WebUI 采用暗色蓝灰游戏 HUD 风格，参考 [`UI/reference.png`](UI/reference.png)：三栏布局、小说化叙事主区域、可折叠状态面板、感官/行动 modal、斜杠菜单和本地显示设置持久化。
 
 可用命令：
 
@@ -331,6 +343,7 @@ world_rules:
 - 节点级容错（全部 7 个 LLM 节点含 try/except 降级）；
 - NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
 - Rich CLI（双面板渲染）；
+- WebUI 原型（`python -m src.web.main`）——暗色蓝灰 HUD 三栏界面、小说化叙事流、可折叠状态面板、感官/行动 modal、斜杠菜单、显示设置 localStorage 持久化、存档读取/保存；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
 - `CONTRIBUTING.md` 接口维护约定。
 
@@ -350,7 +363,7 @@ world_rules:
    - 但还没有角色属性、难度等级、优势/劣势、重试惩罚等完整检定系统。
 
 4. **自动化测试覆盖已大幅提升，但集成测试仍缺失**
-   - 纯函数测试已覆盖 129 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、初始化文件、游戏时间和事件压缩；
+   - 纯函数测试已覆盖 136 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、WebUI 快照/感官数据、初始化文件、游戏时间和事件压缩；
    - 但还没有 mock LLM 的完整 tick 集成测试和 Prompt 输出样例测试。
 
 5. **Prompt 和 schema 仍需收敛**
@@ -363,7 +376,7 @@ world_rules:
 
 2. **完善检定系统** — 引入难度等级、角色属性、优势/劣势、重试惩罚等完整检定机制；将检定结果写入事件日志和角色记忆。
 
-3. **补齐集成测试** — 在现有 129 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
+3. **补齐集成测试** — 在现有 136 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
 
 4. **Prompt 与 schema 收敛** — 为常见行动建立固定示例库；减少 LLM 输出字段格式波动；明确 `PlayerAction`、`PhysicsOutcome` 与 `AttributeUpdateResolution` 的职责边界。
 
@@ -394,6 +407,8 @@ world_rules:
 | 修改 LLM 配置 | `config/simulation.yaml` |
 | 修改 Prompt | `prompts/*.j2` |
 | 修改终端 UI | `src/ui/` |
+| 修改 WebUI 后端 | `src/web/` |
+| 修改 WebUI 前端 | `web/` |
 | 修改确定性规则 | `src/game/rules.py`, `src/game/state_apply.py` |
 | 修改 CLI 状态显示 | `src/ui/status.py` |
 | 编写/使用初始化文件 | `config/init_test.yaml` |

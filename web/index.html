@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LLM 互动模拟游戏</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell is-loading">
+    <aside class="sidebar panel chrome-frame">
+      <div class="brand-block">
+        <div class="eyebrow">SIMULATION ARCHIVE</div>
+        <h1 id="worldTitle">互动模拟游戏</h1>
+        <p id="worldSubtitle">选择一个开局，进入多 Agent 推演世界。</p>
+      </div>
+
+      <nav class="menu-stack" aria-label="游戏菜单">
+        <button class="menu-item" data-start-mode="init_file">新游戏：耳语山</button>
+        <button class="menu-item" data-start-mode="config">从配置开局</button>
+        <button class="menu-item" id="openSaveList">读取存档</button>
+        <button class="menu-item" id="quickSave">保存当前</button>
+        <button class="menu-item" id="openSettings">设置</button>
+        <button class="menu-item" id="openHelp">帮助</button>
+      </nav>
+
+      <section class="time-card card">
+        <div class="card-label">当前时间</div>
+        <div id="timeDisplay" class="time-display">未开始</div>
+        <div id="weatherDisplay" class="weather-display">等待世界载入</div>
+      </section>
+    </aside>
+
+    <main class="story-column">
+      <header class="top-toolbar chrome-frame">
+        <div>
+          <span class="toolbar-label">回合</span>
+          <strong id="tickDisplay">0</strong>
+        </div>
+        <div class="quick-actions" aria-label="感官快捷入口">
+          <button data-command="/see">看</button>
+          <button data-command="/hear">听</button>
+          <button data-command="/feel">感</button>
+          <button data-command="/idid">行</button>
+        </div>
+      </header>
+
+      <section id="startScreen" class="start-screen chrome-frame">
+        <div class="sigil">◇</div>
+        <h2>开启模拟</h2>
+        <p>默认使用 <span class="accent">public_start/whisperheads.yaml</span>。你也可以从配置文件或已有存档进入。</p>
+        <div class="start-actions">
+          <button class="primary" data-start-mode="init_file">进入耳语山</button>
+          <button data-start-mode="config">从 config 加载</button>
+          <button id="startFromSave">读取存档</button>
+        </div>
+      </section>
+
+      <section id="storyStream" class="story-stream" aria-live="polite"></section>
+
+      <section id="loadingPanel" class="loading-panel chrome-frame hidden">
+        <div class="pulse-dots"><span></span><span></span><span></span></div>
+        <p>世界正在推演：理解意图、NPC 决策、物理变化、感知过滤、叙事渲染。</p>
+      </section>
+
+      <form id="commandForm" class="command-bar chrome-frame" autocomplete="off">
+        <div id="slashMenu" class="slash-menu hidden"></div>
+        <textarea id="commandInput" rows="1" placeholder="描述你的行动，或输入 / 打开命令菜单"></textarea>
+        <button id="sendButton" type="submit">发送</button>
+      </form>
+    </main>
+
+    <aside id="rightPanel" class="status-panel panel chrome-frame collapsed">
+      <button id="toggleStatus" class="panel-toggle" aria-label="展开或折叠状态面板">状态</button>
+      <div class="status-content">
+        <section class="card">
+          <div class="card-label">你的状态</div>
+          <h2 id="playerName">玩家</h2>
+          <div id="attributeList" class="attribute-list"></div>
+        </section>
+
+        <section class="card sensor-card">
+          <div class="card-label">感官入口</div>
+          <div class="sensor-grid">
+            <button data-command="/see">视觉</button>
+            <button data-command="/hear">听觉</button>
+            <button data-command="/feel">触感</button>
+            <button data-command="/idid">行动</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-label">NPC 动态</div>
+          <div id="npcList" class="npc-list"></div>
+        </section>
+
+        <section id="debugCard" class="card debug-card hidden">
+          <div class="card-label">最近事件</div>
+          <pre id="eventLog"></pre>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden">
+    <section class="modal chrome-frame" role="dialog" aria-modal="true">
+      <button id="closeModal" class="modal-close" aria-label="关闭">×</button>
+      <h2 id="modalTitle">标题</h2>
+      <div id="modalBody" class="modal-body"></div>
+    </section>
+  </div>
+
+  <div id="settingsDrawer" class="drawer hidden">
+    <section class="drawer-panel chrome-frame">
+      <button id="closeSettings" class="modal-close" aria-label="关闭设置">×</button>
+      <h2>显示设置</h2>
+      <label>字体大小 <input id="fontSize" type="range" min="14" max="22" value="16"></label>
+      <label>行间距 <input id="lineHeight" type="range" min="1.4" max="2.4" step="0.1" value="1.8"></label>
+      <label>叙事宽度 <input id="storyWidth" type="range" min="520" max="820" value="680"></label>
+      <label class="switch-line"><input id="showAttributes" type="checkbox" checked> 显示玩家属性</label>
+      <label class="switch-line"><input id="showSensors" type="checkbox" checked> 显示感官按钮</label>
+      <label class="switch-line"><input id="debugMode" type="checkbox"> 显示调试事件</label>
+      <label class="switch-line"><input id="simpleMode" type="checkbox"> 简约模式</label>
+    </section>
+  </div>
+
+  <template id="storyTemplate">
+    <article class="story-entry chrome-frame">
+      <div class="entry-meta"></div>
+      <div class="entry-text"></div>
+    </article>
+  </template>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
