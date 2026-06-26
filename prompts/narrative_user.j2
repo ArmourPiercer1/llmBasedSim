@@ -1,0 +1,36 @@
+## 角色信息
+- 角色名：{{ player_name }}
+{% if player_persona %}
+- 角色设定：{{ player_persona[:200] }}{% if player_persona|length > 200 %}……{% endif %}
+{% endif %}
+
+## 环境
+- 时间：{{ time_of_day }}{% if game_time %}（{{ game_time.hour }}:{{ "%02d"|format(game_time.minute) }}）{% endif %}
+- 天气：{{ weather }}
+- 温度：{{ temperature_c }}°C
+
+## 你的行动
+{{ self_action_summary or "（无特别行动）" }}
+
+## 感官信息
+{% if senses %}
+{% for s in senses %}
+- [{{ s.sense }}] {{ s.description }}{% if s.confidence < 1.0 %}（不太确定）{% endif %}
+{% endfor %}
+{% else %}
+（没有特别的感官信息）
+{% endif %}
+
+{% if summary %}
+## 概要
+{{ summary }}
+{% endif %}
+
+{% if player_attributes %}
+## 当前状态
+{% for key, attr in player_attributes.items() %}
+- {{ attr.name }}：{{ attr.value }}{% if attr.max %} / {{ attr.max }}{% endif %}{% if attr.unit %} {{ attr.unit }}{% endif %}
+{% endfor %}
+{% endif %}
+
+请将以上信息改写为小说化叙事。

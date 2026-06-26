@@ -175,6 +175,46 @@ class TestPromptLoader:
         })
         assert isinstance(result, str)
 
+    def test_narrative_system_renders(self):
+        loader = PromptLoader("prompts")
+        result = loader.render("narrative_system.j2", {
+            "style_description": "哥特式恐怖风格",
+            "style_example": "寒风如刀...",
+        })
+        assert isinstance(result, str)
+        assert "哥特式恐怖风格" in result
+        assert "寒风如刀" in result
+
+    def test_narrative_system_renders_with_defaults(self):
+        loader = PromptLoader("prompts")
+        result = loader.render("narrative_system.j2", {
+            "style_description": "",
+            "style_example": "",
+        })
+        assert isinstance(result, str)
+        assert "默认文风" in result
+
+    def test_narrative_user_renders(self):
+        loader = PromptLoader("prompts")
+        result = loader.render("narrative_user.j2", {
+            "player_name": "洛肯",
+            "player_persona": "阿斯塔特连长",
+            "time_of_day": "清晨",
+            "weather": "严寒",
+            "temperature_c": -15.0,
+            "game_time": {"hour": 5, "minute": 15},
+            "self_action_summary": "你走向石桥",
+            "senses": [
+                {"sense": "sight", "description": "石桥横跨深渊", "confidence": 1.0},
+                {"sense": "sound", "description": "寒风呼啸", "confidence": 0.8},
+            ],
+            "summary": "前方是天然石桥",
+            "player_attributes": {"stamina": {"name": "体力", "value": 95, "max": 100}},
+        })
+        assert isinstance(result, str)
+        assert "洛肯" in result
+        assert "石桥横跨深渊" in result
+
 
 class TestBuildRulesContext:
     def test_returns_default_rules_when_no_config(self):

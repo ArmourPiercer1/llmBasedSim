@@ -259,6 +259,7 @@ def init_file_to_game_state(raw: dict[str, Any]) -> GameState:
         characters=characters,
         player=player,
         world_rules=raw.get("world_rules", {}) or {},
+        narrative_style=raw.get("narrative_style", {}) or {},
         game_time=raw.get("game_time", {"hour": 18, "minute": 0}),
         ticks_per_game_minute=float(raw.get("ticks_per_game_minute", 0.2)),
         event_log=event_log,

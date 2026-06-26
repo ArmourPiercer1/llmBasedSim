@@ -74,3 +74,35 @@ def test_world_rules_survive_save_load_round_trip():
     reloaded = normalize_state(saved)
     assert reloaded["world_rules"]["physics"]["disable"] == [3, 8]
     assert reloaded["world_rules"]["attribute"]["disable"] == [2]
+
+
+def test_narrative_style_survive_save_load_round_trip():
+    from src.agents.init import init_file_to_game_state
+    raw = {
+        "world": {"name": "T", "description": "T", "locations": [], "objects": []},
+        "player": {"name": "T"},
+        "characters": [],
+        "starting_scene_description": "S",
+        "narrative_style": {
+            "style_description": "哥特式军事科幻",
+            "style_example": "寒风如刀...",
+        },
+    }
+    state = init_file_to_game_state(raw)
+    assert state["narrative_style"]["style_description"] == "哥特式军事科幻"
+    assert state["narrative_style"]["style_example"] == "寒风如刀..."
+
+    saved = strip_transient_state(state)
+    reloaded = normalize_state(saved)
+    assert reloaded["narrative_style"]["style_description"] == "哥特式军事科幻"
+    assert reloaded["narrative_style"]["style_example"] == "寒风如刀..."
+
+    # Default empty
+    raw_no_style = {
+        "world": {"name": "T", "description": "T", "locations": [], "objects": []},
+        "player": {"name": "T"},
+        "characters": [],
+        "starting_scene_description": "S",
+    }
+    state2 = init_file_to_game_state(raw_no_style)
+    assert state2["narrative_style"] == {}

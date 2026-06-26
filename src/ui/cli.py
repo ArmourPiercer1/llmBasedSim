@@ -8,7 +8,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from src.ui.renderer import render_percept, render_event_log, render_status, render_attribute_debug
+from src.ui.renderer import render_percept, render_event_log, render_status, render_attribute_debug, render_sense_category, render_self_action
 
 console = Console()
 
@@ -35,6 +35,12 @@ class GameUI:
 
     def render_status(self, state: dict[str, Any]) -> None:
         render_status(state)
+
+    def render_sense_category(self, percept: dict[str, Any] | None, sense_type: str) -> None:
+        render_sense_category(percept, sense_type)
+
+    def render_self_action(self, percept: dict[str, Any] | None) -> None:
+        render_self_action(percept)
 
     async def collect_input(self, prompt: str = "\n[bold yellow]> [/bold yellow]") -> str:
         """Collect player input asynchronously."""

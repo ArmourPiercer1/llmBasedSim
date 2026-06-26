@@ -22,6 +22,7 @@ from src.llm.parser import generate_structured
 from src.models.events import (
     ActionIntent,
     AttributeUpdateResolution,
+    NarrativeOutput,
     PhysicsResolution,
     PlayerAction,
     PlayerPercept,
@@ -598,6 +599,56 @@ def build_game_graph(
                 "event_log": [*natural_events, "[错误] 属性更新失败，已跳过本轮属性事件更新。"],
             }
 
+    # ── Node: narrative_stylize ──
+
+    async def narrative_stylize(state: GameState) -> dict[str, Any]:
+        percept = state.get("player_percept") or {}
+        if not percept or (not percept.get("senses") and not percept.get("summary")):
+            return {}
+
+        style = state.get("narrative_style", {}) or {}
+        style_description = style.get("style_description", "")
+        style_example = style.get("style_example", "")
+
+        player = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
+        env = state.get("environment", {}) or {}
+
+        try:
+            if status:
+                status.update("正在渲染叙事...")
+            system_prompt = prompt_loader.render("narrative_system.j2", {
+                "style_description": style_description,
+                "style_example": style_example,
+            })
+            user_prompt = prompt_loader.render("narrative_user.j2", {
+                "player_name": player.get("name", "你"),
+                "player_persona": player.get("persona", ""),
+                "time_of_day": env.get("time_of_day", ""),
+                "weather": env.get("weather", ""),
+                "temperature_c": env.get("temperature_c", 20.0),
+                "game_time": state.get("game_time"),
+                "self_action_summary": percept.get("self_action_summary", ""),
+                "senses": percept.get("senses", []),
+                "summary": percept.get("summary", ""),
+                "player_attributes": percept.get("player_attributes", {}),
+            })
+
+            result = await generate_structured(llm, [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ], NarrativeOutput)
+
+            enriched = dict(percept)
+            enriched["narrative"] = result.narrative
+            return {"player_percept": enriched}
+        except Exception:
+            enriched = dict(percept)
+            enriched["narrative"] = percept.get("summary", "")
+            return {
+                "player_percept": enriched,
+                "event_log": ["[错误] 叙事渲染失败，使用原始感知文本。"],
+            }
+
     # ── Build the graph ──
 
     builder = StateGraph(GameState)
@@ -609,6 +660,7 @@ def build_game_graph(
     builder.add_node("state_apply", state_apply)
     builder.add_node("attribute_update", attribute_update)
     builder.add_node("sensory_filter", sensory_filter)
+    builder.add_node("narrative_stylize", narrative_stylize)
 
     builder.add_edge(START, "player_intent_process")
     builder.add_edge("player_intent_process", "player_action_resolve")
@@ -618,7 +670,8 @@ def build_game_graph(
     builder.add_edge("state_apply", "attribute_update")
     builder.add_edge("state_apply", "sensory_filter")
     builder.add_edge("attribute_update", END)
-    builder.add_edge("sensory_filter", END)
+    builder.add_edge("sensory_filter", "narrative_stylize")
+    builder.add_edge("narrative_stylize", END)
 
     if checkpointer is None:
         checkpointer = InMemorySaver()

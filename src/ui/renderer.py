@@ -41,26 +41,15 @@ def _format_attribute_lines(attributes: dict, *, include_hidden: bool = False) -
 
 
 def render_percept(percept: dict | None) -> None:
-    """Render a PlayerPercept dict as formatted terminal output."""
+    """Render a PlayerPercept dict as formatted terminal output.
+
+    Only the narrative text and player attributes are shown by default.
+    Self-action is hidden — use /idid to see it.
+    """
     if not percept:
         console.print("[dim](你什么也没有感知到)[/dim]")
         return
 
-    # ── Self-action panel (what the player character actually did) ──
-    self_action = percept.get("self_action_summary", "")
-    if self_action:
-        self_panel = Panel(
-            self_action,
-            title="[bold yellow]你做了什么[/bold yellow]",
-            border_style="yellow",
-            padding=(1, 2),
-        )
-        console.print(self_panel)
-        console.print()
-
-    summary = percept.get("summary", "")
-    senses = percept.get("senses", [])
-    hidden = percept.get("hidden_event_count", 0)
     player_attributes = percept.get("player_attributes", {})
 
     if player_attributes:
@@ -75,36 +64,48 @@ def render_percept(percept: dict | None) -> None:
             console.print(attr_panel)
             console.print()
 
-    sense_icons = {
-        "sight": "[看]",
-        "sound": "[听]",
-        "smell": "[闻]",
-        "touch": "[触]",
-    }
+    narrative = percept.get("narrative", "")
+    if narrative:
+        panel = Panel(
+            narrative,
+            title="[bold green]你感知到的[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+        console.print(panel)
+    else:
+        summary = percept.get("summary", "")
+        senses = percept.get("senses", [])
+        sense_icons = {
+            "sight": "[看]",
+            "sound": "[听]",
+            "smell": "[闻]",
+            "touch": "[触]",
+        }
+        lines = []
+        for s in senses:
+            sense_type = s.get("sense", "")
+            desc = s.get("description", "")
+            icon = sense_icons.get(sense_type, "*")
+            confidence = s.get("confidence", 1.0)
+            if confidence < 1.0:
+                lines.append(f"[dim]{icon} {desc} (不太确定)[/dim]")
+            else:
+                lines.append(f"{icon} {desc}")
 
-    lines = []
-    for s in senses:
-        sense_type = s.get("sense", "")
-        desc = s.get("description", "")
-        icon = sense_icons.get(sense_type, "*")
-        confidence = s.get("confidence", 1.0)
-        if confidence < 1.0:
-            lines.append(f"[dim]{icon} {desc} (不太确定)[/dim]")
-        else:
-            lines.append(f"{icon} {desc}")
+        content = "\n".join(lines) if lines else summary
+        if summary and lines:
+            content = f"[bold]{summary}[/bold]\n\n{content}"
 
-    content = "\n".join(lines) if lines else summary
-    if summary and lines:
-        content = f"[bold]{summary}[/bold]\n\n{content}"
+        panel = Panel(
+            content,
+            title="[bold green]你感知到的[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+        console.print(panel)
 
-    panel = Panel(
-        content,
-        title=f"[bold green]你感知到的[/bold green]",
-        border_style="green",
-        padding=(1, 2),
-    )
-    console.print(panel)
-
+    hidden = percept.get("hidden_event_count", 0)
     if hidden > 0:
         console.print(f"[dim](有 {hidden} 件事发生了，但你没有察觉)[/dim]")
 
@@ -113,7 +114,7 @@ def render_status(state: dict) -> None:
     """Render player numeric attributes on demand."""
     player = state.get("player", {}) if isinstance(state, dict) else {}
     attributes = player.get("attributes", {}) if isinstance(player, dict) else {}
-    lines = _format_attribute_lines(attributes)
+    lines = _format_attribute_lines(attributes, include_hidden=True)
     if not lines:
         lines = ["[dim]当前没有可显示的玩家数值属性。[/dim]"]
     title_name = player.get("name", "玩家") if isinstance(player, dict) else "玩家"
@@ -121,6 +122,24 @@ def render_status(state: dict) -> None:
         "\n".join(lines),
         title=f"[bold cyan]{title_name}的数值状态[/bold cyan]",
         border_style="cyan",
+        padding=(1, 2),
+    )
+    console.print(panel)
+
+
+def render_self_action(percept: dict | None) -> None:
+    """Render what the player character actually did this turn."""
+    if not percept:
+        console.print("[dim](你什么也没有做)[/dim]")
+        return
+    self_action = percept.get("self_action_summary", "")
+    if not self_action:
+        console.print("[dim](你本回合没有特别的行为)[/dim]")
+        return
+    panel = Panel(
+        self_action,
+        title="[bold yellow]你做了什么[/bold yellow]",
+        border_style="yellow",
         padding=(1, 2),
     )
     console.print(panel)
@@ -160,3 +179,52 @@ def render_event_log(event_log: list[str], max_lines: int = 5) -> None:
     console.print("\n[dim]── 最近事件（调试）──[/dim]")
     for e in recent:
         console.print(f"[dim]  {e}[/dim]")
+
+
+_SENSE_LABELS: dict[str, str] = {
+    "sight": "看到",
+    "sound": "听到",
+    "smell": "闻到",
+    "touch": "触到",
+}
+
+_SENSE_COLORS: dict[str, str] = {
+    "sight": "cyan",
+    "sound": "yellow",
+    "smell": "magenta",
+    "touch": "blue",
+}
+
+
+def render_sense_category(percept: dict | None, sense_type: str) -> None:
+    """Render only the sense entries of a specific type (sight/sound/smell/touch)."""
+    if not percept:
+        console.print("[dim](你什么也没有感知到)[/dim]")
+        return
+
+    senses = percept.get("senses", [])
+    filtered = [s for s in senses if s.get("sense") == sense_type]
+
+    label = _SENSE_LABELS.get(sense_type, sense_type)
+    color = _SENSE_COLORS.get(sense_type, "white")
+
+    if not filtered:
+        console.print(f"[dim](你没有{label}任何特别的东西)[/dim]")
+        return
+
+    lines = []
+    for s in filtered:
+        desc = s.get("description", "")
+        confidence = s.get("confidence", 1.0)
+        if confidence < 1.0:
+            lines.append(f"[dim]{desc} (不太确定)[/dim]")
+        else:
+            lines.append(desc)
+
+    panel = Panel(
+        "\n".join(lines),
+        title=f"[bold {color}]你{label}的[/bold {color}]",
+        border_style=color,
+        padding=(1, 2),
+    )
+    console.print(panel)

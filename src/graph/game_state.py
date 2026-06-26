@@ -21,6 +21,7 @@ class GameState(TypedDict, total=False):
     characters: dict[str, Any]
     player: dict[str, Any]
     world_rules: dict[str, Any]
+    narrative_style: dict[str, str]
 
     action_intents: Annotated[list[dict[str, Any]], operator.add]
     physics_outcomes: list[dict[str, Any]]
@@ -65,6 +66,7 @@ def normalize_state(raw: Mapping[str, Any] | BaseModel) -> GameState:
         "characters": data.get("characters", {}) or {},
         "player": data.get("player", {}) or {},
         "world_rules": data.get("world_rules", {}) or {},
+        "narrative_style": data.get("narrative_style", {}) or {},
         "action_intents": data.get("action_intents", []) or [],
         "physics_outcomes": data.get("physics_outcomes", []) or [],
         "player_percept": data.get("player_percept"),

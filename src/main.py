@@ -44,7 +44,7 @@ async def collect_next_player_input(ui: GameUI, result: dict, debug: bool) -> st
             return None
 
         if command_lower == "/help":
-            ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /status 查看状态, /stop 停止长行动[/dim]")
+            ui.display("[dim]命令: /quit 退出, /help 帮助, /save <name> 保存, /status 查看状态, /idid 查看本回合行为, /see 看到的信息, /hear 听到的信息, /feel 触到/闻到的信息, /stop 停止长行动[/dim]")
             ui.render_percept(result.get("player_percept"))
             if debug:
                 ui.render_debug(result)
@@ -52,6 +52,23 @@ async def collect_next_player_input(ui: GameUI, result: dict, debug: bool) -> st
 
         if command_lower == "/status":
             ui.render_status(result)
+            continue
+
+        if command_lower == "/idid":
+            ui.render_self_action(result.get("player_percept"))
+            continue
+
+        if command_lower == "/see":
+            ui.render_sense_category(result.get("player_percept"), "sight")
+            continue
+
+        if command_lower == "/hear":
+            ui.render_sense_category(result.get("player_percept"), "sound")
+            continue
+
+        if command_lower == "/feel":
+            ui.render_sense_category(result.get("player_percept"), "touch")
+            ui.render_sense_category(result.get("player_percept"), "smell")
             continue
 
         if command_lower.startswith("/save "):

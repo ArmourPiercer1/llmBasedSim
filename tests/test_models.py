@@ -2,7 +2,7 @@ from src.models.common import Position, CharacterAttribute
 from src.models.character import CharacterState, Personality
 from src.models.player import PlayerState, PlayerCapabilities, PhysicalProfile, PlayerKnowledge
 from src.models.world import WorldObject, Location, Environment, WorldState
-from src.models.events import PlayerAction, ActionIntent, PhysicsOutcome, PhysicsResolution, PlayerPercept, SenseDetail
+from src.models.events import PlayerAction, ActionIntent, PhysicsOutcome, PhysicsResolution, PlayerPercept, SenseDetail, NarrativeOutput
 
 
 class TestPosition:
@@ -133,3 +133,13 @@ class TestPlayerPercept:
     def test_sense_detail(self):
         sd = SenseDetail(sense="sight", description="看到一扇门")
         assert sd.confidence == 1.0
+
+
+class TestNarrativeOutput:
+    def test_defaults(self):
+        no = NarrativeOutput()
+        assert no.narrative == ""
+
+    def test_with_content(self):
+        no = NarrativeOutput(narrative="寒风如刀，割过石桥上的每一具尸体。")
+        assert "寒风如刀" in no.narrative

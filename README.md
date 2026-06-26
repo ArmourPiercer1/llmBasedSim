@@ -6,7 +6,7 @@
 
 ## 主要特色
 
-**多 Agent 协同推演。** 7 个 LangGraph 节点构成完整 tick 管道：玩家意图处理 → 行动可行性判断 → NPC 并发生成行动 → 物理推演 → 确定性状态应用 → 属性更新 / 玩家感官过滤。每轮输入驱动一轮完整的模拟推演，不再是固定剧本的"选择分支"。
+**多 Agent 协同推演。** 8 个 LangGraph 节点构成完整 tick 管道：玩家意图处理 → 行动可行性判断 → NPC 并发生成行动 → 物理推演 → 确定性状态应用 → 属性更新 / 玩家感官过滤 → 小说化叙事改写。每轮输入驱动一轮完整的模拟推演，不再是固定剧本的"选择分支"。
 
 **玩家潜意识系统。** 玩家输入的不仅是"想做什么"，还会被人设潜意识修正。一个傲娇大小姐即使心里想说"我爱你"，说出口的也可能是"哼，才没有喜欢你呢"。潜意识规则和记忆可以被游戏中的经历逐步更新。
 
@@ -98,7 +98,11 @@ python -m src.main
 
 - `/quit` 或 `/exit`：退出游戏；
 - `/help`：显示帮助；
+- `/idid`：显示本回合玩家角色实际做了什么；
 - `/status`：显示玩家当前数值状态；
+- `/see`：显示当前感知到的视觉信息条目；
+- `/hear`：显示当前感知到的听觉信息条目；
+- `/feel`：显示当前感知到的触觉和嗅觉信息条目；
 - `/save <name>`：保存当前进度；
 - `/stop`：终止当前长行动。
 
@@ -164,7 +168,7 @@ python -m src.main --init-file config/init_test.yaml
 - `src/graph/game_state.py`
 - `src/graph/game_graph.py`
 
-`GameState` 是模拟世界的核心状态，使用 LangGraph `TypedDict` 定义。遵循"图内跑 dict，边界用 Pydantic"原则：状态在节点间以普通 dict 流转，Pydantic 只用于 LLM 输出解析、配置校验和存档边界。`game_graph.py` 构建 LangGraph tick 管道：
+`GameState` 是模拟世界的核心状态，使用 LangGraph `TypedDict` 定义。遵循"图内跑 dict，边界用 Pydantic"原则：状态在节点间以普通 dict 流转，Pydantic 只用于 LLM 输出解析、配置校验和存档边界。`game_graph.py` 构建 LangGraph tick 管道（8 节点）：
 
 ```text
 START
@@ -180,7 +184,8 @@ physics_resolve         ← 推演物理后果
 state_apply             ← 确定性状态应用
   ├─ attribute_update   ← 所有角色任意数值属性的自动更新
   └─ sensory_filter     ← 生成玩家感知 + 自行动反馈
-      ↓
+      └─ narrative_stylize ← 小说化叙事改写
+          ↓
 END
 ```
 
@@ -192,7 +197,8 @@ END
 - `physics_resolve`：根据玩家和 NPC 行动推演物理结果；
 - `state_apply`：用确定性 Python 逻辑应用状态变化；
 - `attribute_update`：根据本 tick 的行动、物理后果和事件更新玩家/NPC 的任意数值属性；
-- `sensory_filter`：生成玩家可感知信息，同时反馈玩家角色本回合实际做了什么/说了什么。
+- `sensory_filter`：生成玩家可感知信息，同时反馈玩家角色本回合实际做了什么/说了什么；
+- `narrative_stylize`：将结构化感知数据改写为小说化的沉浸式叙事文本，文风可通过 init YAML 的 `narrative_style` 字段控制。
 
 ### Agent 初始化层
 
@@ -219,6 +225,8 @@ DeepSeek 当前不依赖原生 `response_format`。代码通过向 prompt 注入
 - `prompts/physics_user.j2`
 - `prompts/sensory_system.j2`
 - `prompts/sensory_user.j2`
+- `prompts/narrative_system.j2`
+- `prompts/narrative_user.j2`
 
 Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
@@ -278,7 +286,8 @@ world_rules:
 5. 驱动 NPC 根据性格、记忆、环境和结构化玩家行动做出行动；
 6. 使用物理 Agent 推演玩家和角色行动造成的物理变化；
 7. 将世界真实状态过滤成玩家可感知的信息，并反馈"玩家角色实际做了什么"；
-8. 通过 CLI 与玩家交互。
+8. 将结构化感知数据改写为小说化的沉浸式叙事；
+9. 通过 CLI 与玩家交互。
 
 ## 已完成开发工作
 
@@ -303,13 +312,15 @@ world_rules:
 - 关系数值变化（`emotion` 驱动 `relationships`，好感度反映在行为中）；
 - 通用角色属性系统（`attributes` + `attribute_update`）——init 文件可为玩家/NPC 定义任意数值属性，节点按行动、事件和自然变化更新；
 - 世界规则注入（`world_rules`）——init YAML 可声明 `physics`/`attribute` 的 `disable` 和 `append`，向物理引擎和属性系统注入场景特定规则或屏蔽默认规则；
+- 小说化叙事改写节点（`narrative_stylize`）——将结构化感官数据改写为沉浸式文学叙事，文风通过 init YAML 的 `narrative_style` 字段控制（`style_description` + `style_example`）；
+- 感官分类查询命令（`/see` `/hear` `/feel`）——可分别查看原始视觉、听觉、触觉/嗅觉信息条目；
 - 游戏时间追踪（`game_time` + `ticks_per_game_minute`，每 tick 推进，`time_of_day` 自动切换）；
 - 行动时长与截断系统——长行动自动跨 tick 延续，`/stop` 终止；
 - 物理结果生成（同时处理玩家与 NPC 行动）；
 - 基础状态应用（物体移动、破坏、状态变化、玩家行动结果应用）；
 - 玩家感官过滤 + 自行动反馈（"你做了什么"面板）；
 - CLI 处理进度展示（`TurnStatus` Live 面板，实时显示管道步骤）；
-- 命令内层循环（`/help` `/status` `/save` `/stop` 后即时响应，不触发 NPC 决策）；
+- 命令内层循环（`/help` `/status` `/save` `/stop` `/idid` `/see` `/hear` `/feel` 后即时响应，不触发 NPC 决策）；
 - PlayerAction 字段强制填写 + Schema 嵌入约束；
 - 玩家意图处理增强（目标三级匹配：精确→模糊→性格兜底）；
 - 单文件 YAML 直接开局（`--init-file`）；
@@ -317,7 +328,7 @@ world_rules:
 - 存档/读档（`/save <name>` 与 `--load <path>`）；
 - 调试输出开关（`simulation.debug`）；
 - 事件日志压缩（超 100 条自动统计摘要）；
-- 节点级容错（全部 6 个 LLM 节点含 try/except 降级）；
+- 节点级容错（全部 7 个 LLM 节点含 try/except 降级）；
 - NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
 - Rich CLI（双面板渲染）；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
@@ -339,7 +350,7 @@ world_rules:
    - 但还没有角色属性、难度等级、优势/劣势、重试惩罚等完整检定系统。
 
 4. **自动化测试覆盖已大幅提升，但集成测试仍缺失**
-   - 纯函数测试已覆盖 118 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、初始化文件、游戏时间和事件压缩；
+   - 纯函数测试已覆盖 129 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、初始化文件、游戏时间和事件压缩；
    - 但还没有 mock LLM 的完整 tick 集成测试和 Prompt 输出样例测试。
 
 5. **Prompt 和 schema 仍需收敛**
@@ -352,7 +363,7 @@ world_rules:
 
 2. **完善检定系统** — 引入难度等级、角色属性、优势/劣势、重试惩罚等完整检定机制；将检定结果写入事件日志和角色记忆。
 
-3. **补齐集成测试** — 在现有 118 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
+3. **补齐集成测试** — 在现有 129 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
 
 4. **Prompt 与 schema 收敛** — 为常见行动建立固定示例库；减少 LLM 输出字段格式波动；明确 `PlayerAction`、`PhysicsOutcome` 与 `AttributeUpdateResolution` 的职责边界。
 

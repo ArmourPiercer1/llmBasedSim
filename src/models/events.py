@@ -84,6 +84,10 @@ class AttributeUpdateResolution(BaseModel):
     reasoning: str = ""
 
 
+class NarrativeOutput(BaseModel):
+    narrative: str = ""
+
+
 class InitialWorldConfig(BaseModel):
     name: str = ""
     description: str = ""

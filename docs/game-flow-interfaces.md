@@ -52,6 +52,7 @@
 | `characters` | `dict[str, dict]` | NPC 状态，key 为 character id；每个角色可包含 `attributes` 数值属性表。 |
 | `player` | `dict` | 玩家状态，可包含 `attributes` 数值属性表。 |
 | `world_rules` | `dict` | 从 init YAML 注入的物理/属性规则配置，含 `physics` 和 `attribute` 子字段，各支持 `disable`（禁用默认规则索引）和 `append`（追加自定义规则）。 |
+| `narrative_style` | `dict[str, str]` | 从 init YAML 注入的叙事风格配置，含 `style_description`（文风描述）和 `style_example`（参考文段示例）。默认为空 dict，使用内置默认文风。 |
 | `event_log` | `list[str]` | 全局事件日志，只追加。 |
 
 ### 2.2 Tick Transient State
@@ -93,10 +94,8 @@ characters_all_decide
 physics_resolve
   ↓
 state_apply
-  ├─ attribute_update
-  └─ sensory_filter
-      ↓
-END
+  ├─ attribute_update ──→ END
+  └─ sensory_filter → narrative_stylize → END
 ```
 
 每个节点只读取所需字段，并返回 partial update。节点不应直接修改传入 state 对象。
@@ -287,6 +286,30 @@ END
 - 只输出玩家可感知内容。
 - 不泄漏 hidden、internal、debug 字段。
 
+### 4.8 `narrative_stylize`
+
+职责：将 `sensory_filter` 输出的结构化感知数据改写为小说化的沉浸式叙事文本。
+
+输入字段：
+
+- `player_percept`（来自 `sensory_filter`）
+- `player.name` / `player.persona`
+- `environment`
+- `game_time`
+- `narrative_style`
+
+输出字段：
+
+- `player_percept`（新增 `narrative` 字段，保留所有原始字段）
+
+规则：
+
+- 在 `sensory_filter` 完成后串行执行，不改变管道并行结构（`sensory_filter → narrative_stylize → END`）。
+- 读取 `narrative_style.style_description` 和 `narrative_style.style_example` 作为风格控制；两者均可为空，此时使用内置默认文风。
+- 输出写入 `player_percept.narrative` 字段；原始 `senses`、`summary`、`self_action_summary` 等字段保持不变，供 `/see`、`/hear`、`/feel` 命令使用。
+- 小说化叙事不应编造原始感知数据中不存在的事件、角色或对话。
+- 失败时回退：将 `summary` 作为 `narrative` 字段内容。
+
 ## 5. Data Model Contracts
 
 ### 5.1 `PlayerAction`
@@ -335,6 +358,14 @@ NPC 行动意图，由角色 prompt 输出。它不表示玩家行动。
 
 玩家感官输出。它是 UI 面向玩家展示的主要结构，不应包含 debug reasoning。
 
+### 5.6 `NarrativeOutput`
+
+叙事改写节点的输出模型，仅含一个字段：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `narrative` | `str` | 小说化叙事文本。 |
+
 ## 6. Prompt Contracts
 
 | Prompt | 输出模型 | 说明 |
@@ -345,6 +376,7 @@ NPC 行动意图，由角色 prompt 输出。它不表示玩家行动。
 | `physics_system.j2` / `physics_user.j2` | `PhysicsResolution` | 生成物理后果。物理规则由 `build_rules_context(PHYSICS_DEFAULT_RULES, world_rules.physics)` 动态生成后注入 `{{ rules }}` 上下文。 |
 | `attribute_update_system.j2` / `attribute_update_user.j2` | `AttributeUpdateResolution` | 生成角色属性变化补丁。属性规则由 `build_rules_context(ATTRIBUTE_DEFAULT_RULES, world_rules.attribute, extra_sections=[...])` 动态生成后注入 `{{ rules }}` 上下文。 |
 | `sensory_system.j2` / `sensory_user.j2` | `PlayerPercept` | 生成玩家可感知内容。 |
+| `narrative_system.j2` / `narrative_user.j2` | `NarrativeOutput` | 将结构化感官数据改写为小说化叙事。由 `narrative_style.style_description` 和 `narrative_style.style_example` 控制文风。 |
 
 Prompt 规则：
 
