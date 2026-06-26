@@ -2,7 +2,7 @@
 
 import asyncio
 import math
-from typing import Any
+from typing import Any, Protocol
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -34,7 +34,10 @@ from src.prompts.loader import (
     PromptLoader,
     build_rules_context,
 )
-from src.ui.status import TurnStatus
+
+
+class StatusReporter(Protocol):
+    def update(self, step: str, sub_count: int = 0, sub_total: int = 0) -> None: ...
 
 
 def _distance(pos1: dict, pos2: dict) -> float:
@@ -105,7 +108,7 @@ def _add_positions(p1: dict, p2: dict) -> dict:
 def build_game_graph(
     llm: ChatOpenAI,
     prompt_loader: PromptLoader,
-    status: TurnStatus | None = None,
+    status: StatusReporter | None = None,
     checkpointer: InMemorySaver | None = None,
 ):
     """Build and compile the game simulation StateGraph."""

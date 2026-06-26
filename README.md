@@ -96,7 +96,7 @@ python -m src.main
 
 ### 启动 WebUI
 
-浏览器界面复用同一套 LangGraph 游戏管道，默认从 `public_start/whisperheads.yaml` 开始，也支持读取 `saves/*.json` 存档：
+浏览器界面复用同一套 LangGraph 游戏管道，启动页会自动读取 `public_start/` 和 `private_start/` 中的 YAML 开局文件供玩家选择，也支持手动指定电脑上的其他 YAML 开局文件，或读取 `saves/*.json` 存档：
 
 ```bash
 python -m src.web.main

@@ -2,6 +2,9 @@ const state = {
   current: null,
   storyKeys: new Set(),
   saves: [],
+  initFiles: [],
+  progressTimer: null,
+  progressSeenBusy: false,
   settings: loadSettings(),
 };
 
@@ -22,13 +25,13 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const els = {
   app: $("#app"),
   worldTitle: $("#worldTitle"),
-  worldSubtitle: $("#worldSubtitle"),
   timeDisplay: $("#timeDisplay"),
   weatherDisplay: $("#weatherDisplay"),
   tickDisplay: $("#tickDisplay"),
   startScreen: $("#startScreen"),
   storyStream: $("#storyStream"),
   loadingPanel: $("#loadingPanel"),
+  loadingText: $("#loadingText"),
   commandForm: $("#commandForm"),
   commandInput: $("#commandInput"),
   sendButton: $("#sendButton"),
@@ -46,6 +49,7 @@ const els = {
   closeModal: $("#closeModal"),
   settingsDrawer: $("#settingsDrawer"),
   closeSettings: $("#closeSettings"),
+  exitSimpleMode: $("#exitSimpleMode"),
 };
 
 init();
@@ -54,6 +58,7 @@ async function init() {
   applySettings();
   bindEvents();
   const data = await api("/api/state");
+  state.initFiles = data.init_files || [];
   if (data.started) {
     renderState(data, { appendStory: true });
   } else {
@@ -62,9 +67,10 @@ async function init() {
 }
 
 function bindEvents() {
-  $$('[data-start-mode]').forEach((button) => {
-    button.addEventListener("click", () => startGame(button.dataset.startMode));
-  });
+  $("#openInitFiles").addEventListener("click", () => showInitFileList());
+  $("#chooseInitFile").addEventListener("click", () => showInitFileList());
+  $("#openOtherInitFile").addEventListener("click", () => promptOtherInitFile());
+  $("#chooseOtherInitFile").addEventListener("click", () => promptOtherInitFile());
 
   els.commandForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -102,6 +108,12 @@ function bindEvents() {
   $("#openSaveList").addEventListener("click", () => showSaveList());
   $("#startFromSave").addEventListener("click", () => showSaveList());
   $("#openSettings").addEventListener("click", () => els.settingsDrawer.classList.remove("hidden"));
+  $("#openStoryBackground").addEventListener("click", () => showStoryBackground());
+  els.exitSimpleMode.addEventListener("click", () => {
+    state.settings.simpleMode = false;
+    saveSettings();
+    applySettings();
+  });
   $("#openHelp").addEventListener("click", () => showHelp());
   els.closeSettings.addEventListener("click", () => els.settingsDrawer.classList.add("hidden"));
   els.closeModal.addEventListener("click", closeModal);
@@ -146,12 +158,20 @@ function bindSetting(id, key, caster) {
   }
 }
 
-async function startGame(mode, savePath = null) {
-  setBusy(true);
+async function startGameFromInitFile(initFile) {
+  await startGame({ mode: "init_file", init_file: initFile });
+}
+
+async function startGameFromSave(savePath) {
+  await startGame({ mode: "save", save_path: savePath });
+}
+
+async function startGame(payload) {
+  setBusy(true, { pollProgress: false });
   try {
     const data = await api("/api/start", {
       method: "POST",
-      body: JSON.stringify({ mode, save_path: savePath }),
+      body: JSON.stringify(payload),
     });
     state.storyKeys.clear();
     els.storyStream.innerHTML = "";
@@ -168,7 +188,8 @@ async function sendAction(text) {
     showModal("游戏尚未开始", ["请先从左侧菜单或启动页选择一个开局。"]);
     return;
   }
-  setBusy(true);
+  const shouldPollProgress = !text.startsWith("/");
+  setBusy(true, { pollProgress: shouldPollProgress });
   hideSlashMenu();
   try {
     const data = await api("/api/action", {
@@ -193,8 +214,7 @@ function renderState(data, { appendStory }) {
   els.startScreen.classList.toggle("hidden", data.started);
 
   els.worldTitle.textContent = data.world_name || "互动模拟游戏";
-  els.worldSubtitle.textContent = data.world_description || "多 Agent 推演世界";
-  els.tickDisplay.textContent = data.tick ?? 0;
+  els.tickDisplay.textContent = `${data.tick ?? 0} / ${data.max_ticks ?? "?"}`;
   els.timeDisplay.textContent = formatGameTime(data);
   els.weatherDisplay.textContent = [data.time_of_day, data.weather, formatTemperature(data.temperature_c)].filter(Boolean).join(" · ") || "环境未知";
   els.playerName.textContent = data.player?.name || "玩家";
@@ -289,6 +309,48 @@ function formatTemperature(value) {
   return `${formatNumber(value)}°C`;
 }
 
+async function showInitFileList() {
+  try {
+    const data = await api("/api/init-files");
+    state.initFiles = data.init_files || [];
+    const container = document.createElement("div");
+    container.className = "modal-body";
+    if (!state.initFiles.length) {
+      const empty = document.createElement("div");
+      empty.className = "modal-item";
+      empty.textContent = "public_start 和 private_start 中没有找到 YAML 开局文件。";
+      container.appendChild(empty);
+    }
+    for (const file of state.initFiles) {
+      const button = document.createElement("button");
+      button.className = "menu-item";
+      button.innerHTML = `${escapeHtml(file.name)}<br><span class="npc-action">${escapeHtml(file.path)} · ${escapeHtml(file.source)}</span>`;
+      button.addEventListener("click", () => {
+        closeModal();
+        startGameFromInitFile(file.path);
+      });
+      container.appendChild(button);
+    }
+    const otherButton = document.createElement("button");
+    otherButton.className = "menu-item";
+    otherButton.textContent = "其他：指定电脑上的开局文件";
+    otherButton.addEventListener("click", () => {
+      closeModal();
+      promptOtherInitFile();
+    });
+    container.appendChild(otherButton);
+    showModalNode("选择开局文件", container);
+  } catch (error) {
+    showModal("读取开局文件失败", [error.message]);
+  }
+}
+
+function promptOtherInitFile() {
+  const filePath = window.prompt("请输入 YAML 开局文件路径（可用绝对路径，或相对项目根目录的路径）", "");
+  if (!filePath) return;
+  startGameFromInitFile(filePath.trim());
+}
+
 async function showSaveList() {
   try {
     const data = await api("/api/saves");
@@ -305,7 +367,7 @@ async function showSaveList() {
       button.innerHTML = `${escapeHtml(save.name)}<br><span class="npc-action">${escapeHtml(save.world_name || "未知世界")} · 第 ${save.tick} 回合 · ${formatSaveTime(save.game_time)}</span>`;
       button.addEventListener("click", () => {
         closeModal();
-        startGame("save", save.path);
+        startGameFromSave(save.path);
       });
       container.appendChild(button);
     }
@@ -327,7 +389,7 @@ async function promptSave() {
   }
   const name = window.prompt("存档名（字母、数字、下划线、短横线）", `save_${state.current.tick || 0}`);
   if (!name) return;
-  setBusy(true);
+  setBusy(true, { pollProgress: false });
   try {
     const data = await api("/api/save", {
       method: "POST",
@@ -377,6 +439,12 @@ function showHelp() {
   showModal("帮助", commands.map((item) => `${item.cmd} — ${item.label}`));
 }
 
+function showStoryBackground() {
+  const title = state.current?.world_name ? `${state.current.world_name} · 故事背景` : "故事背景";
+  const description = state.current?.world_description || "选择开局后，这里会显示当前游戏的故事背景。";
+  showModal(title, [description]);
+}
+
 function showModal(title, items) {
   const body = document.createElement("div");
   body.className = "modal-body";
@@ -404,10 +472,57 @@ function showToast(message) {
   showModal("提示", [message]);
 }
 
-function setBusy(busy) {
-  els.loadingPanel.classList.toggle("hidden", !busy);
+function setBusy(busy, options = {}) {
+  const pollProgress = Boolean(options.pollProgress);
+  els.loadingPanel.classList.toggle("hidden", !busy || !pollProgress);
   els.sendButton.disabled = busy;
   els.commandInput.disabled = busy;
+  if (busy && pollProgress) {
+    updateLoadingText({ step: "准备开始推演..." });
+    startProgressPolling();
+  } else {
+    stopProgressPolling();
+  }
+}
+
+function startProgressPolling() {
+  stopProgressPolling();
+  state.progressSeenBusy = false;
+  state.progressTimer = window.setInterval(refreshProgress, 300);
+}
+
+function stopProgressPolling() {
+  if (state.progressTimer !== null) {
+    window.clearInterval(state.progressTimer);
+    state.progressTimer = null;
+  }
+  state.progressSeenBusy = false;
+}
+
+async function refreshProgress() {
+  try {
+    const data = await api("/api/progress");
+    if (data.busy) {
+      state.progressSeenBusy = true;
+      updateLoadingText(data);
+      return;
+    }
+    if (state.progressSeenBusy) {
+      updateLoadingText(data);
+      stopProgressPolling();
+    }
+  } catch {
+    if (state.progressSeenBusy) {
+      updateLoadingText({ step: "正在推演..." });
+    }
+  }
+}
+
+function updateLoadingText(progress) {
+  const step = progress?.step || "正在推演...";
+  const subTotal = Number(progress?.sub_total || 0);
+  const subCount = Number(progress?.sub_count || 0);
+  els.loadingText.textContent = subTotal > 0 ? `${step} (${subCount}/${subTotal})` : step;
 }
 
 function autoGrow(textarea) {

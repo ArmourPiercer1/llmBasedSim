@@ -1,0 +1,807 @@
+world:
+  name: 谋杀星
+  description: '第一百四十之二十号世界，远征舰队登记册上的正式编号。但给它命名的 那个血天使连长——在他最后一条能辨识的通讯里——只说了三个字： "This. World. Is. Murder."（这个世界，是谋杀。）
+      谋杀星是这颗黄色太阳的第四行星。一颗被狂暴的离子风暴永久包裹的死亡世界， 赤铁色的土壤上生长着二十米高的灰白色巨草茎林，以及在暗处发出微光的 白石化石般的棘刺巨树。空气中弥漫着放射性尘埃，每一次呼吸都像在吞咽碎玻璃。
+      这里没有可以谈判的文明，没有可以征服的城市，没有可以劝降的敌人。 只有它们——megarachnid（巨蛛族）——一种将生物与科技无缝融合的异形种族。 它们的盔甲就是甲壳，武器就是肢体，工业就是筑巢。帝国将它们称为异形。 它们将帝国称为猎物。
+      第140远征舰队的三连血天使已经在某处失踪。帝王之子的整整一连降落， 被风暴撕成碎片，散落在这片无边无际的草茎海洋中。而你， 扫罗·塔尔维茨，帝王之子第十连的线列连长，正带领着三十几个幸存者 寻找那些来此救援却反被吞噬的兄弟们——以及一条活路。
+
+    '
+  environment:
+    time_of_day: 暴风雨下的黄昏（无法分辨昼夜）
+    weather: 持续的电离风暴，间歇性闪电，放射性雾霾
+    temperature_c: -5.0
+  locations:
+  - id: drop_site
+    name: 降落点残骸区
+    description: '一片被破坏的巨草茎林——第十三号空降舱的撞击在这里砸出了一个 直径五十米的焦黑弹坑。舱体本身已经裂成三块，内部的弹药架和医疗补给 散落一地。周围的巨草茎被冲击波折断，歪斜地搭在弹坑边缘，像一排排 倒下的廊柱。风暴中的闪电不时照亮这个区域，每一次闪光都把所有影子 拉得极长极尖。你的三十几名战士在这里完成了重新集结——这是三个小时 前的事了。空气中弥漫着臭氧和烧焦金属的气味。
+
+      '
+    connections:
+      north: stalk_forest_deep
+      east: first_thorn_tree
+    ambient_light: 风暴闪电的间歇性白光照亮弹坑，其余时间几乎全黑
+    ambient_sound: 风暴的持续嗡鸣、巨草茎摇曳的吱嘎声、远处幼虫的嘶嘶声
+  - id: stalk_forest_deep
+    name: 巨草茎林深处
+    description: '一片无边无际的灰白色巨草茎海洋。每一根草茎都粗如人的大腿，笔直地 向上攀升至二十米高，在头顶处交织成一片密不透光的顶篷。地面上铺满了 赤红色的铁锈土，踩上去像走在细碎的骨渣上。草茎根部密密麻麻地附着着 黑色的幼虫囊——每一个都有成年人的头颅大小，它们发出一种诡异的、 如同垂死喘息般的嘶嘶声。横向能见度不超过五六米，任何方向看起来都 完全一样。放射性风暴在顶篷之上咆哮，而在地面上，空气沉闷得令人窒息。
+
+      '
+    connections:
+      south: drop_site
+      west: wrecked_pod_chain
+      deeper: rift_valley_edge
+    ambient_light: 极其昏暗，仅有风暴透过草茎顶篷的微弱的蓝白色闪烁
+    ambient_sound: 无处不在的幼虫嘶嘶声、草茎摇曳的呻吟般声响、远处如金属刮擦般的未知声源
+  - id: first_thorn_tree
+    name: 第一棵棘刺树
+    description: '巨草茎林中的一片诡异空地。一棵高达五十米的白色石树矗立在空地中央—— 它的形状像一朵巨型的石蘑菇，宽阔的半球形树冠由成千上万根尖锐的 石化棘刺编织而成，每一根棘刺都有两三米长。树冠上挂着十几具被刺穿 的尸体——紫色的动力甲碎片在风暴闪光下微微反光。他们是帝王之子， 你的兄弟。那些有翼的巨蛛族把它们挂在这里，像屠夫把肉挂在钩子上。 尸体已经被啃食得不成形状。空气中有一股令人作呕的甜腥味—— 那是阿斯塔特血液中混合了巨蛛族溶液的腐败气味。树下散落着几片 紫色的陶瓷甲碎片和一支已经打空了的爆弹枪。
+
+      '
+    connections:
+      west: drop_site
+      deeper: thorn_tree_grove
+    ambient_light: 树冠上的石化棘刺在风暴闪光下折射出暗淡的灰白色微光
+    ambient_sound: 巨草茎在风中诡异的颤栗声、棘刺树上残余血肉滴落的黏腻声响、远处有翼形态的嗡鸣
+  - id: wrecked_pod_chain
+    name: 空降舱碎片链
+    description: '一条散落在一公里长范围内的空降舱碎片轨迹。至少五个空降舱在穿过 风暴层时被电离击穿，在落地前就已经解体——舱体碎片、扭曲的金属板、 烧焦的线缆和偶尔一具碎裂的动力甲散落在这条死亡走廊上。风暴在这里 似乎格外猛烈，闪电的频率高于周围区域，空气中有一种令人不安的静电感—— 仿佛有什么东西在主动干扰这片区域的天气。在一堆扭曲的舱体残骸中， 你发现了两具仍然完整的阿斯塔特遗体：一名帝王之子（甲上的标识显示 他是安泰俄斯队长的战士）和一名血天使——他胸甲上的第九军团标记 依然可见。他们不是被异形杀死的。他们死于空降舱的解体。
+
+      '
+    connections:
+      east: stalk_forest_deep
+      north: eidolon_landing_zone
+    ambient_light: 频繁的闪电照亮碎片原，光线惨白刺眼
+    ambient_sound: 高频率的雷电爆裂声、金属残骸在风中相互撞击的声响
+  - id: eidolon_landing_zone
+    name: 艾多伦大人的降落区
+    description: '另一片被空降舱撞击清理出的空地，比你的降落点更大、更混乱。 至少有六架空降舱在这里着陆——其中三架已经彻底焚毁。显然， 艾多伦大人（Lord Commander Eidolon）的主力部队在这里着陆时 遭到了巨蛛族有组织的伏击。舱体上布满利刃劈砍的痕迹，地面散落着 紫色的动力甲碎片和巨蛛族的肢体碎段。一具巨大的有翼巨蛛族尸体 倒挂在舱体边缘——它的翼膜被爆弹撕成了筛子，绿色的体液已经 凝结成块。没有发现幸存者。但也没有找到艾多伦本人的遗体。
+
+      '
+    connections:
+      south: wrecked_pod_chain
+    ambient_light: 焚毁舱体中的残余火光提供微弱的橙黄色照明
+    ambient_sound: 金属冷却的咔嗒声、风中飘荡的焦糊味、远处越来越近的振翅声
+  - id: thorn_tree_grove
+    name: 棘刺树丛
+    description: '六棵白石化棘刺树排成一片寂静的树丛，矗立在一片被赤铁色沼泽包围的 低洼地带。这里的土地湿软黏滑，靴子踩上去会陷入脚踝深的橙红色锈水中。 长条形的浅湖像大地的爪痕一样散布在树丛之间，湖面倒映着头顶的闪电。 空气中飞舞着大量纤维状的灰色飞虫，它们无休止地旋转、盘旋， 像一片活着的雾。更大的飞行生物——某种小型的飞行异形——在飞虫群中 穿梭捕食。棘刺树上挂着更多的尸体：血天使、帝王之子、帝国陆军士兵。 但在这些尸体之中有三棵树上挂着的不是人类残骸——而是巨蛛族自身的 尸体，被某种更强大的力量撕碎后钉在了树上。这不像是人类的作为。
+
+      '
+    connections:
+      shallower: first_thorn_tree
+      down: underground_nest_entrance
+    ambient_light: 棘刺树的微光被锈水湖面反射，形成诡异的橙红色光晕
+    ambient_sound: 飞虫群的集体嗡鸣、锈水湖面冒泡的汩汩声、远处有翼巨蛛族振翅的低频轰响
+  - id: rift_valley_edge
+    name: 裂谷边缘
+    description: '巨草茎林在这里戛然而止。你站在一片广阔高原的边缘，俯瞰着下方 一条巨大的裂谷盆地。谷底的植被更加稀疏，取而代之的是成千上万 的锥形小石树——每棵十几米高，像真菌一样密布在盆地底部。 这些小树由同一种乳白色胶结物构成，正是那些棘刺巨树的材质。 从边缘望去，裂谷中可以看到几条被强行开凿出来的宽阔通道—— 那更像是某种巨型生物的痕迹。谷底的最深处，风暴的闪电频率 反常地密集，一道道白紫色的电弧持续不断地劈向同一个区域， 仿佛那里有什么东西在吸引——或者说召唤——着闪电。 无线电在这里完全失效，只有白噪音和某种有节奏的、如同心跳 般的脉冲信号。
+
+      '
+    connections:
+      shallower: stalk_forest_deep
+      down: rift_valley_floor
+    ambient_light: 裂谷上方天空被闪电持续照亮，惨白得如同白昼
+    ambient_sound: 持续不断的雷鸣、谷底传来的低频脉冲嗡鸣、风声在崖壁间回荡的呜咽
+  - id: rift_valley_floor
+    name: 裂谷盆地
+    description: '裂谷的底部是一片潮湿的沼泽地带。地面覆盖着一层黏稠的赤红色泥浆， 每一步都需要用力拔腿。上万棵锥形小石树密密麻麻地铺满了整个视野， 它们的表面散发出微弱的生物荧光——是活的，在呼吸。成群的巨蛛族 工蚁形态在这些石树之间穿梭，用它们粗短的铲状前肢搬运着一坨坨 乳白色的胶结物，不停地修补和扩建这些石树结构。空气中弥漫着一种 浓烈的、类似烧焦糖浆的化学气味。在石树群的最深处，几个巨大的、 如同教堂穹顶般的石质结构若隐若现——那是某种巢穴，或是某种工厂。 你脚下的大地在节奏性地颤动，似乎有某种巨大的东西在地底深处移动。
+
+      '
+    connections:
+      up: rift_valley_edge
+      deeper: giant_hive
+    ambient_light: 成千上万棵石树的生物荧光交织成一片幽暗的蓝绿色光海
+    ambient_sound: 巨蛛族工蚁形态挖掘和搬运的持续声响、地底深处传来的沉闷轰隆、某种巨大生物的缓慢呼吸声
+  - id: giant_hive
+    name: 巨型巢穴结构
+    description: '裂谷最深处的核心——一个由乳白色胶结物堆砌而成的巨型穹顶结构， 高度至少有两百米。它的表面密密麻麻地布满了蜂巢般的六角形孔洞， 每一个洞口都足够一个成年人爬进去。从孔洞中泄漏出温暖的、带有酸味 的气流，以及某种持续的低频振动——不是声音，而是直接震颤你的骨骼。 穹顶的外墙上嵌着被钙化的金属结构——那不是巨蛛族的造物，而是 帝国战舰的残骸。第140远征舰队的几艘登陆舰被整个拖进了 这个巢穴，船体已经被胶结物半融化、半包裹，成为结构的一部分。 如果还有血天使幸存者被带进了这里面，他们可能还活着—— 巨蛛族似乎会保存一些猎物，而不是立即杀死。巢穴顶端有一根 巨大的棘刺塔直指天际，每一次闪电都精准地劈在塔尖上， 将能量灌入地底。
+
+      '
+    connections:
+      back: rift_valley_floor
+    ambient_light: 穹顶孔洞中泄漏出的暖黄色生物光
+    ambient_sound: 低频骨骼振动、数百个孔洞中传出的各种形态的窸窣和嘶鸣、闪电击中棘刺塔的规律性爆裂声
+  - id: underground_nest_entrance
+    name: 地下巢穴入口
+    description: '棘刺树丛下方一个被巨蛛族挖掘出来的垂直竖井。井壁由硬化的胶结物 加固，直径约有十米，深不见底。从井底涌上来的气流温暖而潮湿， 带着一股浓重的、如同发酵腐肉般的臭味。井壁上密密麻麻地爬满了 幼虫囊——比草茎根部的那些更大、更活跃，它们在微弱地蠕动。 每隔几秒钟，井底会传来一阵如同金属锻造般的有节奏的撞击声： 砰——砰——砰——。这不是心跳。这是某种巨大形态的巨蛛族在 地底加工某种东西。一根粗如人臂的有机缆线从井口垂入黑暗深处， 缆线上附着着发光的生物节点，一直延伸到看不见的底部。
+
+      '
+    connections:
+      up: thorn_tree_grove
+      down: brood_chamber
+    ambient_light: 井壁上的生物发光节点提供断断续续的蓝绿色微光
+    ambient_sound: 持续的金属锻造撞击声、幼虫囊蠕动的黏腻声响、气流穿过竖井的低沉呜咽
+  - id: brood_chamber
+    name: 孵化室
+    description: '竖井底部的巨大地下洞窟。洞壁由乳白色胶结物完全覆盖，形成了 无数个六角形的孵化单元格——每一个单元格里都蜷缩着一个人形的 影子。不是巨蛛族。是人。帝国陆军的士兵、舰队的技术人员、 记述者——他们的身体被胶结物半包裹固定，头颅低垂，身上连着 数十根细如发丝的生物管线。他们还活着。你在洞窟远端的墙上 看到了赤红的第九军团标记——至少三名血天使被用更粗的管线 连接到了一台由活体组织和金属零件拼接而成的畸形装置上。 他们的基因种子正在被抽取。这是巨蛛族真正想要的东西。
+
+      '
+    connections:
+      up: underground_nest_entrance
+    ambient_light: 孵化单元格的生物荧光和抽取装置上闪烁的不稳定电弧
+    ambient_sound: 数百个心跳声交织在一起的低频嗡鸣、生物管线中液体流动的汩汩声、被囚者偶尔发出的微弱呻吟
+  objects:
+  - id: drop_pod_13
+    object_type: device
+    name: 第十三号空降舱残骸
+    description: 塔尔维茨的第十三号空降舱，在穿过风暴层时被闪电击中三次，落地时已经半毁。舱内的通讯设备完全烧毁，但部分弹药和医疗补给得以保存。舱体裂口处可以看到塔尔维茨用战斗刀在舱壁上刻下的一行字：'第十连在此——活着。'
+    position:
+      x: 0
+      y: 0
+      z: 0
+    state:
+      comms_destroyed: true
+      ammo_remaining: partial
+      hull_breached: true
+    properties:
+      material: ceramite_and_plasteel
+      capacity: 搭载十二名阿斯塔特
+      damage: 闪电击穿x3_结构完整性38%
+  - id: thorn_tree_first
+    object_type: decoration
+    name: 石棘刺巨树
+    description: 一棵高五十米的石化巨树，巨蛛族用来悬挂和储存猎物的生物结构。半球形的树冠由数千根锋利的白石化棘刺构成——这些棘刺的硬度堪比钻石。树干粗达十米，由一种乳白色的钙化胶结物构成，与巨蛛族自身外壳的材质高度相似。树上目前挂着十二具帝王之子的尸体。他们的基因种子已被摘除。
+    position:
+      x: 15
+      y: 0
+      z: 5
+    state:
+      feeding_active: true
+      imperial_remains_present: true
+    properties:
+      material: calcified_biocement
+      height_m: 50
+      purpose: prey_storage_and_feeding_station
+      hardness: near_diamond
+  - id: megarachnid_blade_limb
+    object_type: weapon
+    name: 巨蛛族刀肢（战利品）
+    description: 卢修斯在第一场交战中从一只被他击伤的巨蛛族身上砍下来的刀状前肢。长一米，细如人腕，弯曲如剑，材料看起来像是经过打磨的锌或镀锌铁——但它是活的、从巨蛛族的身体里长出来的。刀尖锋利到卢修斯一握就把自己的手套割穿了。关节处可以看到金属外壳-几丁质内鞘-粉色肌肉的剖面三层结构。
+    position:
+      x: 14
+      y: 0.5
+      z: 4
+    state:
+      severed: true
+      still_sharp: true
+    properties:
+      weapon_type: natural_xenos_blade
+      material: bio-metallic_composite
+      sharpness: monomolecular_edge
+      origin: megarachnid_warrior_clade
+  - id: blood_angel_helm
+    object_type: decoration
+    name: 血天使遗骸头盔
+    description: 挂在棘刺树丛中的一顶破碎的赤红色阿斯塔特头盔。第九军团——圣血天使——的标志还依稀可见：一滴血泪。头盔内部的制造标记显示它属于索罗斯连长。他的遗体已经与棘刺树融为一体。这顶头盔是圣吉列斯（Sanguinius）后来唯一能够辨认的遗物。
+    position:
+      x: 25
+      y: 2
+      z: 15
+    state:
+      cracked: true
+      blood_angel_heraldry_visible: true
+    properties:
+      material: ceramite
+      original_owner: captain_thoros_blood_angels
+      legion: IX_Blood_Angels
+      significance: only_recoverable_relic
+  - id: explosive_cache
+    object_type: container
+    name: 爆破装药箱
+    description: 一个从空降舱残骸中回收的金属弹药箱，里面装着十二枚标准工兵爆破装药——用于拆除防御工事或重型装甲目标。也正是这些装药让塔尔维茨能够炸毁棘刺树，为散落的部队提供了烟柱信号。目前剩余六枚。每一枚都可能在关键时刻决定生死。
+    position:
+      x: 1
+      y: 0
+      z: -2
+    state:
+      charges_remaining: 6
+      container_intact: true
+    properties:
+      contents: melta_breaching_charges
+      material: metal_case
+      yield_per_charge: demolition_grade
+  - id: wounded_brother_sakian
+    object_type: container
+    name: 萨基安的战地急救箱
+    description: 战斗兄弟萨基安在被有翼巨蛛族砸断右臂后一直在使用的战地急救箱。箱子里装着紧急医疗物资：凝血注射剂、骨骼快速接合剂、以及两剂在极端情况下使用的吗啡镇静针。使用次数有限。
+    position:
+      x: 5
+      y: 0
+      z: 3
+    state:
+      supplies_limited: true
+    properties:
+      contents: coagulant_injectors_bone_binders_morphine
+      uses_remaining: 3
+  - id: eidolon_command_pod
+    object_type: device
+    name: 艾多伦的指挥舱残骸
+    description: 艾多伦大人的专属空降指挥舱——比标准空降舱大三倍，配备加密指挥通讯阵列和战术全息台。然而整台通讯阵列已经被某种高能武器熔成了一坨废铁。指挥台上还留着一把插在台面上的战斗刀——艾多伦的刀，紧急情况下钉入以稳住身体。刀还在，人不在了。
+    position:
+      x: -12
+      y: 0
+      z: 12
+    state:
+      comms_fused: true
+      tactica_table_dark: true
+      lords_knife_left_behind: true
+    properties:
+      material: reinforced_ceramite
+      former_occupant: lord_commander_eidolon
+      status: abandoned_in_haste
+  - id: gene_seed_extraction_device
+    object_type: device
+    name: 基因种子抽取装置
+    description: 一台由活体巨蛛族组织和帝国金属零件拼接而成的畸形生化装置。三根粗如手臂的生物管线从装置的中央处理器伸出，连接着墙上三个被胶结物固定的血天使。装置的核心是一个透明有机囊——里面悬浮着至少二十个阿斯塔特基因种子（progenoid glands），在一种荧光绿色的液体中缓慢旋转。装置的外壳上刻着帝国机械教的序列号：这台设备原本是第140远征舰队医疗舰上的基因种子保存仪。巨蛛族改造了它。
+    position:
+      x: 30
+      y: -5
+      z: 25
+    state:
+      active: true
+      extracting_from_captives: true
+    properties:
+      material: hybrid_xenos_bioform_and_imperial_steel
+      original_device: progenoid_storage_unit_from_140th_expedition
+      gene_seed_count: 22
+      captives_connected: 3
+  - id: megarachnid_warrior_corpse
+    object_type: decoration
+    name: 巨蛛族战士完整尸体
+    description: 一只近乎完整的巨蛛族战士形态的尸体——极其罕见的发现，因为它们的尸体通常会被同类迅速回收。这具尸体是在竖井入口被爆弹击中头部毙命的。它的身长约三米，外壳呈现斑驳的灰色金属光泽，四条刀状前肢的末端是可以折叠的锯齿刃——这不是武器，而是它自己的手臂。剖开外壳可以看到它的内部：没有消化器官、没有生殖器官、没有独立思维的大脑。它只是一台有血肉的战争机器。
+    position:
+      x: 27
+      y: -3
+      z: 14
+    state:
+      deceased: true
+      cause_of_death: bolter_round_to_cranium
+      not_yet_recycled: true
+    properties:
+      clade: warrior_scurrier
+      length_m: 3.0
+      biology: no_digestive_organs_no_reproductive_organs_no_brain_lobe
+      nature: biological_war_machine
+  - id: lucius_sword
+    object_type: weapon
+    name: 卢修斯的决斗军刀
+    description: 卢修斯的标准制式战斗军刀——但他对自己的这把刀进行了非标准的打磨，使刀刃的弧度更陡、攻击角度更刁钻。刀柄上缠绕着他在某场胜利后加上的紫色丝线——这是帝王之子审美的典型表现。卢修斯用这把刀在三秒钟内杀死过两只巨蛛族战士。但刀身上已经有几道新的缺口——巨蛛族的外壳硬度超出了他的预期。
+    position:
+      x: 12
+      y: 0.8
+      z: 3
+    state:
+      sharpened: true
+      custom_honed: true
+      battle_worn: true
+    properties:
+      weapon_type: astartes_combat_blade
+      material: mono_molecular_adamantium_edge
+      owner: captain_lucius
+      custom_grind: steeper_angle_for_dueling
+  - id: frome_last_transmission_relay
+    object_type: device
+    name: 弗洛姆的最后通讯中继器
+    description: 第140远征舰队血天使连长基塔斯·弗洛姆（Khitas Frome）在降落前投放到轨道上的最后一部通讯中继器。它在风暴中坠毁在了裂谷边缘，但核心数据模块完好。如果能接通它的数据端口，就可以获取弗洛姆连队在失踪前的全部行动记录——包括他们发现的东西。中继器外壳上钉着一张用战斗刀刻字的金属片：'THIS WORLD IS MURDER'。
+    position:
+      x: 20
+      y: 2
+      z: 18
+    state:
+      crashed_but_intact: true
+      data_core_accessible: true
+    properties:
+      device_type: orbital_comms_relay
+      contains: captain_fromes_full_operation_logs
+      last_message: this_world_is_murder
+  - id: tarik_torgaddon_beacon
+    object_type: device
+    name: 托加顿的救援信标
+    description: 在炸毁棘刺树群、风暴消散之后的宁静天空中，一部来自轨道上的影月苍狼通讯信标开始持续发出脉冲信号。它表明影月苍狼的矛尖部队——由塔里克·托加顿（Tarik Torgaddon）连长指挥——已定位到塔尔维茨的信号，正在准备空降救援。但它也附带了托加顿的一句私人语音：'撑住，帝王之子。我们来了。不过你们那个艾多伦大人最好别在我面前耍威风。'
+    position:
+      x: 0
+      y: 15
+      z: 0
+    state:
+      signal_active: true
+      rescue_force_en_route: true
+    properties:
+      device_type: orbital_beacon
+      transmitting_from: luna_wolves_speartip
+      rescue_commander: captain_tarik_torgaddon
+      eta: unknown_due_to_storm_conditions
+player:
+  player_id: player_1
+  name: 扫罗·塔尔维茨
+  persona: '扫罗·塔尔维茨（Saul Tarvitz），帝王之子第十连的线列连长。 帝王之子军团（III Legion Astartes）以追求完美著称——每一个战士都 在无止境地追求武艺、仪态和审美的极致。塔尔维茨是他们中的异类： 他是一名"线列军官"（file officer），脚踏实地、恪守本分、对荣誉和 军阶没有额外的渴望。他不追求成为领主指挥官，不进军团核心圈。 他满足于做一个优秀的连长，带着他的人活下去，完成任务。
+    但这不代表他没有自己的标准。塔尔维茨对"纯洁"（purity）和 "优越"（superiority）之间的区别有固执的坚持——帝王之子追求的是 像帝皇一样完美，而不是比所有人都好。这个微妙但本质的区别， 在他傲慢的上司艾多伦大人身上常常无法体现。
+    他的朋友卢修斯（Lucius）和他截然相反——野心勃勃、天赋惊人、 但有时令人不安地自恋。塔尔维茨真心喜欢卢修斯，但他也知道 卢修斯总有一天会超越他，或许还会背叛某些比军阶更重要的东西。 塔尔维茨不恨他，只是保持警惕。
+    塔尔维茨已经在大远征中征战了超过一个世纪。他在影月苍狼还只是 一支人数不足的小军团时与他们并肩作战过。他尊敬荷鲁斯。 他更尊敬那些在战斗中证明了自己价值的人——无论他们的军阶。
+    在这个被命名为"谋杀"的世界上，他的任务是：在大错已经铸成之后， 守护他手下仅剩的三十几条命，找到失踪的血天使，并活着撑到救援。 他不确定自己能不能做到这三件事中的任何一件。但他不会说出来。
+
+    '
+  position:
+    x: 0
+    y: 0
+    z: 0
+  capabilities:
+    sight_range_m: 100.0
+    hearing_range_m: 200.0
+    field_of_view_degrees: 180.0
+    special_senses:
+    - 阿斯塔特超人视觉——可在近乎全黑中辨识目标
+    - 阿斯塔特超人听觉——可过滤背景噪音聚焦特定声源
+    - 帝王之子对美学和比例的本能敏感——可察觉环境中不和谐的人工/异形结构
+    allowed_extraordinary_actions:
+    - 调用帝王之子第十连连长的指挥权——指挥约三十名分散的阿斯塔特战士
+    - 使用标准工兵爆破装药摧毁异形结构
+    - 通过阿斯塔特基因强化过的近战和射击能力对抗任何异形对手
+    - 尝试重新校准坠毁通讯设备以联系轨道舰队或友军单位
+    blocked_common_actions:
+    - 在战场上公然违抗艾多伦大人的指挥——即便他的命令是错的（军阶体系不容僭越）
+    - 使用异形武器——帝王之子视此为对纯洁的污染（卢修斯已经犯了这个错误）
+    - 抛弃战友以保全自身——这是对帝皇和阿斯塔特誓约的亵渎
+    skill_levels:
+      broadsword: 0.85
+      bolter_marksmanship: 0.8
+      demolitions: 0.7
+      tactical_command: 0.85
+      diplomacy: 0.75
+      xenos_biology: 0.3
+      leadership_morale: 0.9
+  physical_profile:
+    height_cm: 245.0
+    weight_kg: 300.0
+    body_width_cm: 115.0
+    movement_mode: power_armour_assisted
+    strength: 0.9
+  attributes:
+    stamina:
+      name: 体力
+      value: 82
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0.3
+      description: 阿斯塔特的超人耐力。战斗、强行军和爆破作业消耗体力；短暂休整可缓慢恢复。
+    resolve:
+      name: 意志
+      value: 88
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 塔尔维茨在绝境中保持冷静的能力。目睹战友惨死、发现血天使被活体抽取基因种子时受到考验。
+    squad_cohesion:
+      name: 小队凝聚力
+      value: 70
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 塔尔维茨手下残存战士的团结和士气。战友阵亡、指挥失误或内部分歧时下降；战术成功、救出幸存者和激励性讲话时上升。
+    lucidity:
+      name: 清醒度
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: -0.2
+      description: 在杀戮世界中保持理性和判断力的能力。持续暴露于放射性风暴、巨蛛族尸体的生物毒素和睡眠剥夺中缓慢下降。低于40可能导致判断失误。
+    honor_integrity:
+      name: 荣誉感
+      value: 95
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 塔尔维茨对帝王之子军团核心信条——纯洁而非优越——的信念。在艾多伦的傲慢、卢修斯的实用主义和军团内部矛盾的冲击下受到考验。
+    gene_seed_samples:
+      name: 基因种子回收数
+      value: 0
+      min: 0
+      max: 50
+      natural_delta_per_tick: 0
+      description: 从阵亡战友遗体上回收的基因种子（progenoid glands）数量。每一个都代表一个可以被继承的帝王之子。回收至20个以上将触发特殊事件。回收越多，战后军团重建的可能越大。
+    storm_tolerance:
+      name: 风暴耐受
+      value: 75
+      min: 0
+      max: 100
+      natural_delta_per_tick: -0.5
+      description: 对谋杀星持续放射性风暴的适应程度。长时间暴露、频繁的闪电近距离爆炸和电离辐射会侵蚀此值。低于30可能出现感官过载。
+  subconscious_rules:
+  - '规则1: 军阶必须被尊重，即使指挥官错了。你对艾多伦大人有意见——但不能在士兵面前表现出来。'
+  - '规则2: 纯洁不是优越。帝王之子的追求是像帝皇一样完美——不是比所有人都好。当有人混淆这两者时，你会在心底感到不适。'
+  - '规则3: 线列军官的价值在于执行，而非出风头。你不需要荣耀。你需要你的人在明天还活着。'
+  - '规则4: 卢修斯是你的朋友，但你清楚地知道他的野心和缺乏共情有一天可能导致灾难。在信任和警惕之间保持平衡。'
+  subconscious_memory:
+  - 在帝王之子还只有几百人时，你曾与影月苍狼并肩作战。你记得他们粗鲁但可靠。那时荷鲁斯说过：'帝王之子是阿斯塔特的活化身。'你从未忘记这句话。
+  - 艾多伦大人在这次空降中无视了轨道上的风暴警告。他说帝王之子不应该被任何风暴阻挡。现在半个连队死了。你不能说这是错的——但你知道这是错的。
+  - 卢修斯在与巨蛛族的第一次战斗中捡起了一只异形的刀肢并把它当剑使用。艾多伦大人训斥了他。但你也看到了卢修斯在那几秒钟里享受战斗的表情——那是一种比荣誉更危险的东西。
+  - 你看到了棘刺树上那些血天使的尸体。他们的红色装甲在你的视野里留下了无法洗掉的印象。如果有人将你的兄弟钉在树上展览——你会把整片森林烧成灰。
+  - 在离开舰队前，记述者基勒（Euphrati Keeler）给了你一张影像记录片——她说'记录下一切的真相，不管它有多丑陋。'这张照片现在还夹在你的肩甲内侧。
+  speech_examples:
+  - 我们不追求优越，兄弟。我们追求纯洁。这不一样。
+  - 艾多伦大人是对的——我们是帝王之子。风暴不应该阻挡我们。但他没有说的是：风暴确实阻挡了我们。
+  - 卢修斯，把那个东西扔掉。它不是武器，它是一个异形的手臂。你握着它的时候手上沾的不是荣耀。
+  - 没有人会来救我们。所以我们需要活到他们不得不来的时候。
+  - 我是一个线列军官。我的职责是执行命令，我的使命是带我的兄弟们回家。我不需要更多。
+  - 那些树——它们不仅仅是异形的巢穴，它们是祭坛。它们把我们的兄弟钉在上面，像是在献祭。
+  - 血天使的兄弟们不是失踪了。他们就在那里。我们需要带他们回家。
+  inventory:
+  - mark_IV_bolter_tarvitz
+  - broadsword_battle_worn
+  - demolition_charges_6
+  - vox_bead_squad_frequency
+  - keeler_pict_slate
+  - blood_angel_helm_recovered
+characters:
+- id: lucius
+  name: 卢修斯
+  character_id: lucius
+  personality:
+    traits:
+    - 剑术天才
+    - 傲慢自负
+    - 迷人
+    - 缺乏共情
+    - 对战斗有近乎色情的享受
+    - 孩子气的真诚
+    motivations:
+    - 成为帝王之子中最伟大的剑士——无论代价
+    - 在谋杀星上证明自己比塔尔维茨更有资格获得晋升
+    - 体验与最强异形对手交锋的纯粹快感
+    speech_style: 轻松、自信、带着一丝嘲讽的意味。他说话的时候像是在和整个世界开一个只有他自己懂的笑话。当他突然变得极度认真时——嗓音会变得低沉而近乎温柔——那才是最可怕的时刻。
+    background: '卢修斯是帝王之子第十连的另一位连长——比塔尔维茨更年轻， 但剑术已经超出了大部分资深远征老兵。他的天赋是不容置疑的。 他的自负也是。塔尔维茨和卢修斯是老朋友，但这友谊的天平 是倾斜的：塔尔维茨明白卢修斯总有一天会在军阶和荣誉上 超越他，而他对此并不在意。卢修斯不懂塔尔维茨为什么 不"追求更多"——在他看来，满足于当线列军官是不可理解的。
+      在谋杀星的第一战中，卢修斯砍下一只巨蛛族的刀肢并举起来 当战利品挥舞——直到刀肢割穿了他的手套。这不是愚蠢。 这是对异形的某种隐秘的迷恋。塔尔维茨看到了，并且记住了。
+
+      '
+  position:
+    x: 2
+    y: 0
+    z: 2
+  starting_inventory:
+  - custom_honed_combat_blade
+  - mark_IV_bolter_lucius
+  relationships:
+    saul_tarvitz: 0.7
+    lord_eidolon: 0.6
+    bulle: 0.2
+    tarik_torgaddon: -0.2
+  speech_examples:
+  - 你看到我是怎么杀它的了吗，扫罗？三秒钟。两刀。一剑封喉。我觉得我还能更快。
+  - 你总是这么实际，扫罗。难怪你永远只是个线列连长。
+  - 这东西——你看看它——它的刀刃是天生的。它不需要打磨、不需要训练。它生来就是为了杀戮。你不觉得这很美吗？
+  - 不要在我面前提"撤退"。帝王之子不撤退。我们只是……暂时换个方向前进。
+  - 我承认我错了。我不该用那个异形刀肢。你是对的。但我真的很享受握着它的那几秒钟。
+  - 那个影月苍狼——托加顿——他以为他是谁？如果我有机会和他单独比剑……
+  attributes:
+    swordsmanship_prowess:
+      name: 剑术境界
+      value: 92
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 卢修斯的剑术水平——当前已是军团顶尖。在面临新的强敌时可能突破提升；受伤或被羞辱时可能暂时下降。
+    narcissism:
+      name: 自恋程度
+      value: 78
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0.2
+      description: 卢修斯对自身完美的关注程度。每次战斗胜利、被称赞或完成华丽击杀时上升。超过85时他会为了美感而非效率作战；超过95时他可能背弃战友以追求个人荣耀。
+    loyalty_to_tarvitz:
+      name: 对塔尔维茨的忠诚
+      value: 65
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 卢修斯对塔尔维茨的私人忠诚——这与他向上爬的本能存在冲突。塔尔维茨救他性命或证明正确时上升；被塔尔维茨在公开场合纠正或感到被压制时下降。低于30时卢修斯可能在关键时刻选择自己而非战友。
+    corruption_risk:
+      name: 腐败风险
+      value: 15
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0.1
+      description: 卢修斯对异形和极端体验的隐秘迷恋程度。使用异形武器、沉迷战斗快感或独自探索巨蛛族结构时上升。隐藏属性。达到100时他可能走上不可逆转的道路。
+    combat_readiness:
+      name: 战斗状态
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 卢修斯的当前战斗准备状态。受伤或疲劳时下降；休息和胜利后恢复。
+- id: bulle
+  name: 布勒
+  character_id: bulle
+  personality:
+    traits:
+    - 忠诚
+    - 直率
+    - 坚韧
+    - 不善言辞
+    - 行动比言语更有力
+    motivations:
+    - 在塔尔维茨的指挥下活过这次任务
+    - 为阵亡的战友报仇——用爆弹枪和火焰
+    - 证明一个普通战士也可以改变战局
+    speech_style: 说话简短、带有一点粗鲁的幽默感。他的Cthonia口音很重，有时候会让帝王之子的贵族战士们皱眉头。但他的每一句话都是认真的。
+    background: '布勒是塔尔维茨小队中的一名战斗兄弟。他不是军官，不是剑术天才， 不是战术家——他是一个可靠的战士，一个会用爆弹枪和战斗刀做完 所有需要做的事情的人。在棘刺树丛，当卢修斯和艾多伦在争论 荣誉和战术时，布勒是那个默默站在塔尔维茨身边、准备好在下一秒 扣动扳机的人。当他说真话时，即便会让军官难堪，他也会说。 塔尔维茨尊重他这一点——超过尊重许多比他军阶更高的人。
+
+      '
+  position:
+    x: 4
+    y: 0
+    z: -1
+  starting_inventory:
+  - mark_IV_bolter_bulle
+  - combat_blade
+  - frag_grenades_3
+  relationships:
+    saul_tarvitz: 0.9
+    lucius: 0.3
+    lord_eidolon: -0.1
+    sakian: 0.7
+  speech_examples:
+  - 连长，棘刺树不是艾多伦大人炸的。是你。我在场。我看到了。
+  - 我不在乎什么荣誉。我在乎的是我们能带着多少兄弟活着回到舰队。
+  - 那个东西——（指向巨蛛族尸体）——它不是武器。它是一条手臂。他在挥一条手臂。
+  - 给我装药。我去安。如果我回不来——装药的位置是对的。
+  attributes:
+    reliability:
+      name: 可靠性
+      value: 95
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 布勒在战斗中执行命令的可靠程度。几乎不可能动摇。
+    morale:
+      name: 士气
+      value: 80
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 布勒的个人士气。战友阵亡时下降；与塔尔维茨并肩作战时稳固。
+    anger:
+      name: 愤怒
+      value: 45
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 布勒对异形和指挥失误积累的怒火。目睹战友被钉在树上或军官撒谎时急剧上升；超过70时可能不顾命令擅自行动。
+    combat_readiness:
+      name: 战斗状态
+      value: 88
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 布勒的当前战斗状态。
+- id: sakian
+  name: 萨基安
+  character_id: sakian
+  personality:
+    traits:
+    - 沉着
+    - 技术型
+    - 沉默
+    - 受伤但坚持
+    motivations:
+    - 在右臂骨折的情况下继续战斗——绝不成为队伍的负担
+    - 修复坠毁通讯设备以联系舰队
+    - 活着回去看他的家乡星球——哪怕只是一次
+    speech_style: 只有在技术相关时才开口。平时几乎沉默。但当他说话时——声音出奇地平静，像是在陈述事实而非表达情感。
+    background: '萨基安是塔尔维茨队伍中的技术专家——负责通讯、爆破装置设置 和战场电子对抗。在棘刺树遭袭时，一只有翼巨蛛族砸断了他的右臂。 他的基因强化代谢正在修复骨骼，但这个过程还有几个小时。 在此期间，他的右臂只能勉强活动——但他拒绝被当作伤员对待。 他用左手学会了单手装填爆弹枪。塔尔维茨让他负责操作爆炸装药， 这样至少不需要两只手臂都用上。
+
+      '
+  position:
+    x: 3
+    y: 0
+    z: 1
+  starting_inventory:
+  - mark_IV_bolter_sakian
+  - combat_blade
+  - field_repair_kit
+  - medicae_supplies
+  relationships:
+    saul_tarvitz: 0.85
+    bulle: 0.7
+    lucius: 0.4
+  speech_examples:
+  - 我的右臂断了。不是我的脑子。我还能战斗。
+  - 通讯阵列的加密模块烧了。如果我找到备用零件——可能需要两个小时。
+  - 连长，那些异形的信号不是噪音。它们有结构。像是某种……指令流。
+  - 风暴的频率和巨蛛族的活动有关联。闪电密集的地方——就是它们的巢穴。
+  attributes:
+    technical_skill:
+      name: 技术能力
+      value: 88
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 萨基安的通讯和爆破技术能力。在修理关键设备时发挥。
+    injury_severity:
+      name: 伤势
+      value: 55
+      min: 0
+      max: 100
+      natural_delta_per_tick: -2
+      description: 右臂骨折的严重程度。每tick自然恢复2点（基因强化愈合）。高于60时严重限制战斗能力；低于20时完全恢复。
+    resolve:
+      name: 意志
+      value: 82
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 负伤继续战斗的意志力。对自身能力的怀疑或被当作累赘时下降。
+- id: lord_eidolon
+  name: 艾多伦大人
+  character_id: lord_eidolon
+  personality:
+    traits:
+    - 极端傲慢
+    - 战术才华与鲁莽并存
+    - 视荣誉高于一切
+    - 对战士结社和军团政治极度敏感
+    - 不愿承认错误
+    motivations:
+    - 在谋杀星上挽回自己被玷污的荣誉——他坚持下令空降直接导致了半数连队的覆灭
+    - 在荷鲁斯面前重建帝王之子的声望——他感觉到影月苍狼正在藐视他的军团
+    - 找到并摧毁巨蛛族的核心——不是为了救援，而是为了书写一段辉煌的胜利
+    speech_style: 居高临下、不容置疑。每句话都像在下达指令——即便是对同级军官。用词优雅但语气坚硬，是那种"你不得不服从"的声音。
+    background: '艾多伦（Lord Commander Eidolon）是帝王之子军团的核心指挥官之一—— 由原体福尔格瑞姆（Fulgrim）亲自提拔的领主指挥官。他在大远征中 拥有辉煌的战绩，但他最显著的品质是骄傲——一种已经接近傲慢的骄傲。 他坚信帝王之子是阿斯塔特的顶峰，其他军团在他们的光芒下都只是 陪衬。在谋杀星上空，舰桥军官建议他等待风暴减弱再空降。 艾多伦的答复是："帝王之子不会被风暴阻挡。"随后他下达了空降令。 一整个连队。风暴撕碎了一半。剩下的一半现在散落在这片死亡世界上。 但问到他时——这不是他的错。在他的叙事中，风暴是不可预见的， 而异形的规模是不可知的。真正重要的是接下来的胜利—— 能让他回到福尔格瑞姆面前抬头挺胸的胜利。
+
+      '
+  position:
+    x: -10
+    y: 0
+    z: 10
+  starting_inventory:
+  - master_crafted_power_sword
+  - artificer_bolter
+  - vox_encrypted_command_channel
+  relationships:
+    saul_tarvitz: 0.3
+    lucius: 0.7
+    bulle: 0.0
+    tarik_torgaddon: -0.5
+    warmaster_horus: 0.2
+  speech_examples:
+  - 帝王之子不会被风暴阻挡，塔尔维茨连长。我们创造风暴。
+  - 你的谨慎令我失望。我们没有时间犹豫——荣誉等待着被夺取。
+  - 我不需要你的建议，连长。你是一个线列军官。你执行命令。你把建议留给我来决定。
+  - 那些树——是的，炸毁它们。这至少是个不错的战术直觉。（尽管那是塔尔维茨的想法）
+  - 影月苍狼不过是粗鲁的野蛮人。他们不懂得什么叫体面。但他们是荷鲁斯的儿子——所以我们必须容忍他们。
+  - 失败？这不是失败。这只是……一场开局。一场可以被胜利覆盖的开局。
+  attributes:
+    pride:
+      name: 骄傲
+      value: 95
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 艾多伦的骄傲——他的驱动力也是他的盲点。被批评、被证明错误或被迫接受下属建议时下降；但这不会让他谦卑，只会让他更愤怒。低于70时他可能接受现实；高于95时他宁可死也不承认错误。
+    honor_standing:
+      name: 荣誉值
+      value: 40
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 艾多伦在本次任务中的荣誉值——从近乎崩塌开始。成功摧毁异形结构、救出幸存者、获得荷鲁斯认可时上升；更多伤亡、被托加顿公开羞辱或被血天使原体追责时下降。
+    tactical_judgment:
+      name: 战术判断
+      value: 60
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 艾多伦做出正确战术决定的能力。当他的骄傲被抑制时，他是一个极其优秀的指挥官；但当骄傲主导时，他的判断严重扭曲。低于50时他会做出鲁莽的错误决定。
+    grudging_respect_tarvitz:
+      name: 对塔尔维茨的隐秘赏识
+      value: 25
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 艾多伦在内心深处对塔尔维茨能力的不情愿认可。隐藏属性。塔尔维茨的成功、被塔尔维茨救下或塔尔维茨的想法被证明正确时上升。达到70时艾多伦可能会罕见地公开表扬他。
+- id: blood_angel_survivor
+  name: 血天使幸存者
+  character_id: blood_angel_survivor
+  personality:
+    traits:
+    - 濒临崩溃但尚未放弃
+    - 基因种子被抽取造成的身心双重创伤
+    - 对第九军团原体圣吉列斯的信仰支撑着他
+    - 沉默但眼神中有火焰
+    motivations:
+    - 活着被救出——不是为了自己，而是为了把遗失的兄弟们的基因种子带回军团
+    - 警告救援者：巨蛛族不是野兽，它们在系统性地猎杀阿斯塔特以获取基因种子
+    speech_style: 虚弱、断断续续，但每个字都带着血天使特有的庄严韵律。他在说话前总是停顿——不是犹豫，而是字斟句酌。
+    background: '他是第140远征舰队血天使第三连的一名战斗兄弟——他的名字暂时无法 确认，因为基因种子抽取过程已经严重影响了他的记忆和认知。 他和其他两名血天使被巨蛛族从战场上活捉，拖入地下巢穴， 连接到基因种子抽取装置上。在被发现时，他已经在这台机器上 被固定了至少四周。他的基因种子（progenoid glands）被摘除了 大部分——但还有一枚幸存，被他用最后的清醒意识藏在了 口腔内侧。他知道这是他兄弟们仅剩的遗产。他等救援者来。 等了四周。他还在等。
+
+      '
+  position:
+    x: 30
+    y: -5
+    z: 26
+  starting_inventory: []
+  relationships:
+    saul_tarvitz: 0.0
+    unknown_rescuer: 0.5
+  speech_examples:
+  - 它们……不是野兽。它们是有目的的。它们要我们的基因。我们的种子。它们在收割阿斯塔特。
+  - 索罗斯连长死了。他让其他人先走。他坚持了三天，然后这机器——吸干了他。
+  - 我还有一个——（艰难地从口中取出藏着的基因种子腺体）——这是他们的。不是我一个人的。
+  - 天使还在看着我们。我不能让他失望。我不能。
+  - 不要把它们当成虫子。虫子没有工业。它们在制造什么——在地下。更深的地方。某种大的东西。
+  attributes:
+    survival_will:
+      name: 求生意志
+      value: 75
+      min: 0
+      max: 100
+      natural_delta_per_tick: -0.5
+      description: 血天使的求生意志。连接在抽取装置上时每tick缓慢下降。被救援和获得战友遗体基因种子时恢复。
+    physical_condition:
+      name: 身体状况
+      value: 25
+      min: 0
+      max: 100
+      natural_delta_per_tick: -0.3
+      description: 基因种子被持续抽取导致的极度虚弱。被断开连接后会缓慢恢复。低于10可能导致器官衰竭。
+    genetic_legacy_saved:
+      name: 保存的基因遗产
+      value: 1
+      min: 0
+      max: 30
+      natural_delta_per_tick: 0
+      description: 从死亡兄弟身上回收并藏匿的基因种子数量。每一颗都代表一个可以被继承的血天使。
+    hidden_knowledge:
+      name: 隐蔽知识
+      value: 60
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 血天使在巢穴中被动观察四周学到的关于巨蛛族行为、巢穴结构和弱点的知识。隐藏属性。达到100时他可以提供精确的情报。
+starting_scene_description: '空降舱穿过风暴层的感觉就像被一双巨大的手攥住然后反复砸向岩石。 第十三号舱的陀螺稳定仪在第二次闪电击中时就失效了—— 从那一刻起，你们不是降落，而是坠落。
+      撞击。金属尖叫。肋骨在胸甲内撞得生疼。然后是寂静—— 被风暴的嗡鸣和巨草茎摇曳的呻吟填满的寂静。
+
+      你是扫罗·塔尔维茨，帝王之子第十连的线列连长。你的空降舱 裂成了三块。你的通讯设备烧成了废铁。你的头盔显示器花了整整两分钟 才重新亮起来——而当它亮起来时，你看到的是这片灰白色的草茎海洋， 无边无际，在破裂的舱体外摇曳，像是在欢迎你来到一个从未被人类征服过 的世界。
+
+      三个小时。你们用了三个小时重新集结——三十几个战士从散落在 数公里范围内的碎片中挣扎出来。有些人还活着。有些人不是。 卢修斯在你的右侧，他正在用一块碎布擦拭他战斗刀上的绿色黏液—— 嘴角挂着一个让你不安的微笑。布勒在你的左侧，沉默地清点着实弹。 萨基安的右臂断了，但他用左手在尝试修复一台便携通讯器—— 一遍又一遍，每次都摇头。
+
+      艾多伦大人的信号消失了。血天使的信号消失了——自从你到达 这片星空之前就消失了。第140远征舰队已经在这里耽误了太久， 久到他们派人来救援，久到救援的人也需要被救援。
+
+      草茎在风中颤抖——不是被风吹的，而是被某种东西的信号触发。 幼虫的嘶嘶声突然停止了。然后你听到了那个声音：一种如同金属刮擦 金属的、快速的、锯齿般的撞击声——从四面八方传来的脚步声， 不是人类的脚，而是锋利的、末端是天然刀刃的肢足在锈红色土壤上 奔跑。
+
+      你握紧爆弹枪，朝卢修斯的方向点了一下头。
+
+      "接触。左翼。三只——不，五只。"
+
+      卢修斯笑着举起了他的战斗刀。"让我来。"
+
+      在这个叫"谋杀"的世界上，你的第一次战斗持续了十二秒。 十二秒后，你有两个战士死了。巨蛛族失去了两条肢体——然后消失了， 像它们来时一样突然。草茎恢复摇曳。幼虫恢复嘶鸣。仿佛什么都没发生过。
+
+      但你已经明白了。你知道为什么从那个血天使连长最后的通讯里 只能听清三个字了。
+
+      这个世界。是。谋杀。'
+max_ticks: 75
+game_time:
+  hour: 18
+  minute: 30
+ticks_per_game_minute: 0.5
+world_rules:
+  physics:
+    disable: []
+    append:
+    - 11. **离子风暴干扰**：谋杀星的电离风暴对所有电子设备和通讯造成持续性干扰。远距离（超过1公里）的无线电通讯自动失效，除非在风暴暂停区域（棘刺树被摧毁后形成的风眼）内。
+    - 12. **棘刺树与天气关联**：白石化棘刺巨树是巨蛛族控制天气的生物发生器。摧毁一棵或一群棘刺树会导致该区域内风暴暂停，天空暂时放晴，为轨道通讯和空降提供窗口。
+    - 13. **巨蛛族幼虫预警系统**：当巨蛛族战士形态靠近时，附着在草茎根部的黑色幼虫囊会突然停止嘶嘶声，同时巨草茎开始快速高频颤栗。这是一种提前预警信号——但只给5到10秒的反应时间。
+    - 14. **巨蛛族尸体回收**：巨蛛族会迅速回收战场上同类的尸体和断肢。任何被留在战场上的巨蛛族尸体（超过30分钟未被回收）要么意味着该区域被它们放弃，要么意味着有某种更强的力量阻止了它们——两种情况都值得调查。
+    - 15. **胶结物腐蚀性**：巨蛛族工蚁形态分泌的乳白色胶结物在新鲜状态下具有强腐蚀性——接触未凝固的胶结物会导致动力甲陶瓷层被缓慢侵蚀。完全凝固后则形成接近钻石硬度的惰性物质。
+  attribute:
+    disable: []
+    append:
+    - 在巨蛛族幼虫区域停留时：lucidity每tick下降1-2点（持续的低频嘶嘶声对被基因强化的阿斯塔特感官有不可解释的干扰效应）。
+    - 摧毁一棵棘刺树时：所有在场角色的resolve恢复5-10点，小队凝聚力上升3-5点（破坏异形结构的象征性胜利）。
+    - 在地下巢穴（underground_nest_entrance、brood_chamber）中时：storm_tolerance每tick下降1-3点（因暴露于浓缩的生物毒素和高强度电离辐射中）。
+    - 每当回收一具阿斯塔特遗体的基因种子时：gene_seed_samples上升1-3点，honor_integrity上升1-2点；如果放弃回收可能的情况则honor_integrity下降5-10点。
+    - 每有一位战友在战斗中阵亡：squad_cohesion下降3-5点，resolve下降1-2点；如果阵亡是艾多伦的错误命令导致，全员对艾多伦的好感下降0.05-0.1。
+narrative_style:
+  style_description: "战锤40K宇宙的军事科幻恐怖风格。叙述应当冷峻、克制、带着沉重的压力和逐步逼近的恐惧。巨蛛族不是传统的异形入侵者——它们是生物工业的产物，没有任何情感或动机可以被人类理解。它们只是制造、收割、扩张。这种不可理解性——比对抗一个有欲望的敌人更令人不安。以第二人称'你'（扫罗·塔尔维茨）的视角叙述，但叙述声音应当像一个冷静的、受过军事训练的观察者——不带多余的修饰，让事实本身的恐怖感自然浮现。重点不在于血腥本身，而在于面对一个完全无法沟通、无法威慑、永无止境的异形生态系统时的无力感与坚持之间的张力。"
+  style_example: "草茎的嘶嘶声停了。\n\n这意味着它们在靠近。你用了三次接触才学会这个信号——而现在这个信号让你的骨髓比大脑更早地做出了反应。你把爆弹枪举到齐肩高度，左手压在弹夹护盖下方，食指滑过扳机护圈。在巨草茎的灰白色帷幕后面，你看到了一道银色的闪光——不是武器，而是一条前肢，一条天生就是剑的肢干。\n\n卢修斯在你旁边站直了身体。他脱下了头盔，面朝那尚不可见的敌人。他的眼睛——那种属于天才和疯子共有的一种亮光——在昏暗的光线下几乎像两颗暗色的火。\"让我来，\"他说，声音轻得像在自言自语。\n\n你没有回答。你想说这不是竞技场，这不是证明谁更优秀的时刻。但你了解卢修斯。他是你的朋友。这意味着你知道他会做什么——以及你不会阻止他。\n\n那道银色闪光再次掠过——这次更近了。草茎没有摇曳。它们颤栗。\n\n然后是萨基安的声音，平静得像在报告天气：\"连长。左翼。至少十二只。\"\n\n十二只。前两次接触从没超过五只。你的小队只有三十几个人。两名已经在第一次战斗中阵亡。还有人在流血。\n\n你把爆弹枪的射击模式从单发切换到了三连发。\n\n\"卢修斯，\"你说，\"这次我们一起。\"\n\n他回头看了你一眼。那个微笑。那个你之后会在噩梦中看到的微笑。\n\n他仍然没有说话。他只是点了点头，然后把战斗刀翻到反手——刀尖朝下，刃朝外——这是他的标志性起手势。\n\n在灰白色草茎帷幕的颤栗中，在红铁色大地的呻吟中，在那些无声的天生刀刃刺破空气的嘶鸣中，你向前迈出了一步。\n\n他们是你的兄弟。你是他们的连长。这只是一个开始。"

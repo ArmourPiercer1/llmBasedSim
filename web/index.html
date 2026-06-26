@@ -11,24 +11,26 @@
     <aside class="sidebar panel chrome-frame">
       <div class="brand-block">
         <div class="eyebrow">SIMULATION ARCHIVE</div>
-        <h1 id="worldTitle">互动模拟游戏</h1>
-        <p id="worldSubtitle">选择一个开局，进入多 Agent 推演世界。</p>
+        <div class="title-row">
+          <h1 id="worldTitle">互动模拟游戏</h1>
+          <button id="openStoryBackground" class="story-background-button" type="button">故事背景</button>
+        </div>
       </div>
-
-      <nav class="menu-stack" aria-label="游戏菜单">
-        <button class="menu-item" data-start-mode="init_file">新游戏：耳语山</button>
-        <button class="menu-item" data-start-mode="config">从配置开局</button>
-        <button class="menu-item" id="openSaveList">读取存档</button>
-        <button class="menu-item" id="quickSave">保存当前</button>
-        <button class="menu-item" id="openSettings">设置</button>
-        <button class="menu-item" id="openHelp">帮助</button>
-      </nav>
 
       <section class="time-card card">
         <div class="card-label">当前时间</div>
         <div id="timeDisplay" class="time-display">未开始</div>
         <div id="weatherDisplay" class="weather-display">等待世界载入</div>
       </section>
+
+      <nav class="menu-stack" aria-label="游戏菜单">
+        <button class="menu-item" id="openInitFiles">选择开局文件</button>
+        <button class="menu-item" id="openOtherInitFile">其他开局文件</button>
+        <button class="menu-item" id="openSaveList">读取存档</button>
+        <button class="menu-item" id="quickSave">保存当前</button>
+        <button class="menu-item" id="openSettings">设置</button>
+        <button class="menu-item" id="openHelp">帮助</button>
+      </nav>
     </aside>
 
     <main class="story-column">
@@ -48,22 +50,21 @@
       <section id="startScreen" class="start-screen chrome-frame">
         <div class="sigil">◇</div>
         <h2>开启模拟</h2>
-        <p>默认使用 <span class="accent">public_start/whisperheads.yaml</span>。你也可以从配置文件或已有存档进入。</p>
+        <p>从 <span class="accent">public_start</span> 和 <span class="accent">private_start</span> 中选择开局文件，或指定电脑上的其他 YAML 开局文件。</p>
         <div class="start-actions">
-          <button class="primary" data-start-mode="init_file">进入耳语山</button>
-          <button data-start-mode="config">从 config 加载</button>
+          <button class="primary" id="chooseInitFile">选择开局文件</button>
+          <button id="chooseOtherInitFile">其他开局文件</button>
           <button id="startFromSave">读取存档</button>
         </div>
       </section>
 
       <section id="storyStream" class="story-stream" aria-live="polite"></section>
 
-      <section id="loadingPanel" class="loading-panel chrome-frame hidden">
-        <div class="pulse-dots"><span></span><span></span><span></span></div>
-        <p>世界正在推演：理解意图、NPC 决策、物理变化、感知过滤、叙事渲染。</p>
-      </section>
-
       <form id="commandForm" class="command-bar chrome-frame" autocomplete="off">
+        <div id="loadingPanel" class="inference-status hidden">
+          <div class="pulse-dots"><span></span><span></span><span></span></div>
+          <span id="loadingText">准备开始推演...</span>
+        </div>
         <div id="slashMenu" class="slash-menu hidden"></div>
         <textarea id="commandInput" rows="1" placeholder="描述你的行动，或输入 / 打开命令菜单"></textarea>
         <button id="sendButton" type="submit">发送</button>
@@ -101,6 +102,8 @@
       </div>
     </aside>
   </div>
+
+  <button id="exitSimpleMode" class="simple-mode-exit" type="button">退出简约模式</button>
 
   <div id="modalBackdrop" class="modal-backdrop hidden">
     <section class="modal chrome-frame" role="dialog" aria-modal="true">

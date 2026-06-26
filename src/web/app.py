@@ -17,7 +17,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-from src.agents.init import config_loader_to_game_state, init_file_to_game_state, load_init_file
+from src.agents.init import init_file_to_game_state, load_init_file
 from src.config.loader import ConfigLoader
 from src.graph.game_graph import build_game_graph
 from src.graph.game_state import GameState, normalize_state, reset_tick_transients, strip_transient_state
@@ -27,6 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = PROJECT_ROOT / "web"
 STATIC_ROOT = WEB_ROOT / "static"
 SAVES_DIR = PROJECT_ROOT / "saves"
+START_DIRS = (PROJECT_ROOT / "public_start", PROJECT_ROOT / "private_start")
 DEFAULT_INIT_FILE = PROJECT_ROOT / "public_start" / "whisperheads.yaml"
 
 _load_dotenv_path = PROJECT_ROOT / ".env"
@@ -39,6 +40,32 @@ class WebUIError(Exception):
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
+
+
+class WebTurnStatus:
+    def __init__(self) -> None:
+        self.step = "等待中..."
+        self.sub_count = 0
+        self.sub_total = 0
+        self.lock = threading.Lock()
+
+    def update(self, step: str, sub_count: int = 0, sub_total: int = 0) -> None:
+        with self.lock:
+            self.step = step
+            self.sub_count = sub_count
+            self.sub_total = sub_total
+
+    def reset(self) -> None:
+        self.update("等待中...")
+
+    def snapshot(self, busy: bool) -> dict[str, Any]:
+        with self.lock:
+            return {
+                "busy": busy,
+                "step": self.step,
+                "sub_count": self.sub_count,
+                "sub_total": self.sub_total,
+            }
 
 
 @dataclass
@@ -83,6 +110,7 @@ class GameSession:
         self.prompt_loader: PromptLoader | None = None
         self.tick_thread = 0
         self.lock = threading.Lock()
+        self.status = WebTurnStatus()
         self.busy = False
 
     def configure_services(self) -> None:
@@ -101,13 +129,10 @@ class GameSession:
             max_tokens=sim_config.llm.max_tokens,
         )
         self.prompt_loader = PromptLoader(str(PROJECT_ROOT / "prompts"))
-        self.graph = build_game_graph(self.llm, self.prompt_loader)
+        self.graph = build_game_graph(self.llm, self.prompt_loader, status=self.status)
 
     def start(self, request: StartRequest) -> dict[str, Any]:
-        config_loader = ConfigLoader(str(PROJECT_ROOT / "config"))
-        if request.mode == "config":
-            state = config_loader_to_game_state(config_loader)
-        elif request.mode == "save":
+        if request.mode == "save":
             if not request.save_path:
                 raise WebUIError(400, "读取存档需要 save_path")
             save_path = _safe_existing_path(request.save_path, SAVES_DIR)
@@ -115,11 +140,12 @@ class GameSession:
                 state = normalize_state(json.load(f))
         else:
             init_file = request.init_file or str(DEFAULT_INIT_FILE)
-            init_path = _safe_existing_path(init_file, PROJECT_ROOT)
+            init_path = _safe_init_file_path(init_file)
             state = init_file_to_game_state(load_init_file(init_path))
         self.state = state
         self.tick_thread = int(state.get("tick", 0))
         self.busy = False
+        self.status.reset()
         return snapshot(state)
 
     async def step(self, player_input: str) -> dict[str, Any]:
@@ -131,6 +157,7 @@ class GameSession:
                 return command_result
             if self.busy:
                 raise WebUIError(409, "上一轮推演尚未结束")
+            self.status.update("准备开始推演...")
             self.busy = True
             self.configure_services()
             current_state = reset_tick_transients(self.state, player_input)
@@ -139,6 +166,7 @@ class GameSession:
         try:
             result = await self.graph.ainvoke(current_state, thread_config)
             with self.lock:
+                self.status.update("推演完成")
                 self.state = normalize_state(result)
                 return snapshot(self.state)
         finally:
@@ -196,8 +224,12 @@ class WebUIRequestHandler(BaseHTTPRequestHandler):
                 self._send_file(WEB_ROOT / "index.html")
             elif path == "/api/state":
                 self._send_json(get_state())
+            elif path == "/api/progress":
+                self._send_json(get_progress())
             elif path == "/api/saves":
                 self._send_json(list_saves())
+            elif path == "/api/init-files":
+                self._send_json(list_init_files())
             elif path.startswith("/static/"):
                 relative = unquote(path.removeprefix("/static/"))
                 self._send_static(relative)
@@ -294,8 +326,46 @@ def run(host: str = "127.0.0.1", port: int = 8000) -> None:
 
 def get_state() -> dict[str, Any]:
     if session.state is None:
-        return {"started": False, "default_init_file": str(DEFAULT_INIT_FILE.relative_to(PROJECT_ROOT)).replace("\\", "/")}
+        return {
+            "started": False,
+            "default_init_file": str(DEFAULT_INIT_FILE.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+            "init_files": list_init_files()["init_files"],
+        }
     return snapshot(session.state)
+
+
+def get_progress() -> dict[str, Any]:
+    return session.status.snapshot(session.busy)
+
+
+def list_init_files() -> dict[str, Any]:
+    files = []
+    for start_dir in START_DIRS:
+        if not start_dir.exists():
+            continue
+        for path in sorted(start_dir.rglob("*.yml")) + sorted(start_dir.rglob("*.yaml")):
+            files.append(init_file_item(path, start_dir.name))
+    files.sort(key=lambda item: (item["source"], item["name"], item["path"]))
+    return {"init_files": files}
+
+
+def init_file_item(path: Path, source: str) -> dict[str, Any]:
+    rel_path = path.relative_to(PROJECT_ROOT).as_posix()
+    world_name = ""
+    description = ""
+    try:
+        raw = load_init_file(path)
+        world = raw.get("world", {}) if isinstance(raw, dict) else {}
+        world_name = str(world.get("name") or "")
+        description = str(world.get("description") or "")
+    except Exception:
+        pass
+    return {
+        "name": world_name or path.stem,
+        "path": rel_path,
+        "source": source,
+        "description": description,
+    }
 
 
 def list_saves() -> dict[str, Any]:
@@ -451,6 +521,18 @@ def save_game(state: dict[str, Any], save_name: str) -> Path:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(strip_transient_state(state), f, ensure_ascii=False, indent=2)
     return path
+
+
+def _safe_init_file_path(raw_path: str) -> Path:
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    resolved = path.resolve()
+    if not resolved.exists() or not resolved.is_file():
+        raise WebUIError(404, f"文件不存在: {raw_path}")
+    if resolved.suffix.lower() not in {".yaml", ".yml"}:
+        raise WebUIError(400, "开局文件必须是 .yaml 或 .yml 文件")
+    return resolved
 
 
 def _safe_existing_path(raw_path: str, base: Path) -> Path:

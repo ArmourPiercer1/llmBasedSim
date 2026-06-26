@@ -68,9 +68,9 @@ button {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 220px minmax(360px, 1fr) 260px;
+  grid-template-columns: 220px minmax(360px, 1fr);
   gap: 20px;
-  padding: 20px;
+  padding: 20px 68px 20px 20px;
 }
 
 .chrome-frame {
@@ -95,27 +95,41 @@ button {
   padding: 18px;
 }
 
-.sidebar,
-.status-panel {
+.sidebar {
   height: calc(100vh - 40px);
   position: sticky;
   top: 20px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .brand-block h1 {
-  margin: 8px 0 10px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   color: #f0dcb8;
   font-family: "Noto Serif SC", "Source Han Serif SC", serif;
   font-size: 24px;
   line-height: 1.25;
 }
 
-.brand-block p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.7;
+.story-background-button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(199, 152, 85, 0.36);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--gold);
+  background: rgba(8, 12, 19, 0.42);
+  font-size: 12px;
 }
 
 .eyebrow,
@@ -130,7 +144,8 @@ button {
 .menu-stack {
   display: grid;
   gap: 10px;
-  margin: 26px 0;
+  margin: 0;
+  overflow-y: auto;
 }
 
 .menu-item,
@@ -199,13 +214,15 @@ button.primary,
 }
 
 .top-toolbar {
+  position: sticky;
+  top: 20px;
   min-height: 54px;
   border-radius: 16px;
   padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  z-index: 2;
+  z-index: 10;
 }
 
 .quick-actions {
@@ -288,13 +305,14 @@ button.primary,
   white-space: pre-wrap;
 }
 
-.loading-panel {
-  border-radius: 16px;
-  padding: 16px;
-  color: var(--muted);
+.inference-status {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+  min-height: 20px;
+  color: #f0c98d;
+  font-size: 13px;
 }
 
 .pulse-dots {
@@ -381,6 +399,14 @@ button.primary,
 }
 
 .status-panel {
+  position: fixed;
+  top: 20px;
+  right: 0;
+  z-index: 11;
+  width: 260px;
+  height: calc(100vh - 40px);
+  overflow: hidden;
+  border-radius: 18px 0 0 18px;
   transition: width 150ms ease, padding 150ms ease;
 }
 
@@ -396,7 +422,7 @@ button.primary,
 .panel-toggle {
   position: absolute;
   top: 14px;
-  right: 8px;
+  left: 8px;
   writing-mode: vertical-rl;
   border: 1px solid rgba(199, 152, 85, 0.38);
   border-radius: 12px;
@@ -406,7 +432,7 @@ button.primary,
 }
 
 .status-panel:not(.collapsed) .panel-toggle {
-  right: 14px;
+  left: 14px;
 }
 
 .status-content {
@@ -548,6 +574,24 @@ button.primary,
   color: var(--text);
 }
 
+.simple-mode-exit {
+  position: fixed;
+  right: 22px;
+  top: 22px;
+  z-index: 12;
+  display: none;
+  border: 1px solid rgba(199, 152, 85, 0.54);
+  border-radius: 999px;
+  padding: 10px 14px;
+  color: #19150f;
+  background: linear-gradient(180deg, #d8ad70, #b9803f);
+  box-shadow: var(--shadow);
+}
+
+body.simple-mode .simple-mode-exit {
+  display: block;
+}
+
 body.simple-mode .sidebar,
 body.simple-mode .status-panel,
 body.simple-mode .top-toolbar {
@@ -568,8 +612,7 @@ body.simple-mode .story-column {
     padding: 12px;
   }
 
-  .sidebar,
-  .status-panel {
+  .sidebar {
     position: static;
     height: auto;
   }
@@ -581,28 +624,6 @@ body.simple-mode .story-column {
   .story-column {
     width: 100%;
     order: 1;
-  }
-
-  .status-panel {
-    order: 3;
-  }
-
-  .status-panel.collapsed {
-    width: 100%;
-    padding: 12px;
-  }
-
-  .status-panel.collapsed .status-content {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-  }
-
-  .status-panel.collapsed .status-content .card:not(.sensor-card) {
-    display: none;
-  }
-
-  .panel-toggle {
-    display: none;
   }
 
   .command-bar {

@@ -190,10 +190,11 @@ async def main():
         ui.render_percept(game_state.get("player_percept"))
         if sim_config.simulation.debug:
             ui.render_debug(game_state)
-        player_input = await collect_next_player_input(ui, game_state, sim_config.simulation.debug)
-        if player_input is None:
-            return
-        current_state = reset_tick_transients(game_state, player_input)
+
+    player_input = await collect_next_player_input(ui, game_state, sim_config.simulation.debug)
+    if player_input is None:
+        return
+    current_state = reset_tick_transients(game_state, player_input)
 
     for tick_num in range(start_tick, max_ticks):
         # Fresh thread_id per tick so the graph doesn't short-circuit at END
