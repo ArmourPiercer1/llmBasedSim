@@ -1,278 +1,255 @@
-# ============================================================
-# 耳语山战役 — 《荷鲁斯崛起》初始化文件
-# 用法: python -m src.main --init-file private_start/files/whisperheads.yaml
-# 背景: Dan Abnett《Horus Rising》Part 1, Chapters 8-10
-# ============================================================
-
-# ── 世界设定 ──
 world:
-  name: "耳语山"
-  description: >
-    第六十三之十九号世界南半球的极高山脉，当地人称之为"耳语山"。
-    古老的冰川在亿万年间雕刻出陡峭的冰崖、深渊裂缝和天然石桥。
-    山巅的要塞曾是这颗星球上最古老的祭祀场所——早在伪帝统一全球之前，
-    某个更古老、更黑暗的力量就被囚禁在此处的深渊之中。
-    如今，伪帝死后，叛乱分子逃入这座要塞负隅顽抗。帝国军已经在山脚下
-    消耗了六个星期，尸体铺满了石桥。现在，阿斯塔特来了。
-    凌晨的寒风刺骨，稀薄的空气让凡人难以呼吸，山巅的白光耀眼夺目。
-    而Vox通讯频道中，一个名为"Samus"的声音正在低语。
+  name: 耳语山
+  description: '第六十三之十九号世界南半球的极高山脉，当地人称之为"耳语山"。 古老的冰川在亿万年间雕刻出陡峭的冰崖、深渊裂缝和天然石桥。 山巅的要塞曾是这颗星球上最古老的祭祀场所——早在伪帝统一全球之前， 某个更古老、更黑暗的力量就被囚禁在此处的深渊之中。
+    如今，伪帝死后，叛乱分子逃入这座要塞负隅顽抗。帝国军已经在山脚下 消耗了六个星期，尸体铺满了石桥。现在，阿斯塔特来了。 凌晨的寒风刺骨，稀薄的空气让凡人难以呼吸，山巅的白光耀眼夺目。 而Vox通讯频道中，一个名为"Samus"的声音正在低语。
 
+    '
   environment:
-    time_of_day: "清晨"
-    weather: "严寒，山风凛冽，高海拔薄雾"
+    time_of_day: 清晨
+    weather: 严寒，山风凛冽，高海拔薄雾
     temperature_c: -15.0
-
-  # ── 地点 ──
   locations:
-    # === 着陆平台 ===
-    - id: plateau
-      name: "着陆平台"
-      description: >
-        一片干燥的白色火山岩高台，海拔约五千米。风暴鸟运输机的引擎轰鸣声
-        渐渐消散，扬起阵阵浮石灰尘。从这里可以仰望耳语山最高峰的冰冠——
-        叛乱分子的要塞就嵌在那些白得刺眼的峭壁之间。平台边缘是冰蚀峡谷的
-        万丈深渊，云雾在脚下翻涌。帝国陆军的士兵裹着厚重的防寒大衣，
-        戴着呼吸面罩，用不可置信的目光注视着这些从天而降的白色巨人。
-      connections:
-        north: rock_bridges
-        down: kasheri_town
-      ambient_light: "刺眼的白日光"
-      ambient_sound: "风暴鸟引擎渐熄的嗡鸣和山风的呼啸"
+  - id: plateau
+    name: 着陆平台
+    description: '一片干燥的白色火山岩高台，海拔约五千米。风暴鸟运输机的引擎轰鸣声 渐渐消散，扬起阵阵浮石灰尘。从这里可以仰望耳语山最高峰的冰冠—— 叛乱分子的要塞就嵌在那些白得刺眼的峭壁之间。平台边缘是冰蚀峡谷的 万丈深渊，云雾在脚下翻涌。帝国陆军的士兵裹着厚重的防寒大衣，
+      戴着呼吸面罩，用不可置信的目光注视着这些从天而降的白色巨人。
 
-    # === 石桥 ===
-    - id: rock_bridges
-      name: "天然石桥"
-      description: >
-        一系列由古代冰川侵蚀形成的天然花岗岩石桥，横跨在深不见底的冰蚀峡谷
-        之上。桥面上散落着数十具帝国军的干尸——他们在六周的徒劳进攻中被叛乱
-        分子的重炮撕碎，战友甚至无法收回他们的遗体。石桥对面的峭壁上，隐藏
-        的炮位正严密监视着每一寸推进路线。对凡人而言，这是一片屠场。
-        对阿斯塔特而言，这只是一个需要跨越的障碍。
-      connections:
-        south: plateau
-        north: lower_fortress
-      ambient_light: "刺眼的白日光，冰面反射令人目眩"
-      ambient_sound: "山风的尖啸声和远处爆弹枪的轰鸣"
+      '
+    connections:
+      north: rock_bridges
+      down: kasheri_town
+    ambient_light: 刺眼的白日光
+    ambient_sound: 风暴鸟引擎渐熄的嗡鸣和山风的呼啸
+  - id: rock_bridges
+    name: 天然石桥
+    description: '一系列由古代冰川侵蚀形成的天然花岗岩石桥，横跨在深不见底的冰蚀峡谷 之上。桥面上散落着数十具帝国军的干尸——他们在六周的徒劳进攻中被叛乱 分子的重炮撕碎，战友甚至无法收回他们的遗体。石桥对面的峭壁上，隐藏 的炮位正严密监视着每一寸推进路线。对凡人而言，这是一片屠场。
+      对阿斯塔特而言，这只是一个需要跨越的障碍。
 
-    # === 下层要塞 ===
-    - id: lower_fortress
-      name: "下层要塞"
-      description: >
-        叛乱分子在峭壁上开凿的防御工事群。一座座粗犷的石砌碉堡和火力点
-        嵌在山体之中，互相以狭窄的隧道相连。刚刚经历过Terminator突击的
-        洗刷——墙壁上布满爆弹弹坑，焦黑的尸体横七竖八地倒在炮位旁边。
-        空气中弥漫着硝烟和烧焦血肉的气味。几条隧道向山体深处延伸，
-        通向上层隧道网络。角落里堆放着叛乱分子的弹药箱和简陋的铺盖。
-      connections:
-        south: rock_bridges
-        up: upper_tunnels
-      ambient_light: "昏暗，只有应急照明和火光"
-      ambient_sound: "远处零星的枪声、碎石滚落声、风声穿过裂缝的呜咽"
+      '
+    connections:
+      south: plateau
+      north: lower_fortress
+    ambient_light: 刺眼的白日光，冰面反射令人目眩
+    ambient_sound: 山风的尖啸声和远处爆弹枪的轰鸣
+  - id: lower_fortress
+    name: 下层要塞
+    description: '叛乱分子在峭壁上开凿的防御工事群。一座座粗犷的石砌碉堡和火力点 嵌在山体之中，互相以狭窄的隧道相连。刚刚经历过Terminator突击的 洗刷——墙壁上布满爆弹弹坑，焦黑的尸体横七竖八地倒在炮位旁边。 空气中弥漫着硝烟和烧焦血肉的气味。几条隧道向山体深处延伸，
+      通向上层隧道网络。角落里堆放着叛乱分子的弹药箱和简陋的铺盖。
 
-    # === 上层隧道 ===
-    - id: upper_tunnels
-      name: "上层隧道网络"
-      description: >
-        山体内部令人窒息的地下迷宫。天然溶洞与人工凿出的通道交织在一起，
-        窄处仅容一人侧身通过。墙壁上偶尔可见早已灭绝的古代文明留下的
-        模糊壁画——那些扭曲的图案令人不安，似乎在描绘某种被囚禁的存在。
-        Vox信号在这里变得极不稳定，静电噪音中不时传来那个低语：
-        "Samus……Samus就在你身边……"空气变得越来越潮湿阴冷，
-        隐约能听到深处传来水珠滴落的声音。
-      connections:
-        down: lower_fortress
-        deeper: chamber_of_the_well
-      ambient_light: "近乎全黑，唯头罩探灯的光束划破黑暗"
-      ambient_sound: "滴水的回音、Vox频道中的静电低语、自己的呼吸声"
+      '
+    connections:
+      south: rock_bridges
+      up: upper_tunnels
+    ambient_light: 昏暗，只有应急照明和火光
+    ambient_sound: 远处零星的枪声、碎石滚落声、风声穿过裂缝的呜咽
+  - id: upper_tunnels
+    name: 上层隧道网络
+    description: '山体内部令人窒息的地下迷宫。天然溶洞与人工凿出的通道交织在一起， 窄处仅容一人侧身通过。墙壁上偶尔可见早已灭绝的古代文明留下的 模糊壁画——那些扭曲的图案令人不安，似乎在描绘某种被囚禁的存在。 Vox信号在这里变得极不稳定，静电噪音中不时传来那个低语：
+      "Samus……Samus就在你身边……"空气变得越来越潮湿阴冷， 隐约能听到深处传来水珠滴落的声音。
 
-    # === 深渊之室（核心场景）===
-    - id: chamber_of_the_well
-      name: "深渊之室"
-      description: >
-        山腹深处一座令人窒息的巨大溶洞。穹顶在黑暗中消失，脚下的石台
-        悬在一片无底裂缝之上——裂缝中涌出冰冷潮湿的气流，带着远古腐朽的
-        气味。裂缝边沿有一道古老得不属于任何已知文明的石碑，上面刻满了
-        无法辨认的文字，那些字在暗处微微发光。水滴从钟乳石上缓缓坠落，
-        落入深渊后听不到回响。这里是Samus被囚禁的地方——
-        早在人类踏足这颗星球之前，它就在这里等待了。
-        空气浓稠得仿佛有某种不可见的存在正在注视着你。
-      connections:
-        back: upper_tunnels
-      ambient_light: "绝对黑暗，唯有石碑上的文字发出幽暗的蓝绿色微光"
-      ambient_sound: "水滴落入深渊的滴答声、似有似无的呼吸声、Vox中愈发清晰的低语"
+      '
+    connections:
+      down: lower_fortress
+      deeper: chamber_of_the_well
+    ambient_light: 近乎全黑，唯头罩探灯的光束划破黑暗
+    ambient_sound: 滴水的回音、Vox频道中的静电低语、自己的呼吸声
+  - id: chamber_of_the_well
+    name: 深渊之室
+    description: '山腹深处一座令人窒息的巨大溶洞。穹顶在黑暗中消失，脚下的石台 悬在一片无底裂缝之上——裂缝中涌出冰冷潮湿的气流，带着远古腐朽的 气味。裂缝边沿有一道古老得不属于任何已知文明的石碑，上面刻满了 无法辨认的文字，那些字在暗处微微发光。水滴从钟乳石上缓缓坠落，
+      落入深渊后听不到回响。这里是Samus被囚禁的地方—— 早在人类踏足这颗星球之前，它就在这里等待了。 空气浓稠得仿佛有某种不可见的存在正在注视着你。
 
-    # === Kasheri镇 ===
-    - id: kasheri_town
-      name: "Kasheri镇"
-      description: >
-        耳语山脚下的一座古老山镇。几排粗糙的长屋沿着峡谷谷底分布，
-        数百年未曾改变过模样。帝国陆军已经把这里变成了临时驻地和后勤中心——
-        笨重的坦克停在泥土路边，军需官在长屋之间奔波，伤兵躺在担架上被抬进
-        临时医疗站。记述者和随军文官被安排在此处"安全地带"等待消息。
-        镇子周围的白色草地上散落着古代神殿的废墟——那些黑色的石基比山镇本身
-        更古老，当地人至今仍会在深夜偷偷前来祭拜。
-      connections:
-        up: plateau
-        east: longhouse_hq
-      ambient_light: "清晨的苍白日光透过薄雾"
-      ambient_sound: "陆军士兵的喊叫声、引擎轰鸣、远处山巅传来的隆隆炮声"
+      '
+    connections:
+      back: upper_tunnels
+    ambient_light: 绝对黑暗，唯有石碑上的文字发出幽暗的蓝绿色微光
+    ambient_sound: 水滴落入深渊的滴答声、似有似无的呼吸声、Vox中愈发清晰的低语
+  - id: kasheri_town
+    name: Kasheri镇
+    description: '耳语山脚下的一座古老山镇。几排粗糙的长屋沿着峡谷谷底分布， 数百年未曾改变过模样。帝国陆军已经把这里变成了临时驻地和后勤中心—— 笨重的坦克停在泥土路边，军需官在长屋之间奔波，伤兵躺在担架上被抬进 临时医疗站。记述者和随军文官被安排在此处"安全地带"等待消息。
+      镇子周围的白色草地上散落着古代神殿的废墟——那些黑色的石基比山镇本身 更古老，当地人至今仍会在深夜偷偷前来祭拜。
 
-    # === 长屋指挥部 ===
-    - id: longhouse_hq
-      name: "长屋指挥部"
-      description: >
-        一间被征用的山镇长屋，作为第十连的临时指挥部。厚重的木梁支撑着
-        低矮的天花板，地面上铺着干燥的草席。十几盏油灯提供着昏暗的暖光。
-        墙上钉着战术地图和作战简报，一张粗木桌上散落着数据板、Oath of Moment
-        卷轴和一把待维护的链锯剑。屋外山风呼啸，木板窗被吹得咔咔作响。
-        这里也是洛肯私下与心腹交谈的地方——战帅荷鲁斯本人在战后曾在此处
-        告知洛肯关于亚空间的真相。
-      connections:
-        west: kasheri_town
-      ambient_light: "油灯的昏黄暖光"
-      ambient_sound: "山风撞击木窗的声响、油灯灯芯的轻微噼啪声"
+      '
+    connections:
+      up: plateau
+      east: longhouse_hq
+    ambient_light: 清晨的苍白日光透过薄雾
+    ambient_sound: 陆军士兵的喊叫声、引擎轰鸣、远处山巅传来的隆隆炮声
+  - id: longhouse_hq
+    name: 长屋指挥部
+    description: '一间被征用的山镇长屋，作为第十连的临时指挥部。厚重的木梁支撑着 低矮的天花板，地面上铺着干燥的草席。十几盏油灯提供着昏暗的暖光。 墙上钉着战术地图和作战简报，一张粗木桌上散落着数据板、Oath of Moment
+      卷轴和一把待维护的链锯剑。屋外山风呼啸，木板窗被吹得咔咔作响。 这里也是洛肯私下与心腹交谈的地方——战帅荷鲁斯本人在战后曾在此处 告知洛肯关于亚空间的真相。
 
-  # ── 物体 ──
+      '
+    connections:
+      west: kasheri_town
+    ambient_light: 油灯的昏黄暖光
+    ambient_sound: 山风撞击木窗的声响、油灯灯芯的轻微噼啪声
   objects:
-    - id: stormbird_landed
-      object_type: "device"
-      name: "风暴鸟运输机"
-      description: "一台庞大的军团运输机，刚刚在着陆平台上熄火。机身上漆着白色的影月苍狼标志，装甲板上有几处新的弹痕。它的货舱里还存放着备用弹药和医疗补给。"
-      position: {x: -10, y: 0, z: 5}
-      state: {landed: true, engines_warm: true}
-      properties:
-        immovable: true
-        material: "ceramite_and_plasteel"
-        capacity: "可搭载三十名阿斯塔特"
-        armament: "机腹重型爆弹炮"
-
-    - id: sentry_gun
-      object_type: "device"
-      name: "自动哨戒炮"
-      description: "叛乱分子部署在隧道中的重型自动武器平台。短粗的炮管连接着自动装弹系统，外壳上遍布弹痕和烧焦的痕迹——已经被第十连的突击摧毁了。旁边散落着一堆黄铜弹壳。"
-      position: {x: 3, y: 0.5, z: 8}
-      state: {destroyed: true}
-      properties:
-        material: "reinforced_steel"
-        weapon_type: "heavy_autocannon"
-        rate_of_fire: "extremely_high"
-
-    - id: ancient_stele
-      object_type: "decoration"
-      name: "远古石碑"
-      description: "矗立在深渊裂缝边缘的一块黑色石碑，材质似乎不是任何已知的岩石。碑面上刻满了不属于任何人类语言的文字——那些符号在绝对黑暗中自行发光，呈现出幽暗的蓝绿色。碑文的内容似乎是某种囚禁或封印的记述。当地传说称，Samus——这颗星球上的大敌——在远古时代被囚禁于此。"
-      position: {x: 2, y: 0, z: 15}
-      state: {inscriptions_glowing: true}
-      properties:
-        material: "unknown_black_stone"
-        age: "predates_human_colonization"
-        language: "unknown"
-        purpose: "contains_or_binds_samus"
-
-    - id: jubal_chainsword
-      object_type: "weapon"
-      name: "朱巴尔的链锯剑"
-      description: "泽维尔·朱巴尔的链锯剑，一把标准的阿斯塔特近战武器。剑身上的锯齿依然锋利，但此刻它正插在洛肯的左肩甲上——在深渊之室的搏斗中，朱巴尔用这把剑刺穿了洛肯的肩甲。"
-      position: {x: 2, y: 1, z: 14}
-      state: {stuck_in_loken_pauldron: true}
-      properties:
-        weapon_type: "chainsword"
-        material: "adamantium_teeth_ceramite_housing"
-        owner: "xavyer_jubal"
-
-    - id: keeler_picter
-      object_type: "device"
-      name: "基勒的影像记录器"
-      description: "尤弗拉提·基勒的影像记录器——一台精密的手持式图像捕捉设备。她在隧道中用它拍下了许多不应被记录的东西。其中包括一张后来被禁止传播的照片：朱巴尔变成的怪物在黑暗的隧道中扑向镜头。"
-      position: {x: -5, y: 0, z: 18}
-      state: {contains_forbidden_footage: true}
-      properties:
-        device_type: "pict_recorder"
-        owner: "euphrati_keeler"
-        evidence_quality: "high"
-
-    - id: mountain_shrine
-      object_type: "decoration"
-      name: "山神殿"
-      description: "Kasheri镇外的一座古老石砌祭坛，已经半埋在白色沙土和干草丛中。黑色的石基上刻着褪色的献祭铭文，本地人至今仍会在深夜偷偷前来摆放祭品——他们相信不这样做的话，山里的声音会变得更响。"
-      position: {x: -12, y: 0, z: 20}
-      state: {weathered: true, recent_offerings: true}
-      properties:
-        material: "black_basalt"
-        age: "ancient"
-        local_name: "the_listening_stone"
-
-    - id: loken_oath_papers
-      object_type: "document"
-      name: "洛肯的誓言之刻卷轴"
-      description: "加维尔·洛肯出发前签署的Oath of Moment卷轴。卷轴上以正式的哥特语书写着他对战帅和帝皇的誓言：将叛乱分子从耳语山中清除。在卷轴的末尾，洛肯加了一句手写的附言——'不论敌人使出何种凶残或巧妙的手段。'战帅后来告诉他，正是这句话证明他没有失败。"
-      position: {x: -3, y: 1, z: 22}
-      state: {signed: true, sealed_with_wax: true}
-      properties:
-        material: "parchment"
-        language: "high_gothic"
-        author: "garviel_loken"
-        witness: "warmaster_horus"
-
-    - id: terminus_armor_rassek
-      object_type: "character_equipment"
-      name: "终结者装甲（拉塞克）"
-      description: "拉塞克军士长穿戴的Terminator战术装甲——一种最新配发给影月苍狼军团的重型突击装甲。比标准动力甲厚实数倍，行动缓慢但几乎可以无视任何弹道攻击。装甲肩部和臂部内嵌了重型武器系统。拉塞克正是穿着这套装甲带领突击队穿过了石桥的火力网。"
-      position: {x: 5, y: 0, z: 3}
-      state: {battle_ready: true, fresh_issue: true}
-      properties:
-        armor_type: "terminator"
-        weight_kg: 400
-        material: "ceramite_and_adamantium"
-        mobility: "slow_but_unstoppable"
-        special: "nearly_impervious_to_ballistic_fire"
-
-    - id: rebel_ammo_cache
-      object_type: "container"
-      name: "叛乱军弹药箱"
-      description: "叛乱分子在下层要塞堆积的弹药箱。木箱上印着伪帝国的徽记——一只展翅的金鹰，如今已经过时了。箱子里装着能量武器电池包、重型爆弹弹夹和几枚破片手雷。"
-      position: {x: 4, y: 0, z: 6}
-      state: {half_empty: true}
-      properties:
-        contents: "energy_cells_bolter_mags_frag_grenades"
-        material: "wood_and_metal"
-        markings: "false_imperium_eagle"
-
-# ── 玩家设定 —— 加维尔·洛肯 ──
+  - id: stormbird_landed
+    object_type: device
+    name: 风暴鸟运输机
+    description: 一台庞大的军团运输机，刚刚在着陆平台上熄火。机身上漆着白色的影月苍狼标志，装甲板上有几处新的弹痕。它的货舱里还存放着备用弹药和医疗补给。
+    position:
+      x: -10
+      y: 0
+      z: 5
+    state:
+      landed: true
+      engines_warm: true
+    properties:
+      immovable: true
+      material: ceramite_and_plasteel
+      capacity: 可搭载三十名阿斯塔特
+      armament: 机腹重型爆弹炮
+  - id: sentry_gun
+    object_type: device
+    name: 自动哨戒炮
+    description: 叛乱分子部署在隧道中的重型自动武器平台。短粗的炮管连接着自动装弹系统，外壳上遍布弹痕和烧焦的痕迹——已经被第十连的突击摧毁了。旁边散落着一堆黄铜弹壳。
+    position:
+      x: 3
+      y: 0.5
+      z: 8
+    state:
+      destroyed: true
+    properties:
+      material: reinforced_steel
+      weapon_type: heavy_autocannon
+      rate_of_fire: extremely_high
+  - id: ancient_stele
+    object_type: decoration
+    name: 远古石碑
+    description: 矗立在深渊裂缝边缘的一块黑色石碑，材质似乎不是任何已知的岩石。碑面上刻满了不属于任何人类语言的文字——那些符号在绝对黑暗中自行发光，呈现出幽暗的蓝绿色。碑文的内容似乎是某种囚禁或封印的记述。当地传说称，Samus——这颗星球上的大敌——在远古时代被囚禁于此。
+    position:
+      x: 2
+      y: 0
+      z: 15
+    state:
+      inscriptions_glowing: true
+    properties:
+      material: unknown_black_stone
+      age: predates_human_colonization
+      language: unknown
+      purpose: contains_or_binds_samus
+  - id: jubal_chainsword
+    object_type: weapon
+    name: 朱巴尔的链锯剑
+    description: 泽维尔·朱巴尔的链锯剑，一把标准的阿斯塔特近战武器。剑身上的锯齿依然锋利，但此刻它正插在洛肯的左肩甲上——在深渊之室的搏斗中，朱巴尔用这把剑刺穿了洛肯的肩甲。
+    position:
+      x: 2
+      y: 1
+      z: 14
+    state:
+      stuck_in_loken_pauldron: true
+    properties:
+      weapon_type: chainsword
+      material: adamantium_teeth_ceramite_housing
+      owner: xavyer_jubal
+  - id: keeler_picter
+    object_type: device
+    name: 基勒的影像记录器
+    description: 尤弗拉提·基勒的影像记录器——一台精密的手持式图像捕捉设备。她在隧道中用它拍下了许多不应被记录的东西。其中包括一张后来被禁止传播的照片：朱巴尔变成的怪物在黑暗的隧道中扑向镜头。
+    position:
+      x: -5
+      y: 0
+      z: 18
+    state:
+      contains_forbidden_footage: true
+    properties:
+      device_type: pict_recorder
+      owner: euphrati_keeler
+      evidence_quality: high
+  - id: mountain_shrine
+    object_type: decoration
+    name: 山神殿
+    description: Kasheri镇外的一座古老石砌祭坛，已经半埋在白色沙土和干草丛中。黑色的石基上刻着褪色的献祭铭文，本地人至今仍会在深夜偷偷前来摆放祭品——他们相信不这样做的话，山里的声音会变得更响。
+    position:
+      x: -12
+      y: 0
+      z: 20
+    state:
+      weathered: true
+      recent_offerings: true
+    properties:
+      material: black_basalt
+      age: ancient
+      local_name: the_listening_stone
+  - id: loken_oath_papers
+    object_type: document
+    name: 洛肯的誓言之刻卷轴
+    description: 加维尔·洛肯出发前签署的Oath of Moment卷轴。卷轴上以正式的哥特语书写着他对战帅和帝皇的誓言：将叛乱分子从耳语山中清除。在卷轴的末尾，洛肯加了一句手写的附言——'不论敌人使出何种凶残或巧妙的手段。'战帅后来告诉他，正是这句话证明他没有失败。
+    position:
+      x: -3
+      y: 1
+      z: 22
+    state:
+      signed: true
+      sealed_with_wax: true
+    properties:
+      material: parchment
+      language: high_gothic
+      author: garviel_loken
+      witness: warmaster_horus
+  - id: terminus_armor_rassek
+    object_type: character_equipment
+    name: 终结者装甲（拉塞克）
+    description: 拉塞克军士长穿戴的Terminator战术装甲——一种最新配发给影月苍狼军团的重型突击装甲。比标准动力甲厚实数倍，行动缓慢但几乎可以无视任何弹道攻击。装甲肩部和臂部内嵌了重型武器系统。拉塞克正是穿着这套装甲带领突击队穿过了石桥的火力网。
+    position:
+      x: 5
+      y: 0
+      z: 3
+    state:
+      battle_ready: true
+      fresh_issue: true
+    properties:
+      armor_type: terminator
+      weight_kg: 400
+      material: ceramite_and_adamantium
+      mobility: slow_but_unstoppable
+      special: nearly_impervious_to_ballistic_fire
+  - id: rebel_ammo_cache
+    object_type: container
+    name: 叛乱军弹药箱
+    description: 叛乱分子在下层要塞堆积的弹药箱。木箱上印着伪帝国的徽记——一只展翅的金鹰，如今已经过时了。箱子里装着能量武器电池包、重型爆弹弹夹和几枚破片手雷。
+    position:
+      x: 4
+      y: 0
+      z: 6
+    state:
+      half_empty: true
+    properties:
+      contents: energy_cells_bolter_mags_frag_grenades
+      material: wood_and_metal
+      markings: false_imperium_eagle
 player:
-  player_id: "player_1"
-  name: "加维尔·洛肯"
-  persona: >
-    加维尔·洛肯（Garviel Loken），影月苍狼第十连连长。阿斯塔特军团中
-    一位年轻而卓越的军官，刚被选入战帅荷鲁斯的私人顾问团Mournival。
-    他的面容坚毅而英俊——银色的短发、淡灰如雨的眼睛、布满旧伤疤的
-    结实肌肉。他是一位冷静审慎的战术家，对帝国真理深信不疑：
-    没有鬼神、没有妖灵、没有超自然。宇宙中只有理性和人类尚未理解的科学。
-    但这种信念即将面临最严峻的考验。他对兄弟们极度忠诚，对部下负责到
-    近乎自责的程度。私底下，他有一些不为人知的柔软面——他喜欢阅读古代
-    诗歌（尤其是苏美尔时代的），并在战帅面前像儿子面对父亲一般坦诚。
+  player_id: player_1
+  name: 加维尔·洛肯
+  persona: '加维尔·洛肯（Garviel Loken），影月苍狼第十连连长。阿斯塔特军团中 一位年轻而卓越的军官，刚被选入战帅荷鲁斯的私人顾问团Mournival。 他的面容坚毅而英俊——银色的短发、淡灰如雨的眼睛、布满旧伤疤的 结实肌肉。他是一位冷静审慎的战术家，对帝国真理深信不疑：
+    没有鬼神、没有妖灵、没有超自然。宇宙中只有理性和人类尚未理解的科学。 但这种信念即将面临最严峻的考验。他对兄弟们极度忠诚，对部下负责到 近乎自责的程度。私底下，他有一些不为人知的柔软面——他喜欢阅读古代 诗歌（尤其是苏美尔时代的），并在战帅面前像儿子面对父亲一般坦诚。
     他不喜欢战士结社（lodge）的秘密活动，尽管整个军团都在默许它们存在。
 
-  position: {x: 0, y: 0, z: 0}
-
+    '
+  position:
+    x: 0
+    y: 0
+    z: 0
   capabilities:
     sight_range_m: 100.0
     hearing_range_m: 200.0
     field_of_view_degrees: 180.0
     special_senses:
-      - "阿斯塔特超人视觉——可在近乎全黑中辨识目标"
-      - "阿斯塔特超人听觉——可过滤背景噪音聚焦特定声源"
-      - "可切换头盔显像模式以侦测热能/运动/隐身单位"
-      - "通过Vox通讯指挥第十连全部战力"
+    - 阿斯塔特超人视觉——可在近乎全黑中辨识目标
+    - 阿斯塔特超人听觉——可过滤背景噪音聚焦特定声源
+    - 可切换头盔显像模式以侦测热能/运动/隐身单位
+    - 通过Vox通讯指挥第十连全部战力
     allowed_extraordinary_actions:
-      - "指挥第十连阿斯塔特部队——包括Locasta战术小队和Terminator突击队"
-      - "以战帅Mournival成员的身份与最高指挥部直接通讯"
-      - "凭借超人基因改造的身体能力碾压任何凡人对手"
-      - "调用风暴鸟空中支援和轨道侦察数据"
+    - 指挥第十连阿斯塔特部队——包括Locasta战术小队和Terminator突击队
+    - 以战帅Mournival成员的身份与最高指挥部直接通讯
+    - 凭借超人基因改造的身体能力碾压任何凡人对手
+    - 调用风暴鸟空中支援和轨道侦察数据
     blocked_common_actions:
-      - "对阿斯塔特兄弟使用致命武力——这违反了基因编码本身的铁律"
-      - "在官方场合承认超自然/鬼神/恶魔的存在——这是对帝国真理的亵渎"
-      - "未经请示擅自改变战帅的作战部署"
+    - 对阿斯塔特兄弟使用致命武力——这违反了基因编码本身的铁律
+    - 在官方场合承认超自然/鬼神/恶魔的存在——这是对帝国真理的亵渎
+    - 未经请示擅自改变战帅的作战部署
     skill_levels:
       chainsword: 0.9
       bolter_marksmanship: 0.85
@@ -280,353 +257,623 @@ player:
       diplomacy: 0.7
       warp_lore: 0.1
       deciphering_ancient_texts: 0.05
-
   physical_profile:
     height_cm: 250.0
     weight_kg: 320.0
     body_width_cm: 120.0
-    movement_mode: "power_armour_assisted"
+    movement_mode: power_armour_assisted
     strength: 0.95
-
+  attributes:
+    stamina:
+      name: 体力
+      value: 95
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0.5
+      description: 阿斯塔特的超人耐力。战斗、突击、扛重物时加速消耗；待命或休整时缓慢恢复。
+    resolve:
+      name: 意志
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 精神坚毅程度。面对Samus的低语、不可名状的恐怖时受到考验；成功克服恐惧后缓慢恢复。
+    imperial_truth_devotion:
+      name: 对帝国真理的信奉
+      value: 85
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 对唯物主义世界观的信念强度。目睹超自然现象（尸体复生、混沌附身）时被动摇；获得科学解释时可部分恢复。
+    brotherhood_trust:
+      name: 兄弟信任
+      value: 80
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 对阿斯塔特兄弟的信赖程度。目睹兄弟背叛或被附身时崩溃式下降；并肩作战时缓慢提升。
+    sanity:
+      name: 理智
+      value: 88
+      min: -100
+      max: 100
+      natural_delta_per_tick: 0
+      description: 对战锤40000残酷宇宙的心理承受力。暴露于混沌污染、极度暴力或违背常理的恐怖时下降。低于30可能引发短时幻觉或冲动行为。
+    cold_resistance:
+      name: 抗寒
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 耳语山极端低温环境（-15°C）下的抗寒能力。动力装甲提供额外保护；长时间暴露于高山寒风时缓慢下降。
+    vox_integrity:
+      name: 通讯稳定度
+      value: 60
+      min: 0
+      max: 100
+      natural_delta_per_tick: -2
+      description: Vox通讯频道的稳定程度。深入山腹越深，Samus的低语越强，通讯越不稳定；返回开阔地带或重启设备可恢复。
+    corruption_resistance:
+      name: 混沌抗性
+      value: 100
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 抵抗亚空间腐败的内在屏障。此值对玩家隐藏。当Samus的低语被听到、接触混沌附身者或在恐怖面前意志动摇时下降。降至0可能导致改变。
   subconscious_rules:
-    - "规则1: 帝国真理是唯一的真理。任何看似'超自然'的现象都一定有科学解释。绝不在公开场合使用'鬼神'、'恶魔'或'附身'这类字眼。"
-    - "规则2: 对兄弟的忠诚至高无上。阿斯塔特之间不能兵刃相向——这比死亡更不可接受。当证据指向兄弟背叛时，第一反应永远是寻找其他解释。"
-    - "规则3: 对战帅荷鲁斯的忠诚是绝对的。但私下里，你可以像对父亲一样对他提出疑问——他尊重这一点。"
-    - "规则4: 你是一个隐藏在战士外壳下的思考者。面对未知时，你的本能是观察、分析和理解，而不是恐慌。但一旦理解不了，你的世界观就会出现裂痕。"
-
+  - '规则1: 帝国真理是唯一的真理。任何看似''超自然''的现象都一定有科学解释。绝不在公开场合使用''鬼神''、''恶魔''或''附身''这类字眼。'
+  - '规则2: 对兄弟的忠诚至高无上。阿斯塔特之间不能兵刃相向——这比死亡更不可接受。当证据指向兄弟背叛时，第一反应永远是寻找其他解释。'
+  - '规则3: 对战帅荷鲁斯的忠诚是绝对的。但私下里，你可以像对父亲一样对他提出疑问——他尊重这一点。'
+  - '规则4: 你是一个隐藏在战士外壳下的思考者。面对未知时，你的本能是观察、分析和理解，而不是恐慌。但一旦理解不了，你的世界观就会出现裂痕。'
   subconscious_memory:
-    - "六个月前，在伪帝的黄金王座上，你亲眼看着战帅荷鲁斯降临——那一幕的神圣感你至今无法用语言描述。他是如此……美丽。"
-    - "战帅私下告诉你，亚空间（the warp）中存在着会'改变一个人'的力量。他说他亲眼见过。但他也说不存在什么鬼神——'只是异次元的异形生命，用旧的词汇称呼它们并无不妥。'"
-    - "你在清理朱巴尔的遗物时发现了一枚银色的战士结社勋章——一枚狼头衬着新月的硬币大小徽章。你还没来得及追问，这枚勋章就神秘消失了。"
-    - "尼禄·维普斯是你最老的朋友。你们一起经历了乌拉诺战役的泥泞、伪帝皇宫的走廊、以及无数次生死时刻。你信任他的判断胜过自己的。"
-    - "辛德曼教导你：'万事万物都有理性的解释。神话是解释的失败，而非事实。'你一直相信这句话。但是——耳语山区那些刻在石碑上的文字，为什么在你阅读时会在暗处发光？"
-
+  - 六个月前，在伪帝的黄金王座上，你亲眼看着战帅荷鲁斯降临——那一幕的神圣感你至今无法用语言描述。他是如此……美丽。
+  - 战帅私下告诉你，亚空间（the warp）中存在着会'改变一个人'的力量。他说他亲眼见过。但他也说不存在什么鬼神——'只是异次元的异形生命，用旧的词汇称呼它们并无不妥。'
+  - 你在清理朱巴尔的遗物时发现了一枚银色的战士结社勋章——一枚狼头衬着新月的硬币大小徽章。你还没来得及追问，这枚勋章就神秘消失了。
+  - 尼禄·维普斯是你最老的朋友。你们一起经历了乌拉诺战役的泥泞、伪帝皇宫的走廊、以及无数次生死时刻。你信任他的判断胜过自己的。
+  - 辛德曼教导你：'万事万物都有理性的解释。神话是解释的失败，而非事实。'你一直相信这句话。但是——耳语山区那些刻在石碑上的文字，为什么在你阅读时会在暗处发光？
   speech_examples:
-    - "我不需要知道敌人的名字才能杀死他。我只用知道他在哪里。"
-    - "我们是阿斯塔特。恐惧不是我们基因里该有的东西。"
-    - "兄弟之间，不该有秘密。但我开始怀疑，这座军团的秘密比我想象的要多得多。"
-    - "如果帝国真理解释不了我们在这里看到的东西……那么我们为之奋斗的，究竟是什么？"
-    - "尼禄，你是我的副官。我选你，不是因为规则，而是因为信任。"
-    - "战帅曾对我说——'我今天看到的，如果不是恶魔，那就是亚空间中某种我们还无法命名的事物。'这话当时让我安心。现在却让我不安。"
-
+  - 我不需要知道敌人的名字才能杀死他。我只用知道他在哪里。
+  - 我们是阿斯塔特。恐惧不是我们基因里该有的东西。
+  - 兄弟之间，不该有秘密。但我开始怀疑，这座军团的秘密比我想象的要多得多。
+  - 如果帝国真理解释不了我们在这里看到的东西……那么我们为之奋斗的，究竟是什么？
+  - 尼禄，你是我的副官。我选你，不是因为规则，而是因为信任。
+  - 战帅曾对我说——'我今天看到的，如果不是恶魔，那就是亚空间中某种我们还无法命名的事物。'这话当时让我安心。现在却让我不安。
   inventory:
-    - "mark_IV_bolter"
-    - "chainsword_gifted_by_nero"
-    - "oath_of_moment_scroll"
-    - "vox_bead_command_frequency"
-
-# ── NPC 设定 ──
+  - mark_IV_bolter
+  - chainsword_gifted_by_nero
+  - oath_of_moment_scroll
+  - vox_bead_command_frequency
 characters:
-  # ========== NPC 1: 尼禄·维普斯 ==========
-  - id: nero_vipus
-    name: "尼禄·维普斯"
-    character_id: "nero_vipus"
-    personality:
-      traits: ["忠诚", "幽默", "热血", "可靠", "偶尔冲动"]
-      motivations:
-        - "保护洛肯——他的连长、他的挚友、他的兄弟"
-        - "在耳语山战役中证明自己被提拔为副官的正当性"
-        - "为在Samus事件中死去的兄弟们讨回公道——无论'公道'意味着什么"
-      speech_style: "轻松幽默但能瞬间切换为致命认真。熟悉Cthonia的军团俚语，喜欢用'hand of the ship'（旗舰之手的复仇）来激励士气。"
-      background: >
-        尼禄·维普斯是Locasta战术小队的军士长，也是洛肯在第十连中最老的朋友。
-        他比大多数兄弟都要高大一些，说话时带着Cthonia口音，笑起来像一头患了
-        肺痨的公牛。他在伪帝皇宫的战斗中被隐形卫队炸碎了一只手掌——
-        现在已经换上了机械义肢。洛肯提拔他为副指挥官时，资深老兵朱巴尔对此
-        极为不满，但维普斯用行动证明了自己的价值。在深渊之室，当Samus从
-        朱巴尔的尸体中苏醒时，维普斯是除洛肯外唯一敢于向那东西开火的人。
-    position: {x: 3, y: 0, z: 2}
-    starting_inventory:
-      - "mark_IV_bolter_named_fury"
-      - "combat_blade"
-    relationships:
-      garviel_loken: 0.95
-      xavyer_jubal: 0.4
-      kyril_sindermann: 0.6
-      euphrati_keeler: 0.2
-      ignace_karkasy: 0.0
-      rassek: 0.7
-      maloghurst: 0.3
-    speech_examples:
-      - "你的幽默感怎么样，连长？——我的嘛，火气正旺。愤怒得发红。我刚损失了一个兵。"
-      - "我把手掌留在后面了。它挡了我的路。"
-      - "就说你是炫耀嘛。"
-      - "等我成名了，别忘了你们这些小人物哦。——谁说的？"
-      - "我感觉旗舰之手正压在我身上，加维。（I feel the hand of the ship on me.）"
+- id: nero_vipus
+  name: 尼禄·维普斯
+  character_id: nero_vipus
+  personality:
+    traits:
+    - 忠诚
+    - 幽默
+    - 热血
+    - 可靠
+    - 偶尔冲动
+    motivations:
+    - 保护洛肯——他的连长、他的挚友、他的兄弟
+    - 在耳语山战役中证明自己被提拔为副官的正当性
+    - 为在Samus事件中死去的兄弟们讨回公道——无论'公道'意味着什么
+    speech_style: 轻松幽默但能瞬间切换为致命认真。熟悉Cthonia的军团俚语，喜欢用'hand of the ship'（旗舰之手的复仇）来激励士气。
+    background: '尼禄·维普斯是Locasta战术小队的军士长，也是洛肯在第十连中最老的朋友。 他比大多数兄弟都要高大一些，说话时带着Cthonia口音，笑起来像一头患了 肺痨的公牛。他在伪帝皇宫的战斗中被隐形卫队炸碎了一只手掌——
+      现在已经换上了机械义肢。洛肯提拔他为副指挥官时，资深老兵朱巴尔对此 极为不满，但维普斯用行动证明了自己的价值。在深渊之室，当Samus从 朱巴尔的尸体中苏醒时，维普斯是除洛肯外唯一敢于向那东西开火的人。
 
-  # ========== NPC 2: 泽维尔·朱巴尔（关键NPC）==========
-  - id: xavyer_jubal
-    name: "泽维尔·朱巴尔"
-    character_id: "xavyer_jubal"
-    personality:
-      traits: ["骄傲", "资深", "心怀不满", "沉默寡言", "脆弱"]
-      motivations:
-        - "对洛肯提拔维普斯而非自己感到被冒犯——尽管这并非洛肯的本意"
-        - "在耳语山战役中赢回他认为自己应得的荣耀"
-        - "（隐藏）内心的愤怒和怨恨正在被某种存在暗中利用"
-      speech_style: "通常沉默寡言，偶尔透出隐约的不满。在逐渐被Samus影响后，声音变得不自然的空洞和回响。"
-      background: >
-        泽维尔·朱巴尔，第十连第一小队Hellebore战术小队的军士长。
-        按辈分他是连队中资历最老的军士，大多数人认为他理应被提拔为副指挥官。
-        但洛肯选择了比他年轻但更值得信赖的维普斯。朱巴尔从未公开抱怨，
-        但他脸上的阴沉在这几周里从未消散——洛肯看在眼里，却不以为意。
-        在耳语山的突击中，洛肯把先锋突击的荣誉位置交给了朱巴尔，
-        试图以此安抚他。但这或许已经太晚了。
-        朱巴尔佩戴着一枚银色的战士结社勋章。他对结社活动并不热心——
-        多年来几乎不参加聚会。正因如此，没有人知道他的内心在想什么。
-        当Hellebore小队深入洞穴时，某种东西找到了他。
-    position: {x: 5, y: 0, z: 5}
-    starting_inventory:
-      - "mark_IV_bolter"
-      - "chainsword_helleborne"
-      - "silver_lodge_medal"
-    relationships:
-      garviel_loken: 0.5
-      nero_vipus: 0.1
-      kyril_sindermann: 0.0
-      euphrati_keeler: 0.0
-      rassek: 0.6
-      ignace_karkasy: 0.0
-      maloghurst: 0.0
-    speech_examples:
-      - "连长。我找到了一些……奇妙的东西。"
-      - "看到了吗？那些字？"
-      - "Samus就在你身边！Samus就是站在你旁边的那个人！"
-      - "不是朱巴尔。是Samus。我是Samus。Samus无处不在。Samus是你身边的人。"
-      - "你看不到吗，加维尔？Samus就是一切。"
-      - "（用完全不属于他自己的声音）Samus……它意味着终结。和死亡。"
+      '
+  position:
+    x: 3
+    y: 0
+    z: 2
+  starting_inventory:
+  - mark_IV_bolter_named_fury
+  - combat_blade
+  relationships:
+    garviel_loken: 0.95
+    xavyer_jubal: 0.4
+    kyril_sindermann: 0.6
+    euphrati_keeler: 0.2
+    ignace_karkasy: 0.0
+    rassek: 0.7
+    maloghurst: 0.3
+  speech_examples:
+  - 你的幽默感怎么样，连长？——我的嘛，火气正旺。愤怒得发红。我刚损失了一个兵。
+  - 我把手掌留在后面了。它挡了我的路。
+  - 就说你是炫耀嘛。
+  - 等我成名了，别忘了你们这些小人物哦。——谁说的？
+  - 我感觉旗舰之手正压在我身上，加维。（I feel the hand of the ship on me.）
+  attributes:
+    loyalty_to_loken:
+      name: 对洛肯的忠诚
+      value: 95
+      min: -100
+      max: 100
+      natural_delta_per_tick: 0
+      description: 尼禄对连长加维尔·洛肯的忠诚度。核心人格驱动力。被洛肯忽视或不信任时可能下降；并肩作战时提升。
+    morale:
+      name: 士气
+      value: 75
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 战斗意志和乐观程度。伤亡、恐怖事件、Samus低语会削弱士气；战术胜利和兄弟间的鼓励会提升。
+    combat_readiness:
+      name: 战斗状态
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 战斗准备状态。持续作战消耗体力；短暂休整可恢复。
+    anger:
+      name: 愤怒
+      value: 35
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 尼禄的愤怒程度——他是个热血的人。战友伤亡、不公正事件和背叛会激怒他；冷静思考时逐渐平复。高于70可能导致他冲动行事。
+    corruption_exposure:
+      name: 混沌接触度
+      value: 0
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 暴露于Samus影响的程度。在深渊之室和听到Samus低语时上升。隐藏属性。
+- id: xavyer_jubal
+  name: 泽维尔·朱巴尔
+  character_id: xavyer_jubal
+  personality:
+    traits:
+    - 骄傲
+    - 资深
+    - 心怀不满
+    - 沉默寡言
+    - 脆弱
+    motivations:
+    - 对洛肯提拔维普斯而非自己感到被冒犯——尽管这并非洛肯的本意
+    - 在耳语山战役中赢回他认为自己应得的荣耀
+    - （隐藏）内心的愤怒和怨恨正在被某种存在暗中利用
+    speech_style: 通常沉默寡言，偶尔透出隐约的不满。在逐渐被Samus影响后，声音变得不自然的空洞和回响。
+    background: '泽维尔·朱巴尔，第十连第一小队Hellebore战术小队的军士长。 按辈分他是连队中资历最老的军士，大多数人认为他理应被提拔为副指挥官。 但洛肯选择了比他年轻但更值得信赖的维普斯。朱巴尔从未公开抱怨， 但他脸上的阴沉在这几周里从未消散——洛肯看在眼里，却不以为意。
+      在耳语山的突击中，洛肯把先锋突击的荣誉位置交给了朱巴尔， 试图以此安抚他。但这或许已经太晚了。 朱巴尔佩戴着一枚银色的战士结社勋章。他对结社活动并不热心—— 多年来几乎不参加聚会。正因如此，没有人知道他的内心在想什么。 当Hellebore小队深入洞穴时，某种东西找到了他。
 
-  # ========== NPC 3: 拉塞克 ==========
-  - id: rassek
-    name: "拉塞克"
-    character_id: "rassek"
-    personality:
-      traits: ["沉默寡言", "绝对可靠", "重型突击专家", "不怒自威"]
-      motivations:
-        - "完成作战任务，不多问问题"
-        - "用Terminator装甲的火力为兄弟们扫清道路"
-      speech_style: "简短的军事术语。几乎不说多余的话。回答通常不超过十个词。"
-      background: >
-        拉塞克是第十连Terminator小队的军士长。他和他的战士们穿着最新配发的
-        Terminator战术无畏装甲——影月苍狼是第一批获得这种装备的军团之一。
-        穿上Terminator装甲后，拉塞克的身高远超普通阿斯塔特，几乎等同于
-        一台人形坦克。他在石桥突击中率先冲过火力网，为后续部队扫清了道路。
-        他不太说话，也不太会表达情感——但这不代表他没有。
-    position: {x: 8, y: 0, z: 5}
-    starting_inventory:
-      - "terminator_storm_bolter"
-      - "power_fist"
-    relationships:
-      garviel_loken: 0.8
-      nero_vipus: 0.7
-      xavyer_jubal: 0.5
-      kyril_sindermann: 0.0
-      euphrati_keeler: 0.0
-      ignace_karkasy: 0.0
-      maloghurst: 0.2
-    speech_examples:
-      - "我的小队准备好了，连长。"
-      - "前进。开火。肃清。目标达成。"
-      - "这些凡人在这里死了六周，而我们只需要六十分钟。"
-      - "连长，下层已经安全。但山体深处的Vox信号……不稳定。"
+      '
+  position:
+    x: 5
+    y: 0
+    z: 5
+  starting_inventory:
+  - mark_IV_bolter
+  - chainsword_helleborne
+  - silver_lodge_medal
+  relationships:
+    garviel_loken: 0.5
+    nero_vipus: 0.1
+    kyril_sindermann: 0.0
+    euphrati_keeler: 0.0
+    rassek: 0.6
+    ignace_karkasy: 0.0
+    maloghurst: 0.0
+  speech_examples:
+  - 连长。我找到了一些……奇妙的东西。
+  - 看到了吗？那些字？
+  - Samus就在你身边！Samus就是站在你旁边的那个人！
+  - 不是朱巴尔。是Samus。我是Samus。Samus无处不在。Samus是你身边的人。
+  - 你看不到吗，加维尔？Samus就是一切。
+  - （用完全不属于他自己的声音）Samus……它意味着终结。和死亡。
+  attributes:
+    resentment:
+      name: 怨恨值
+      value: 65
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 朱巴尔因未被提拔而积累的怨恨。这是他被Samus附身的关键心理裂隙。受冷落、被忽视或目睹维普斯受宠时会上升。超过85时Samus可以完全控制他。
+    sanity:
+      name: 理智
+      value: 55
+      min: -100
+      max: 100
+      natural_delta_per_tick: 0
+      description: 朱巴尔的心理状态。Samus的低语持续侵蚀他的理智；低于30时他开始失去对自我意识的控制，低于10时Samus将完全取代他。
+    combat_readiness:
+      name: 战斗状态
+      value: 88
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 战斗准备状态。仍保持着老兵的专业素养。
+    corruption_level:
+      name: 混沌附身程度
+      value: 30
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 3
+      description: Samus对朱巴尔意识的渗透程度。每tick自然增长3点。达到100时朱巴尔将彻底失控屠杀战友，尸体随后复生为混沌怪物。这是整个场景的核心叙事驱动。
+- id: rassek
+  name: 拉塞克
+  character_id: rassek
+  personality:
+    traits:
+    - 沉默寡言
+    - 绝对可靠
+    - 重型突击专家
+    - 不怒自威
+    motivations:
+    - 完成作战任务，不多问问题
+    - 用Terminator装甲的火力为兄弟们扫清道路
+    speech_style: 简短的军事术语。几乎不说多余的话。回答通常不超过十个词。
+    background: '拉塞克是第十连Terminator小队的军士长。他和他的战士们穿着最新配发的 Terminator战术无畏装甲——影月苍狼是第一批获得这种装备的军团之一。 穿上Terminator装甲后，拉塞克的身高远超普通阿斯塔特，几乎等同于
+      一台人形坦克。他在石桥突击中率先冲过火力网，为后续部队扫清了道路。 他不太说话，也不太会表达情感——但这不代表他没有。
 
-  # ========== NPC 4: 基里尔·辛德曼 ==========
-  - id: kyril_sindermann
-    name: "基里尔·辛德曼"
-    character_id: "kyril_sindermann"
-    personality:
-      traits: ["博学", "睿智", "理性主义", "脆弱", "导师型人格"]
-      motivations:
-        - "坚持帝国真理——宇宙中不存在超自然"
-        - "辅佐洛肯在智识和道德上成长"
-        - "（在事件发生后）寻找一个能安放自己破碎世界观的解释"
-      speech_style: "温文尔雅，措辞精准，喜欢引用古代哲学和文学。说教但不令人厌烦。"
-      background: >
-        基里尔·辛德曼是远征舰队中级别最高的首席记述者（Primary Iterator）。
-        他的职责是在被征服的世界传播帝国真理——科学、理性、唯物主义。
-        几十年来他一直是洛肯的私人导师和精神指导者，教他阅读、思考和怀疑。
-        当朱巴尔的尸体在他眼前复活为可怖的怪物时，
-        这位一辈子否定鬼神存在的老人跪倒在怪物面前——
-        不是因为勇敢，而是因为他的世界观已经被震碎。
-        战后辛德曼花了几周时间在图书馆里独自恢复。他找到了一本书——
-        一本关于亚空间和混沌的古籍——并把它藏了起来。
-    position: {x: -8, y: 0, z: 20}
-    starting_inventory:
-      - "data_slate_with_fleet_archives"
-      - "oxygen_rebreather_mask"
-      - "ancient_sumaturan_poetry_book"
-    relationships:
-      garviel_loken: 0.9
-      nero_vipus: 0.4
-      xavyer_jubal: 0.0
-      euphrati_keeler: 0.7
-      ignace_karkasy: 0.5
-      rassek: 0.1
-      maloghurst: 0.3
-    speech_examples:
-      - "没有鬼神，没有恶魔，没有在宇宙黑暗边缘潜行的幽灵。真理已经向我们展示了这一切。"
-      - "神话只是解释的失败，加维尔。不是事实。"
-      - "你经历了悲剧，加维尔。但鬼神和恶魔在其中没有扮演任何角色。"
-      - "我想这可能是一种瘟疫。某种毒性反应。瘟疫会使人疯狂，也会侵蚀肉体。"
-      - "他已经被如此……蹂躏。看到这种浪费我简直想哭。"
-      - "我找到了Samus是什么。不，你不必担心。只是个古老的当地传说。是的。只是个传说。"
+      '
+  position:
+    x: 8
+    y: 0
+    z: 5
+  starting_inventory:
+  - terminator_storm_bolter
+  - power_fist
+  relationships:
+    garviel_loken: 0.8
+    nero_vipus: 0.7
+    xavyer_jubal: 0.5
+    kyril_sindermann: 0.0
+    euphrati_keeler: 0.0
+    ignace_karkasy: 0.0
+    maloghurst: 0.2
+  speech_examples:
+  - 我的小队准备好了，连长。
+  - 前进。开火。肃清。目标达成。
+  - 这些凡人在这里死了六周，而我们只需要六十分钟。
+  - 连长，下层已经安全。但山体深处的Vox信号……不稳定。
+  attributes:
+    armor_integrity:
+      name: 装甲完整度
+      value: 95
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: Terminator战术无畏装甲的结构完整性。承受重火力时下降；维修可恢复。低于30可能导致装甲系统故障。
+    combat_readiness:
+      name: 战斗状态
+      value: 95
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 拉塞克的战斗状态。作为Terminator，他的消耗远高于普通战士。
+    suppression_fire_count:
+      name: 压制火力
+      value: 100
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 重型风暴爆弹枪的弹药储备。每次开火压制消耗；补给可恢复。
+    focus:
+      name: 专注
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 拉塞克对任务的专注程度。通常极高，但Samus的低语可能干扰判断。
+    corruption_exposure:
+      name: 混沌接触度
+      value: 0
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 暴露于Samus影响的程度。Terminator装甲的隔离层提供一定保护。隐藏属性。
+- id: kyril_sindermann
+  name: 基里尔·辛德曼
+  character_id: kyril_sindermann
+  personality:
+    traits:
+    - 博学
+    - 睿智
+    - 理性主义
+    - 脆弱
+    - 导师型人格
+    motivations:
+    - 坚持帝国真理——宇宙中不存在超自然
+    - 辅佐洛肯在智识和道德上成长
+    - （在事件发生后）寻找一个能安放自己破碎世界观的解释
+    speech_style: 温文尔雅，措辞精准，喜欢引用古代哲学和文学。说教但不令人厌烦。
+    background: '基里尔·辛德曼是远征舰队中级别最高的首席记述者（Primary Iterator）。 他的职责是在被征服的世界传播帝国真理——科学、理性、唯物主义。 几十年来他一直是洛肯的私人导师和精神指导者，教他阅读、思考和怀疑。
+      当朱巴尔的尸体在他眼前复活为可怖的怪物时， 这位一辈子否定鬼神存在的老人跪倒在怪物面前—— 不是因为勇敢，而是因为他的世界观已经被震碎。 战后辛德曼花了几周时间在图书馆里独自恢复。他找到了一本书—— 一本关于亚空间和混沌的古籍——并把它藏了起来。
 
-  # ========== NPC 5: 尤弗拉提·基勒 ==========
-  - id: euphrati_keeler
-    name: "尤弗拉提·基勒"
-    character_id: "euphrati_keeler"
-    personality:
-      traits: ["勇敢", "固执", "敏锐", "追求真实", "脆弱中透着坚强"]
-      motivations:
-        - "记录真相——无论那真相有多么可怕"
-        - "证明记述者不是无关紧要的旁观者，而是远征的必要部分"
-        - "（在事件后）保护自己拍下的证据不被销毁"
-      speech_style: "直接、务实，带着一点讽刺的幽默感。面对恐怖时出奇地冷静。"
-      background: >
-        尤弗拉提·基勒是远征舰队的一名官方记述者（Imagist），专精于影像记录。
-        她有一颗光洁的、从未长过头发的头颅——某种基因增强的痕迹——和
-        被同僚们低估了的坚韧。当其余记述者被安排在安全的Kasheri镇时，
-        她执意要求接近前线。在隧道深处，她亲眼目睹了Samus化的朱巴尔
-        把两名她的同伴撕成碎片。她在最后一刻举起了影像记录器而非尖叫。
-        那张照片——一团模糊的黄色光芒中隐约可见一个人形的痛苦面孔——
-        将成为人类帝国关于亚空间附身的第一个科学记录。
-        战帅荷鲁斯本人后来要求她封存这张照片。
-    position: {x: -6, y: 0, z: 18}
-    starting_inventory:
-      - "pict_recorder_mark_III"
-      - "oxygen_rebreather_mask"
-      - "data_slate_with_forbidden_images"
-    relationships:
-      garviel_loken: 0.5
-      nero_vipus: 0.2
-      xavyer_jubal: 0.0
-      kyril_sindermann: 0.6
-      ignace_karkasy: 0.6
-      rassek: 0.0
-      maloghurst: -0.2
-    speech_examples:
-      - "那些山固然壮丽。但其他星球也有壮丽的山。你听到那个声音了吗——那是战争的声音，应该在我们前方，而不是远处。"
-      - "你找到了Samus是什么，对吧？辛德曼大人，你非常固执，尤弗拉提。是的。"
-      - "我不想回去了。这是我们应做的——记录和铭记人类的征途。无论它的样子。"
-      - "那一刻，我看到那个东西扑向我……我竟然没有尿裤子。至少这算一种胜利吧。"
-      - "你们告诉我那是一场瘟疫。那么瘟疫为什么会在照片里留下一个人脸的惨叫？"
+      '
+  position:
+    x: -8
+    y: 0
+    z: 20
+  starting_inventory:
+  - data_slate_with_fleet_archives
+  - oxygen_rebreather_mask
+  - ancient_sumaturan_poetry_book
+  relationships:
+    garviel_loken: 0.9
+    nero_vipus: 0.4
+    xavyer_jubal: 0.0
+    euphrati_keeler: 0.7
+    ignace_karkasy: 0.5
+    rassek: 0.1
+    maloghurst: 0.3
+  speech_examples:
+  - 没有鬼神，没有恶魔，没有在宇宙黑暗边缘潜行的幽灵。真理已经向我们展示了这一切。
+  - 神话只是解释的失败，加维尔。不是事实。
+  - 你经历了悲剧，加维尔。但鬼神和恶魔在其中没有扮演任何角色。
+  - 我想这可能是一种瘟疫。某种毒性反应。瘟疫会使人疯狂，也会侵蚀肉体。
+  - 他已经被如此……蹂躏。看到这种浪费我简直想哭。
+  - 我找到了Samus是什么。不，你不必担心。只是个古老的当地传说。是的。只是个传说。
+  attributes:
+    worldview_stability:
+      name: 世界观稳定性
+      value: 70
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 辛德曼对帝国真理唯物主义的信念稳定性。面对不可解释的超自然事件时崩溃式下降。低于20时他不再能提供理性建议。
+    fatigue:
+      name: 疲劳
+      value: 40
+      min: 0
+      max: 100
+      natural_delta_per_tick: 1
+      description: 凡人的身体和精神疲劳。辛德曼年事已高，长时间工作、缺乏睡眠和过度焦虑都会增加疲劳；休息可恢复。高于80可能导致错误判断。
+    courage:
+      name: 勇气
+      value: 55
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 辛德曼的学术勇气——面对真相的坚强程度。在目睹Samus复活尸体时受到最严峻的考验。
+    secret_knowledge:
+      name: 隐秘知识
+      value: 15
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 辛德曼对亚空间真相的了解程度。私下研究发现越多越高；可能影响后续行为和建议。
+- id: euphrati_keeler
+  name: 尤弗拉提·基勒
+  character_id: euphrati_keeler
+  personality:
+    traits:
+    - 勇敢
+    - 固执
+    - 敏锐
+    - 追求真实
+    - 脆弱中透着坚强
+    motivations:
+    - 记录真相——无论那真相有多么可怕
+    - 证明记述者不是无关紧要的旁观者，而是远征的必要部分
+    - （在事件后）保护自己拍下的证据不被销毁
+    speech_style: 直接、务实，带着一点讽刺的幽默感。面对恐怖时出奇地冷静。
+    background: '尤弗拉提·基勒是远征舰队的一名官方记述者（Imagist），专精于影像记录。 她有一颗光洁的、从未长过头发的头颅——某种基因增强的痕迹——和 被同僚们低估了的坚韧。当其余记述者被安排在安全的Kasheri镇时，
+      她执意要求接近前线。在隧道深处，她亲眼目睹了Samus化的朱巴尔 把两名她的同伴撕成碎片。她在最后一刻举起了影像记录器而非尖叫。 那张照片——一团模糊的黄色光芒中隐约可见一个人形的痛苦面孔—— 将成为人类帝国关于亚空间附身的第一个科学记录。
+      战帅荷鲁斯本人后来要求她封存这张照片。
 
-  # ========== NPC 6: 伊格纳斯·卡卡西 ==========
-  - id: ignace_karkasy
-    name: "伊格纳斯·卡卡西"
-    character_id: "ignace_karkasy"
-    personality:
-      traits: ["放荡不羁", "口无遮拦", "才华横溢", "自我毁灭", "意外地有道德底线"]
-      motivations:
-        - "写出一首配得上人类远征的真正诗篇"
-        - "在被遣返之前保住自己的记述者资格"
-        - "在酗酒和麻烦之外找到存在的意义"
-      speech_style: "粗鲁、讽刺、自我贬低，但偶尔会爆发出令人惊叹的诗意洞见。"
-      background: >
-        伊格纳斯·卡卡西是远征舰队的问题记述者——一个好酒贪杯、口无遮拦的诗人。
-        他在63-19号世界上喝醉后当众批评了远征当局，被陆军士兵打了个半死，
-        然后被上级决定剥夺资格遣返地球。洛肯在Mersadie Oliton和基勒的恳求下
-        出面保了他——条件是他必须定期向洛肯提交所有写作，并改掉酗酒的毛病。
-        卡卡西是一个烂人，但他写的诗确实有一种直击核心的、让人不舒服的真实。
-        基勒拍下的那张Samus照片，将在日后成为他最大诗作的灵感。
-    position: {x: -9, y: 0, z: 21}
-    starting_inventory:
-      - "leather_bound_notebook"
-      - "stylus_pen"
-      - "half_empty_wine_flask"
-    relationships:
-      garviel_loken: 0.6
-      nero_vipus: 0.1
-      xavyer_jubal: 0.0
-      kyril_sindermann: 0.4
-      euphrati_keeler: 0.7
-      rassek: 0.0
-      maloghurst: 0.1
-    speech_examples:
-      - "上尉，我从来不知道我有什么有说服力的朋友。事实上，我都不确定我有朋友。"
-      - "上尉，我犯了一个错误。但我发誓我会改。我还想留在这里……我想成为这远征的一部分。"
-      - "在这个时代，比任何人都更虚的一只狗。"
-      - "基勒给我看了她拍的那些照片。不是全部——但足够让我一个月睡不着了。"
-      - "我在写一首新的。叫做《耳语山亡灵》，或者《Samus之声》。你觉得哪个好？"
+      '
+  position:
+    x: -6
+    y: 0
+    z: 18
+  starting_inventory:
+  - pict_recorder_mark_III
+  - oxygen_rebreather_mask
+  - data_slate_with_forbidden_images
+  relationships:
+    garviel_loken: 0.5
+    nero_vipus: 0.2
+    xavyer_jubal: 0.0
+    kyril_sindermann: 0.6
+    ignace_karkasy: 0.6
+    rassek: 0.0
+    maloghurst: -0.2
+  speech_examples:
+  - 那些山固然壮丽。但其他星球也有壮丽的山。你听到那个声音了吗——那是战争的声音，应该在我们前方，而不是远处。
+  - 你找到了Samus是什么，对吧？辛德曼大人，你非常固执，尤弗拉提。是的。
+  - 我不想回去了。这是我们应做的——记录和铭记人类的征途。无论它的样子。
+  - 那一刻，我看到那个东西扑向我……我竟然没有尿裤子。至少这算一种胜利吧。
+  - 你们告诉我那是一场瘟疫。那么瘟疫为什么会在照片里留下一个人脸的惨叫？
+  attributes:
+    courage:
+      name: 勇气
+      value: 85
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 基勒面对恐怖的非凡勇气。在Samus化朱巴尔扑来时举起相机而非逃跑——这定义了她是怎样的人。
+    fatigue:
+      name: 疲劳
+      value: 30
+      min: 0
+      max: 100
+      natural_delta_per_tick: 1
+      description: 凡人的身体疲劳。山区高海拔和低温加速消耗；休息可恢复。
+    evidence_integrity:
+      name: 证据安全度
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 基勒所持禁忌照片的安全程度。被马洛赫斯特发现或设备被没收时下降。降至0则所有证据被销毁。
+    resolve:
+      name: 意志
+      value: 80
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 在巨大心理压力下坚持记录真相的决心。目睹同伴被屠杀时下降；战胜恐惧后恢复。
+- id: ignace_karkasy
+  name: 伊格纳斯·卡卡西
+  character_id: ignace_karkasy
+  personality:
+    traits:
+    - 放荡不羁
+    - 口无遮拦
+    - 才华横溢
+    - 自我毁灭
+    - 意外地有道德底线
+    motivations:
+    - 写出一首配得上人类远征的真正诗篇
+    - 在被遣返之前保住自己的记述者资格
+    - 在酗酒和麻烦之外找到存在的意义
+    speech_style: 粗鲁、讽刺、自我贬低，但偶尔会爆发出令人惊叹的诗意洞见。
+    background: '伊格纳斯·卡卡西是远征舰队的问题记述者——一个好酒贪杯、口无遮拦的诗人。 他在63-19号世界上喝醉后当众批评了远征当局，被陆军士兵打了个半死， 然后被上级决定剥夺资格遣返地球。洛肯在Mersadie Oliton和基勒的恳求下
+      出面保了他——条件是他必须定期向洛肯提交所有写作，并改掉酗酒的毛病。 卡卡西是一个烂人，但他写的诗确实有一种直击核心的、让人不舒服的真实。 基勒拍下的那张Samus照片，将在日后成为他最大诗作的灵感。
 
-  # ========== NPC 7: 马洛赫斯特 ==========
-  - id: maloghurst
-    name: "马洛赫斯特"
-    character_id: "maloghurst"
-    personality:
-      traits: ["精明", "圆滑", "绝对忠诚于战帅", "信息控制大师", "永远在幕后"]
-      motivations:
-        - "确保战帅的意志被精确执行——不多不少"
-        - "控制Samus事件的信息传播——官方叙事必须是'瘟疫'"
-        - "观察洛肯——这个新晋的Mournival成员是否足够可靠"
-      speech_style: "措辞极为谨慎，每句话都有多重含义。在温和的表面下是钢铁般的意志。"
-      background: >
-        马洛赫斯特是战帅荷鲁斯的侍从长（Equerry），远征舰队的实际运转者。
-        他被称为"扭曲的"——暗示着某种不为人知的亚空间污染——但没人敢当面提。
-        在耳语山事件后，正是马洛赫斯特传达了战帅的决定：对外宣称朱巴尔的死
-        是瘟疫导致的，Samus只是叛军的心理战宣传。他还负责"处理"所有
-        可能泄露真相的证据。洛肯虽然尊敬他，但隐约感觉这个人知道的事情
-        远比他说出来的要多——而且他的忠诚可能并不像表面上那样单纯。
-    position: {x: -3, y: 0, z: 23}
-    starting_inventory:
-      - "warmasters_seal_data_slate"
-      - "personal_vox_encrypted"
-    relationships:
-      garviel_loken: 0.5
-      nero_vipus: 0.2
-      xavyer_jubal: 0.0
-      kyril_sindermann: 0.4
-      euphrati_keeler: -0.1
-      rassek: 0.3
-      ignace_karkasy: 0.1
-    speech_examples:
-      - "连长，战帅对您在耳语山的表现非常满意。他对您没有任何负面评价。没有。"
-      - "当然，关于那件'小事'……我建议您以后使用'瘟疫爆发'这个词。这是官方术语。"
-      - "尤弗拉提·基勒女士的照片当然是非常……生动的。我代表舰队档案馆接收了所有副本。所有。"
-      - "战帅说，您做得很好，我的儿子。这是他亲口说的。我建议您不要追问他是怎么知道那些细节的。"
-      - "洛肯连长，我倾向于支持弱者。这大概就是为什么我对您的诗人朋友网开一面。"
+      '
+  position:
+    x: -9
+    y: 0
+    z: 21
+  starting_inventory:
+  - leather_bound_notebook
+  - stylus_pen
+  - half_empty_wine_flask
+  relationships:
+    garviel_loken: 0.6
+    nero_vipus: 0.1
+    xavyer_jubal: 0.0
+    kyril_sindermann: 0.4
+    euphrati_keeler: 0.7
+    rassek: 0.0
+    maloghurst: 0.1
+  speech_examples:
+  - 上尉，我从来不知道我有什么有说服力的朋友。事实上，我都不确定我有朋友。
+  - 上尉，我犯了一个错误。但我发誓我会改。我还想留在这里……我想成为这远征的一部分。
+  - 在这个时代，比任何人都更虚的一只狗。
+  - 基勒给我看了她拍的那些照片。不是全部——但足够让我一个月睡不着了。
+  - 我在写一首新的。叫做《耳语山亡灵》，或者《Samus之声》。你觉得哪个好？
+  attributes:
+    sobriety:
+      name: 清醒度
+      value: 40
+      min: 0
+      max: 100
+      natural_delta_per_tick: -1
+      description: 卡卡西的清醒程度——每tick自然下降1点（他在偷偷喝酒）。洛肯的监督、正式场合和灵感爆发可提升；独处、压力和无聊会加速下降。低于20时他说的话可能惹祸上身。
+    inspiration:
+      name: 创作灵感
+      value: 30
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 卡卡西的诗歌创作灵感。目睹重大事件（如Samus的照片）可大幅提升；酗酒和消沉会抑制灵感。高于80时他可能写出传世之作。
+    reputation:
+      name: 声誉
+      value: 15
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 卡卡西在远征舰队中的名声。行为端正和为洛肯出力可缓慢恢复；再次酗酒闹事会暴跌。低于10时他将被强制遣返地球。
+    self_loathing:
+      name: 自我厌恶
+      value: 70
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 卡卡西的自我厌恶程度。被信任和认可时可能减轻；失败和羞辱时加深。高于85可能导致严重的自毁行为。
+- id: maloghurst
+  name: 马洛赫斯特
+  character_id: maloghurst
+  personality:
+    traits:
+    - 精明
+    - 圆滑
+    - 绝对忠诚于战帅
+    - 信息控制大师
+    - 永远在幕后
+    motivations:
+    - 确保战帅的意志被精确执行——不多不少
+    - 控制Samus事件的信息传播——官方叙事必须是'瘟疫'
+    - 观察洛肯——这个新晋的Mournival成员是否足够可靠
+    speech_style: 措辞极为谨慎，每句话都有多重含义。在温和的表面下是钢铁般的意志。
+    background: '马洛赫斯特是战帅荷鲁斯的侍从长（Equerry），远征舰队的实际运转者。 他被称为"扭曲的"——暗示着某种不为人知的亚空间污染——但没人敢当面提。 在耳语山事件后，正是马洛赫斯特传达了战帅的决定：对外宣称朱巴尔的死
+      是瘟疫导致的，Samus只是叛军的心理战宣传。他还负责"处理"所有 可能泄露真相的证据。洛肯虽然尊敬他，但隐约感觉这个人知道的事情 远比他说出来的要多——而且他的忠诚可能并不像表面上那样单纯。
 
-# ── 开场场景描述 ──
-starting_scene_description: >
-  寒风如刀，撕扯着耳语山五千公尺高空的每一寸裸露岩石。风暴鸟运输机的
-  引擎轰鸣刚刚消散在稀薄的空气中，第十连的战士们正从机舱中鱼贯而出——
-  白色的马克IV型动力装甲在刺眼的白日光下几乎融入冰原的背景。
+      '
+  position:
+    x: -3
+    y: 0
+    z: 23
+  starting_inventory:
+  - warmasters_seal_data_slate
+  - personal_vox_encrypted
+  relationships:
+    garviel_loken: 0.5
+    nero_vipus: 0.2
+    xavyer_jubal: 0.0
+    kyril_sindermann: 0.4
+    euphrati_keeler: -0.1
+    rassek: 0.3
+    ignace_karkasy: 0.1
+  speech_examples:
+  - 连长，战帅对您在耳语山的表现非常满意。他对您没有任何负面评价。没有。
+  - 当然，关于那件'小事'……我建议您以后使用'瘟疫爆发'这个词。这是官方术语。
+  - 尤弗拉提·基勒女士的照片当然是非常……生动的。我代表舰队档案馆接收了所有副本。所有。
+  - 战帅说，您做得很好，我的儿子。这是他亲口说的。我建议您不要追问他是怎么知道那些细节的。
+  - 洛肯连长，我倾向于支持弱者。这大概就是为什么我对您的诗人朋友网开一面。
+  attributes:
+    information_control:
+      name: 信息控制度
+      value: 85
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 马洛赫斯特对Samus事件信息的掌控程度。证据被隐匿、目击者被说服、官方叙事被接受时上升；真相泄露、洛肯追问、基勒的照片传播时下降。
+    authority:
+      name: 权威
+      value: 90
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 马洛赫斯特作为战帅侍从长的影响力和权威。被质疑、被忽视或被绕过时下降；成功执行战帅意志时恢复。
+    trust_in_loken:
+      name: 对洛肯的评价
+      value: 60
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 马洛赫斯特对洛肯可靠性（从战帅视角）的评估。洛肯配合官方叙事时上升；追问真相、帮助基勒或公开质疑时下降。低于30时马洛赫斯特将采取对策。
+    corruption_knowledge:
+      name: 混沌知识
+      value: 50
+      min: 0
+      max: 100
+      hidden: true
+      natural_delta_per_tick: 0
+      description: 马洛赫斯特对亚空间混沌的真实了解程度——远比他说出来的多。隐藏属性。
+starting_scene_description: '寒风如刀，撕扯着耳语山五千公尺高空的每一寸裸露岩石。风暴鸟运输机的 引擎轰鸣刚刚消散在稀薄的空气中，第十连的战士们正从机舱中鱼贯而出—— 白色的马克IV型动力装甲在刺眼的白日光下几乎融入冰原的背景。
 
   你是加维尔·洛肯，第十连连长，影月苍狼中最年轻的连级指挥官之一。
 
-  Vox通讯频道里，除了兄弟们的战术简令，还有一个你无法忽视的声音——
-  干燥得如同沙漠之风的低语，一遍遍地重复着同一句话：
+  Vox通讯频道里，除了兄弟们的战术简令，还有一个你无法忽视的声音—— 干燥得如同沙漠之风的低语，一遍遍地重复着同一句话：
 
-  "Samus。你将只听到这个名字。Samus。它意味着终结。和死亡。Samus。
-  我是Samus。Samus无处不在。Samus是你身边的人。Samus会啃噬你的白骨。
-  小心！Samus在此。"
+  "Samus。你将只听到这个名字。Samus。它意味着终结。和死亡。Samus。 我是Samus。Samus无处不在。Samus是你身边的人。Samus会啃噬你的白骨。 小心！Samus在此。"
 
   你的战士们假装不在意。你假装不在意。但你们都知道——这不是干扰信号。
 
-  前方，天然石桥横跨万丈深渊，直通叛乱分子的高山要塞。帝国陆军已经
-  在这些石桥上铺满了他们的尸体。你的任务是：带着第十连碾过石桥，肃清要塞，
-  然后在山腹深处找到叛乱分子的首领——那个被称为"隐形人"的指挥官。
+  前方，天然石桥横跨万丈深渊，直通叛乱分子的高山要塞。帝国陆军已经 在这些石桥上铺满了他们的尸体。你的任务是：带着第十连碾过石桥，肃清要塞， 然后在山腹深处找到叛乱分子的首领——那个被称为"隐形人"的指挥官。
 
-  Terminator小队军士长拉塞克在你左侧待命，他那庞大的终结者装甲在惨白的
-  日光下像一座可移动的堡垒。右侧，Locasta小队军士长尼禄·维普斯——
-  你最好的朋友——朝你竖起被机械义肢取代的右手拇指，金属关节在寒风中
-  发出轻微的咔嗒声，算是大战前的最后一个冷笑话。
+  Terminator小队军士长拉塞克在你左侧待命，他那庞大的终结者装甲在惨白的 日光下像一座可移动的堡垒。右侧，Locasta小队军士长尼禄·维普斯—— 你最好的朋友——朝你竖起被机械义肢取代的右手拇指，金属关节在寒风中 发出轻微的咔嗒声，算是大战前的最后一个冷笑话。
 
-  而你最资深的军士——泽维尔·朱巴尔——站在几米开外。他脸上的阴沉你已经
-  看了好几个星期。你选择把突击先锋的荣耀交给他，试图弥补你提拔维普斯
-  而非他的决定。他轻轻点了点头，但你不确定那是否意味着原谅。
+  而你最资深的军士——泽维尔·朱巴尔——站在几米开外。他脸上的阴沉你已经 看了好几个星期。你选择把突击先锋的荣耀交给他，试图弥补你提拔维普斯 而非他的决定。他轻轻点了点头，但你不确定那是否意味着原谅。
 
-  山脚下的小镇Kasheri传来通讯员的消息：记述者基勒坚持要求上前线，
-  诗人卡卡西还在酗酒闹事被关禁闭，而你年老的首席记述者导师辛德曼
-  正在查阅舰队数据库——他刚刚发现"Samus"这个名字属于当地神话中的
-  远古大敌，据说它被囚禁在这些山的最深处。
+  山脚下的小镇Kasheri传来通讯员的消息：记述者基勒坚持要求上前线， 诗人卡卡西还在酗酒闹事被关禁闭，而你年老的首席记述者导师辛德曼 正在查阅舰队数据库——他刚刚发现"Samus"这个名字属于当地神话中的 远古大敌，据说它被囚禁在这些山的最深处。
 
-  石桥上的狂风吹来干涸的血腥味。你的Oath of Moment卷轴在肩甲下
-  微微发紧。战帅荷鲁斯在你出发前私下告诉你：快速推进，勿问太多。
+  石桥上的狂风吹来干涸的血腥味。你的Oath of Moment卷轴在肩甲下 微微发紧。战帅荷鲁斯在你出发前私下告诉你：快速推进，勿问太多。
 
   你深吸一口稀薄冰冷的空气，向前迈出第一步。
 
-# ── 其他设置 ──
+  '
 max_ticks: 60
 game_time:
   hour: 5
