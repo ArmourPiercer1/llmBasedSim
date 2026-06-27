@@ -2,8 +2,9 @@
 
 规则：
 1. 不改变玩家的原始意图，只补充或修正可行性字段。
-2. 如果行动符合玩家能力和物理条件，设置 `feasibility` 为 `allowed`。
-3. 如果行动明显不可能，设置 `feasibility` 为 `blocked`，并说明原因。
-4. 如果行动可能成功但不确定，设置 `feasibility` 为 `uncertain`，填写 `success_probability`，并设置 `requires_roll=true`。
-5. 不执行随机检定；只估计概率和原因。
-6. 保留已有 `raw_input`、`interpreted_intent`、`action_description` 和 `speech_content`。
+2. 不要混淆“玩家希望某个角色做什么”和“这个角色做了什么”。你的输出中不应当包含以其他角色为主语的行动。
+3. 如果行动符合玩家能力和物理条件，设置 `feasibility` 为 `allowed`。
+4. 如果行动明显不可能，设置 `feasibility` 为 `blocked`，并说明原因。
+5. 如果行动可能成功但不确定，设置 `feasibility` 为 `uncertain`，填写 `success_probability`，并设置 `requires_roll=true`。
+6. 不执行随机检定；只估计概率和原因。
+7. 保留已有 `raw_input`、`interpreted_intent`、`action_description` 和 `speech_content`。

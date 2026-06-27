@@ -1,0 +1,154 @@
+world:
+  name: 测试房间
+  description: '一个用于管道测试的空白世界。一间朴素的石室，除了墙壁和地面什么都没有。适合验证游戏核心循环是否正常运转。'
+  environment:
+    time_of_day: 未知
+    weather: 无
+    temperature_c: 20.0
+  locations:
+  - id: stone_room
+    name: 石室
+    description: '一间四方形石室，约十米见方。墙壁由粗糙的灰色石块砌成，地面铺着平整的石板。天花板上嵌着一颗散发柔和白光的水晶，照亮了整间房间。东墙上有一扇紧闭的橡木门。房间里没有任何多余的东西——没有家具，没有装饰，没有生命。唯一的声音是你自己的呼吸和心跳。'
+    connections:
+      east: hallway
+    ambient_light: 天花板水晶的柔和白光
+    ambient_sound: 绝对的寂静
+  - id: hallway
+    name: 走廊
+    description: '一条狭长的石砌走廊，宽两米，向南北方向延伸。墙壁上每隔五米有一盏昏暗的壁灯，投下摇曳的橙色光晕。走廊两端都隐没在黑暗之中。空气中有一丝凉意。地面石板上有裂纹，暗示着这条走廊已经存在了很久。'
+    connections:
+      west: stone_room
+      north: storage_room
+    ambient_light: 壁灯昏暗的橙色光晕
+    ambient_sound: 空气在石壁间细微流动的沙沙声
+  - id: storage_room
+    name: 储藏室
+    description: '一间比石室更小的储物间，墙边堆放着几个木箱。木箱上积着灰尘，显然已经很久没人碰过。一个箱子的盖子半开，里面隐约能看到几卷泛黄的羊皮纸。墙角结着蛛网。空气中有旧木材和纸张的干燥气味。'
+    connections:
+      south: hallway
+    ambient_light: 极为昏暗，仅靠走廊壁灯透入的微光
+    ambient_sound: 细微的老鼠脚步声从角落传来
+  objects:
+  - id: oak_door
+    object_type: decoration
+    name: 橡木门
+    description: 一扇厚重的橡木门，镶嵌在石室的东墙上。门板由深色橡木制成，铁质合页和门栓已经有些锈迹，但依然坚固。门上没有锁，圆形铁把手上刻着简单的几何纹路。
+    position:
+      x: 5
+      y: 0
+      z: 0
+    state:
+      closed: true
+      unlocked: true
+    properties:
+      material: oak_and_iron
+      weight: heavy
+  - id: light_crystal
+    object_type: decoration
+    name: 发光水晶
+    description: 嵌入石室天花板中央的一颗拳头大小的水晶。它自发地散发出柔和的白色光芒，温度微温。轻轻触碰时光芒会波动，像是在回应。来源不明——这间石室在测试场景中已经被设定了极其漫长的岁月。
+    position:
+      x: 0
+      y: 3
+      z: 0
+    state:
+      glowing: true
+      temperature: warm
+    properties:
+      material: unknown_crystal
+      purpose: illumination
+  - id: old_parchments
+    object_type: document
+    name: 旧羊皮纸卷
+    description: 储藏室木箱中的几卷羊皮纸。纸张已经发黄变脆，边角有些缺损。上面的文字是用一种深棕色墨水书写的——已经褪色，但还勉强可以辨认。内容似乎是某种记录或日记，但写的是什么语言，需要仔细辨认。
+    position:
+      x: 8
+      y: 0.5
+      z: 12
+    state:
+      aged: true
+      readable: true
+    properties:
+      material: parchment
+      language: unknown
+      age: very_old
+  - id: wooden_crates
+    object_type: container
+    name: 木箱
+    description: 三个叠放在储藏室墙边的木板箱。板材粗糙未打磨，有霉斑。其中一个的盖子被打开了一半，露出里面的羊皮纸。另外两个封着的箱子里不知装着什么——箱盖钉得紧紧的。
+    position:
+      x: 8
+      y: 0
+      z: 10
+    state:
+      one_open: true
+      two_sealed: true
+    properties:
+      material: rough_wood
+      contents: parchments_and_unknown
+player:
+  player_id: player_1
+  name: 测试者
+  persona: '一个身处空白测试世界的观察者。没有过去的记忆，没有未来的目标——只有对当下环境的好奇和探索的本能。你是一个虚空中的存在，被放入这个简化的世界以验证其运转是否正常。你不记得自己是谁，但你能够观察、行动和思考。'
+  position:
+    x: 0
+    y: 0
+    z: 0
+  capabilities:
+    sight_range_m: 50.0
+    hearing_range_m: 100.0
+    field_of_view_degrees: 180.0
+    special_senses: []
+    allowed_extraordinary_actions: []
+    blocked_common_actions: []
+    skill_levels:
+      observation: 0.8
+      investigation: 0.7
+  physical_profile:
+    height_cm: 175.0
+    weight_kg: 70.0
+    body_width_cm: 50.0
+    movement_mode: normal_walking
+    strength: 0.5
+  attributes:
+    curiosity:
+      name: 好奇心
+      value: 80
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0
+      description: 对探索和发现的驱动力。
+    fatigue:
+      name: 疲劳
+      value: 10
+      min: 0
+      max: 100
+      natural_delta_per_tick: 0.5
+      description: 身体和精神疲劳程度。每tick自然增加。高于80时行动效率下降。
+  subconscious_rules: []
+  subconscious_memory: []
+  speech_examples:
+  - 这里什么都没有。
+  - 那扇门通向哪里？
+  - 我想看看箱子里有什么。
+  inventory: []
+characters: []
+starting_scene_description: '你睁开眼睛。
+
+头顶是一颗散发着柔和白光的水晶。它不知已经亮了多久——也许从这间石室被建造起就一直在亮着。你躺在地板上，石板冰冷而平整。
+
+你坐起身来，环顾四周。四方形石室。灰色石块墙壁。一扇橡木门。除此之外——空的。
+
+你不记得自己是怎么来到这里的。你不记得自己的名字。但你还记得如何思考。如何行动。如何观察。
+
+你站了起来。东墙上的橡木门是唯一的出口。门没锁。天花板上那颗水晶在你起身时微微波动了光芒——像是在注视你。
+
+你决定先弄清楚自己在哪里，然后找到出去的路。'
+max_ticks: 20
+game_time:
+  hour: 12
+  minute: 0
+ticks_per_game_minute: 1
+narrative_style:
+  style_description: "简洁直接的叙述风格。不需要华丽的修辞，用平实的语言描述环境、动作和观察结果。适合快速测试游戏循环。"
+  style_example: "你环顾四周。石室里空荡荡的。墙上有一扇门。头顶的水晶发出柔和的白光。除此之外，没有什么值得注意的东西。"

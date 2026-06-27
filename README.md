@@ -133,12 +133,12 @@ WebUI 采用暗色蓝灰游戏 HUD 风格，参考 [`UI/reference.png`](UI/refer
 跳过对话初始化，使用预编写的 YAML 文件直接启动：
 
 ```bash
-python -m src.main --init-file config/init_test.yaml
+python -m src.main --init-file public_start/whisperheads.yaml
 ```
 
-初始化文件格式参见 [`config/init_test.yaml`](config/init_test.yaml)（蔷薇庄园场景，含完整注释）。
+初始化文件格式参见 [`public_start/whisperheads.yaml`](public_start/whisperheads.yaml)（耳语山场景，含完整注释）。
 
-更多场景文件见 [`private_start/files/`](private_start/files/) 目录。
+更多场景文件见 [`public_start/`](public_start/) 和 [`private_start/`](private_start/) 目录。
 
 ## 项目定位
 
@@ -245,6 +245,8 @@ DeepSeek 当前不依赖原生 `response_format`。代码通过向 prompt 注入
 - `prompts/character_user.j2`
 - `prompts/physics_system.j2`
 - `prompts/physics_user.j2`
+- `prompts/attribute_update_system.j2`
+- `prompts/attribute_update_user.j2`
 - `prompts/sensory_system.j2`
 - `prompts/sensory_user.j2`
 - `prompts/narrative_system.j2`
@@ -254,13 +256,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 ### 配置层
 
-- `config/simulation.yaml`
-- `config/world.yaml`
-- `config/player.yaml`
-- `config/characters/*.yaml`
-- `config/init_test.yaml`
-
-配置由 `src/config/loader.py` 加载并通过 Pydantic 校验。`init_test.yaml` 是包含完整世界、玩家和 NPC 设定的单文件测试场景。
+- `config/simulation.yaml` — LLM、模拟和 Agent 全局配置
 
 #### 世界规则注入（`world_rules`）
 
@@ -318,11 +314,11 @@ world_rules:
 - 项目依赖配置；
 - Pydantic 数据模型（含玩家潜意识、能力约束、物理数据、语言范例）；
 - YAML 配置加载与 Pydantic 校验；
-- Jinja2 Prompt 模板（13 个模板，覆盖初始化、玩家意图、可行性、角色、物理、属性更新、感官全链路）；
+- Jinja2 Prompt 模板（15 个模板，覆盖初始化、玩家意图、可行性、角色、物理、属性更新、感官、叙事全链路）；
 - DeepSeek 接入；
 - Prompt-based JSON 结构化解析；
 - 初始化 Agent（对话式 + 文件式）；
-- LangGraph tick 管道（7 节点，含玩家输入处理、行动可行性判断和属性更新）；
+- LangGraph tick 管道（8 节点，含玩家输入处理、行动可行性判断和属性更新）；
 - 玩家输入结构化（`player_intent_process`）——模糊表达细化、可选潜意识修正；
 - 玩家行动可行性判断（`player_action_resolve`）——LLM 综合判断 + Python 系统规则预判；
 - Python 侧确定性规则预判（`src/game/rules.py`）——能力约束、物理约束、锁难度与技能概率；
@@ -332,7 +328,7 @@ world_rules:
 - NPC 行动状态应用（`apply_npc_actions`）——NPC 移动、交互、对话、使用物品结果写入状态；
 - 对话状态追踪（`conversation_target` / `last_spoken_to`）——NPC 对话有连续性；
 - 关系数值变化（`emotion` 驱动 `relationships`，好感度反映在行为中）；
-- 通用角色属性系统（`attributes` + `attribute_update`）——init 文件可为玩家/NPC 定义任意数值属性，节点按行动、事件和自然变化更新；
+- 通用角色属性系统（`attributes` + `attribute_update`）——init 文件可为玩家/NPC 定义任意数值属性，节点按行动、事件和自然变化更新；支持隐藏属性（`hidden: true`），隐藏属性不在默认 UI 中展示，但影响检定和 NPC 行为；
 - 世界规则注入（`world_rules`）——init YAML 可声明 `physics`/`attribute` 的 `disable` 和 `append`，向物理引擎和属性系统注入场景特定规则或屏蔽默认规则；
 - 小说化叙事改写节点（`narrative_stylize`）——将结构化感官数据改写为沉浸式文学叙事，文风通过 init YAML 的 `narrative_style` 字段控制（`style_description` + `style_example`）；
 - 感官分类查询命令（`/see` `/hear` `/feel`）——可分别查看原始视觉、听觉、触觉/嗅觉信息条目；
@@ -353,7 +349,8 @@ world_rules:
 - 节点级容错（全部 7 个 LLM 节点含 try/except 降级）；
 - NPC 语言范例注入（`speech_examples` → `character_system.j2`）；
 - Rich CLI（双面板渲染）；
-- WebUI 原型（`python -m src.web.main`）——暗色蓝灰 HUD 三栏界面、小说化叙事流、可折叠状态面板、感官/行动 modal、斜杠菜单、显示设置 localStorage 持久化、存档读取/保存；
+- WebUI（`python -m src.web.main`）——暗色蓝灰 HUD 三栏界面、小说化叙事流、可折叠状态面板、感官/行动 modal、斜杠菜单、显示设置 localStorage 持久化、局域网手机访问（`--lan`）、管道节点实时进度、开局文件自动发现（`public_start/` + `private_start/`）、自定义路径开局、存档读取/保存；
+- 《荷鲁斯崛起》系列开局场景——耳语山（`whisperheads.yaml`）、谋杀星（`murder.yaml`）；
 - 接口规范文档（`docs/game-flow-interfaces.md`）；
 - `CONTRIBUTING.md` 接口维护约定。
 
@@ -373,7 +370,7 @@ world_rules:
    - 但还没有角色属性、难度等级、优势/劣势、重试惩罚等完整检定系统。
 
 4. **自动化测试覆盖已大幅提升，但集成测试仍缺失**
-   - 纯函数测试已覆盖 136 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、WebUI 快照/感官数据、初始化文件、游戏时间和事件压缩；
+   - 纯函数测试已覆盖 141 个用例：JSON 解析、Prompt 模板加载与渲染、配置校验、数据模型默认值、规则预判（能力/物理/技能）、状态应用（玩家/NPC/物品/对话/情绪/检定）、属性更新、世界规则注入、UI 渲染、WebUI 快照/感官数据、初始化文件、游戏时间和事件压缩；
    - 但还没有 mock LLM 的完整 tick 集成测试和 Prompt 输出样例测试。
 
 5. **Prompt 和 schema 仍需收敛**
@@ -386,7 +383,7 @@ world_rules:
 
 2. **完善检定系统** — 引入难度等级、角色属性、优势/劣势、重试惩罚等完整检定机制；将检定结果写入事件日志和角色记忆。
 
-3. **补齐集成测试** — 在现有 136 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
+3. **补齐集成测试** — 在现有 141 个纯函数测试基础上，增加 mock LLM 完整 tick 集成测试、Prompt 输出样例测试、save/load CLI 行为测试。
 
 4. **Prompt 与 schema 收敛** — 为常见行动建立固定示例库；减少 LLM 输出字段格式波动；明确 `PlayerAction`、`PhysicsOutcome` 与 `AttributeUpdateResolution` 的职责边界。
 
@@ -399,7 +396,7 @@ world_rules:
 - 角色关系网络与目标冲突（三角关系、联盟、背叛、秘密）；
 - 更严格的世界状态 schema（物理尺寸、材质属性、视线遮挡等系统化）；
 - 事件溯源和 replay（从初始状态完整回放任意时间线）；
-- Web UI（地图渲染、角色面板、物品栏、事件时间线、关系图）；
+- Web UI 增强（地图渲染、角色面板、物品栏、事件时间线、关系图）；
 - Prompt 评估用例与回归测试框架；
 - CI 与自动化测试流水线。
 
@@ -421,6 +418,6 @@ world_rules:
 | 修改 WebUI 前端 | `web/` |
 | 修改确定性规则 | `src/game/rules.py`, `src/game/state_apply.py` |
 | 修改 CLI 状态显示 | `src/ui/status.py` |
-| 编写/使用初始化文件 | `config/init_test.yaml` |
+| 编写/使用初始化文件 | `public_start/*.yaml`, `private_start/` |
 | 查看接口规范 | `docs/game-flow-interfaces.md` |
 | 查看协作约定 | `CONTRIBUTING.md` |
