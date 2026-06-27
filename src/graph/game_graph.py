@@ -181,6 +181,7 @@ def build_game_graph(
                 player if isinstance(player, dict) else {},
                 state.get("objects", {}),
                 state.get("locations", {}),
+                state.get("world_rules") if isinstance(state.get("world_rules"), dict) else None,
             )
             system_prompt = prompt_loader.render("player_action_resolve_system.j2", {})
             user_prompt = prompt_loader.render("player_action_resolve_user.j2", {

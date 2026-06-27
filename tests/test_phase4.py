@@ -1,10 +1,31 @@
-from src.agents.init import init_file_to_game_state, load_init_file
+from src.agents.init import init_file_to_game_state
 from src.game.state_apply import apply_npc_actions, compact_event_log
 from src.graph.game_state import advance_game_time, time_of_day_from_hour
 
 
 def _test_state():
-    return init_file_to_game_state(load_init_file("config/init_test.yaml"))
+    return init_file_to_game_state({
+        "world": {
+            "name": "测试世界",
+            "locations": [],
+            "objects": [],
+        },
+        "player": {"name": "艾琳"},
+        "characters": [
+            {
+                "id": "victoria",
+                "name": "艾琳",
+                "relationships": {},
+            },
+            {
+                "id": "knight_rain",
+                "name": "雷恩",
+                "starting_position": {"x": 0, "y": 0, "z": 0},
+                "relationships": {"victoria": 0.0},
+            },
+        ],
+        "starting_scene_description": "开场",
+    })
 
 
 def test_npc_move_updates_position():

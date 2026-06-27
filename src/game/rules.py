@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from src.game.condition_eval import ConditionEvalError, evaluate_condition
+from src.game.deterministic_rules import parse_deterministic_rules
+
 STRENGTH_TO_KG_FACTOR = 50.0
+logger = logging.getLogger(__name__)
 
 
 def _text_matches_rule(text: str, rule: str) -> bool:
@@ -86,38 +91,82 @@ def _rule_result(
     }
 
 
+def _custom_rule_result(rule, player_action: dict[str, Any], player: dict[str, Any], target: dict[str, Any] | None) -> dict[str, Any] | None:
+    if rule.condition:
+        try:
+            outcome = evaluate_condition(rule.condition, {
+                "player": player,
+                "target": target or {},
+                "action": player_action,
+            })
+        except ConditionEvalError as exc:
+            logger.warning("deterministic rule %r condition failed: %s", rule.id, exc)
+            return None
+        return _rule_result(
+            outcome.feasibility,
+            f"系统规则预判（{rule.id}）：{rule.description}",
+            f"custom:{rule.id}",
+            success_probability=outcome.probability,
+            requires_roll=outcome.feasibility == "uncertain",
+        )
+
+    return _rule_result(
+        rule.feasibility or "allowed",
+        f"系统规则预判（{rule.id}）：{rule.description}",
+        f"custom:{rule.id}",
+        success_probability=rule.probability,
+        requires_roll=rule.feasibility == "uncertain",
+    )
+
+
 def check_action_feasibility(
     player_action: dict[str, Any],
     player: dict[str, Any],
     objects: dict[str, dict[str, Any]],
     locations: dict[str, dict[str, Any]],
+    world_rules: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     action_text = _action_text(player_action)
     capabilities = player.get("capabilities", {}) if isinstance(player, dict) else {}
-
-    for rule in capabilities.get("blocked_common_actions", []) or []:
-        if _text_matches_rule(action_text, str(rule)):
-            return _rule_result(
-                "blocked",
-                f"系统规则预判：玩家人设限制不允许执行该行动（{rule}）。",
-                "blocked_common",
-            )
-
-    for rule in capabilities.get("allowed_extraordinary_actions", []) or []:
-        if _text_matches_rule(action_text, str(rule)):
-            return _rule_result(
-                "allowed",
-                f"系统规则预判：玩家具备可执行该行动的特殊能力（{rule}）。",
-                "extraordinary",
-            )
-
     target = _target_object(player_action, objects)
+    disabled_rules: set[int] = set()
+
+    deterministic_config = (world_rules or {}).get("deterministic") if isinstance(world_rules, dict) else None
+    if deterministic_config:
+        disabled_rules, custom_rules, warnings = parse_deterministic_rules(deterministic_config)
+        for warning in warnings:
+            logger.warning(warning)
+        for rule in custom_rules:
+            if rule.match_pattern and not rule.match_pattern.search(action_text):
+                continue
+            result = _custom_rule_result(rule, player_action, player, target)
+            if result is not None:
+                return result
+
+    if 1 not in disabled_rules:
+        for rule in capabilities.get("blocked_common_actions", []) or []:
+            if _text_matches_rule(action_text, str(rule)):
+                return _rule_result(
+                    "blocked",
+                    f"系统规则预判：玩家人设限制不允许执行该行动（{rule}）。",
+                    "blocked_common",
+                )
+
+    if 2 not in disabled_rules:
+        for rule in capabilities.get("allowed_extraordinary_actions", []) or []:
+            if _text_matches_rule(action_text, str(rule)):
+                return _rule_result(
+                    "allowed",
+                    f"系统规则预判：玩家具备可执行该行动的特殊能力（{rule}）。",
+                    "extraordinary",
+                )
+
     action_type = player_action.get("action_type")
 
     if action_type == "interact" and target:
         props = target.get("properties", {})
         weight = props.get("weight_kg")
-        if weight is not None:
+        if 3 not in disabled_rules and weight is not None:
             strength = (player.get("physical_profile", {}) or {}).get("strength")
             if strength is not None:
                 capacity = float(strength) * STRENGTH_TO_KG_FACTOR
@@ -138,7 +187,7 @@ def check_action_feasibility(
                     )
 
         lock_difficulty = props.get("lock_difficulty")
-        if lock_difficulty is not None:
+        if 4 not in disabled_rules and lock_difficulty is not None:
             skill = float((capabilities.get("skill_levels", {}) or {}).get("lockpicking", 0.0))
             difficulty = float(lock_difficulty)
             if skill < difficulty:
@@ -156,7 +205,7 @@ def check_action_feasibility(
                 "skill_vs_lock",
             )
 
-    if action_type == "move":
+    if 5 not in disabled_rules and action_type == "move":
         width = _target_width(player_action, objects, locations)
         body_width = (player.get("physical_profile", {}) or {}).get("body_width_cm")
         if width is not None and body_width is not None:

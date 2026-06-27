@@ -3,23 +3,96 @@ from src.config.loader import ConfigLoader
 from src.graph.game_state import normalize_state, strip_transient_state
 
 
+def _raw_scene():
+    return {
+        "world": {
+            "name": "蔷薇庄园",
+            "description": "测试庄园",
+            "locations": [
+                {"id": "hall", "name": "大厅", "description": "明亮的大厅"},
+            ],
+            "objects": [
+                {"id": "table", "object_type": "furniture", "name": "桌子", "description": "一张桌子"},
+            ],
+        },
+        "player": {
+            "name": "艾琳",
+            "starting_position": {"x": 0, "y": 0, "z": 0, "location_id": "hall"},
+            "attributes": {"stamina": {"name": "体力", "value": 70, "max": 100}},
+            "subconscious_rules": ["规则1", "规则2", "规则3", "规则4"],
+        },
+        "characters": [
+            {
+                "id": "knight_rain",
+                "name": "雷恩",
+                "starting_position": {"x": 1, "y": 0, "z": 0, "location_id": "hall"},
+                "attributes": {"composure": {"name": "镇定", "value": 40, "max": 100}},
+            }
+        ],
+        "starting_scene_description": "开场",
+    }
+
+
 def test_init_file_loads_full_test_scene():
-    state = init_file_to_game_state(load_init_file("config/init_test.yaml"))
+    state = init_file_to_game_state(_raw_scene())
 
     assert state["world_name"] == "蔷薇庄园"
-    assert len(state["locations"]) == 7
-    assert len(state["objects"]) == 8
-    assert len(state["characters"]) == 4
+    assert len(state["locations"]) == 1
+    assert len(state["objects"]) == 1
+    assert len(state["characters"]) == 1
     assert state["player"]["position"] is not None
     assert "stamina" in state["player"]["attributes"]
     assert "composure" in state["characters"]["knight_rain"]["attributes"]
     assert len(state["player"]["subconscious_rules"]) == 4
 
 
-def test_split_config_loads_state_with_position():
-    state = config_loader_to_game_state(ConfigLoader("config"))
+def test_split_config_loads_state_with_position(tmp_path):
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "simulation.yaml").write_text("simulation:\n  max_ticks: 100\n", encoding="utf-8")
+    (tmp_path / "world.yaml").write_text(
+        """
+world:
+  name: 测试世界
+  locations:
+    - id: hall
+      name: 大厅
+      description: 明亮的大厅
+  objects: []
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "player.yaml").write_text(
+        """
+player:
+  name: 艾琳
+  starting_position:
+    x: 0
+    y: 0
+    z: 0
+    location_id: hall
+  attributes:
+    stamina:
+      name: 体力
+      value: 70
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "characters" / "alice.yaml").write_text(
+        """
+character:
+  id: alice
+  name: 爱丽丝
+  attributes:
+    mood:
+      name: 心情
+      value: 50
+""".strip(),
+        encoding="utf-8",
+    )
 
-    assert state["world_name"]
+    state = config_loader_to_game_state(ConfigLoader(str(tmp_path)))
+
+    assert state["world_name"] == "测试世界"
     assert state["player"]["position"] is not None
     assert state["characters"]
     assert "stamina" in state["player"]["attributes"]
@@ -27,7 +100,7 @@ def test_split_config_loads_state_with_position():
 
 
 def test_strip_transient_state_round_trip_preserves_attributes():
-    state = init_file_to_game_state(load_init_file("config/init_test.yaml"))
+    state = init_file_to_game_state(_raw_scene())
     state["player_input"] = "test"
     state["player_action"] = {"raw_input": "test"}
     state["action_intents"] = [{"character_id": "x"}]
@@ -49,12 +122,12 @@ def test_strip_transient_state_round_trip_preserves_attributes():
 
 
 def test_init_file_preserves_world_rules():
-    state = init_file_to_game_state(load_init_file("config/init_test.yaml"))
-    assert state["world_rules"] == {}
+    state = init_file_to_game_state(load_init_file("public_start/whisperheads.yaml"))
+    assert "physics" in state["world_rules"]
+    assert "attribute" in state["world_rules"]
 
 
 def test_world_rules_survive_save_load_round_trip():
-    from src.agents.init import init_file_to_game_state
     raw = {
         "world": {"name": "T", "description": "T", "locations": [], "objects": []},
         "player": {"name": "T"},
@@ -63,21 +136,26 @@ def test_world_rules_survive_save_load_round_trip():
         "world_rules": {
             "physics": {"disable": [3, 8], "append": ["11. 自定义规则"]},
             "attribute": {"disable": [2]},
+            "deterministic": {
+                "disable": [3],
+                "append": [{"id": "x", "description": "x", "condition": "if(player.sanity < 1, blocked; allowed)"}],
+            },
         },
     }
     state = init_file_to_game_state(raw)
     assert state["world_rules"]["physics"]["disable"] == [3, 8]
     assert state["world_rules"]["attribute"]["disable"] == [2]
+    assert state["world_rules"]["deterministic"]["disable"] == [3]
     assert any("自定义规则" in r for r in state["world_rules"]["physics"]["append"])
 
     saved = strip_transient_state(state)
     reloaded = normalize_state(saved)
     assert reloaded["world_rules"]["physics"]["disable"] == [3, 8]
     assert reloaded["world_rules"]["attribute"]["disable"] == [2]
+    assert reloaded["world_rules"]["deterministic"]["disable"] == [3]
 
 
 def test_narrative_style_survive_save_load_round_trip():
-    from src.agents.init import init_file_to_game_state
     raw = {
         "world": {"name": "T", "description": "T", "locations": [], "objects": []},
         "player": {"name": "T"},
@@ -97,7 +175,6 @@ def test_narrative_style_survive_save_load_round_trip():
     assert reloaded["narrative_style"]["style_description"] == "哥特式军事科幻"
     assert reloaded["narrative_style"]["style_example"] == "寒风如刀..."
 
-    # Default empty
     raw_no_style = {
         "world": {"name": "T", "description": "T", "locations": [], "objects": []},
         "player": {"name": "T"},

@@ -260,7 +260,7 @@ Prompt 使用中文 Jinja2 模板，由 `src/prompts/loader.py` 加载。
 
 #### 世界规则注入（`world_rules`）
 
-Init YAML 可通过 `world_rules` 字段向物理引擎和属性更新系统注入场景特定规则，或禁用不适用的默认规则。格式如下：
+Init YAML 可通过 `world_rules` 字段向物理引擎、属性更新系统和 Python 侧系统规则预判注入场景特定规则，或禁用不适用的默认规则。格式如下：
 
 ```yaml
 world_rules:
@@ -273,11 +273,22 @@ world_rules:
     disable: []                 # 不禁用默认属性规则
     append:
       - "接触远古石碑时：sanity下降2-8点，corruption_resistance下降1-3点。"
+  deterministic:
+    disable: [3]                # 禁用内置系统预判规则（1=人设限制，2=超凡能力，3=力量vs重量，4=开锁技能，5=身体宽度vs通道）
+    append:
+      - id: sanity_gate
+        description: 精神崩溃时多数行动受限
+        condition: "if(player.sanity < 20, blocked; player.sanity < 40, uncertain:0.3; allowed)"
+      - id: storm_heavy_lift
+        description: 暴风中搬运重物时，耐受不足会直接失败
+        match_action: "搬运|抬起|举起|推动|拖动"
+        condition: "if(player.storm_tolerance < 30, blocked; player.strength * 50 < target.weight, uncertain:0.3; allowed)"
 ```
 
-- **`disable`**：要禁用的默认规则编号列表（1-based）。被禁用的规则不会出现在 LLM prompt 中。
-- **`append`**：追加的自定义规则列表。规则自动编号（接续默认规则末尾），以"自定义规则"节出现在 prompt 中。
-- 所有字段可选；未声明 `world_rules` 时行为与默认完全一致。
+- **`disable`**：在 `physics`/`attribute` 中表示要禁用的默认 prompt 规则编号（1-based）；在 `deterministic` 中表示要跳过的 Python 内置系统预判规则编号。
+- **`append`**：在 `physics`/`attribute` 中追加自由文本规则到 LLM prompt；在 `deterministic` 中追加结构化规则，支持 `match_action` 正则和 `condition` 数值条件表达式。
+- **`deterministic.condition`**：使用 `if(condition, output; condition, output; else_output)` 语法，支持 `<` `>` `=` `<=` `>=` `!=`、`+` `-` `*` `/`、`min()`、`max()`，可读取 `player.<属性>`、`player.<技能>`、`target.<属性>` 等数值。
+- 所有字段可选；未声明 `world_rules` 或未声明 `world_rules.deterministic` 时行为与默认完全一致。
 - 默认物理规则共 10 条（重力、碰撞检测、连锁反应、声音传播等），默认属性规则共 7 条。
 - 完整示例参见 [`public_start/whisperheads.yaml`](public_start/whisperheads.yaml)（耳语山场景：禁用"物理一致性"规则以体现 Warp 影响区域的物理异常，追加 5 条物理规则和 3 条属性规则）。
 
@@ -329,7 +340,7 @@ world_rules:
 - 对话状态追踪（`conversation_target` / `last_spoken_to`）——NPC 对话有连续性；
 - 关系数值变化（`emotion` 驱动 `relationships`，好感度反映在行为中）；
 - 通用角色属性系统（`attributes` + `attribute_update`）——init 文件可为玩家/NPC 定义任意数值属性，节点按行动、事件和自然变化更新；支持隐藏属性（`hidden: true`），隐藏属性不在默认 UI 中展示，但影响检定和 NPC 行为；
-- 世界规则注入（`world_rules`）——init YAML 可声明 `physics`/`attribute` 的 `disable` 和 `append`，向物理引擎和属性系统注入场景特定规则或屏蔽默认规则；
+- 世界规则注入（`world_rules`）——init YAML 可声明 `physics`/`attribute` 的 `disable` 和 `append`，向物理引擎和属性系统注入场景特定规则或屏蔽默认规则；也可声明 `deterministic`，向 Python 侧系统规则预判注入正则/数值条件规则；
 - 小说化叙事改写节点（`narrative_stylize`）——将结构化感官数据改写为沉浸式文学叙事，文风通过 init YAML 的 `narrative_style` 字段控制（`style_description` + `style_example`）；
 - 感官分类查询命令（`/see` `/hear` `/feel`）——可分别查看原始视觉、听觉、触觉/嗅觉信息条目；
 - 游戏时间追踪（`game_time` + `ticks_per_game_minute`，每 tick 推进，`time_of_day` 自动切换）；

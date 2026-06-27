@@ -51,7 +51,7 @@
 | `environment` | `dict` | 时间、天气、温度等环境信息。 |
 | `characters` | `dict[str, dict]` | NPC 状态，key 为 character id；每个角色可包含 `attributes` 数值属性表。 |
 | `player` | `dict` | 玩家状态，可包含 `attributes` 数值属性表。 |
-| `world_rules` | `dict` | 从 init YAML 注入的物理/属性规则配置，含 `physics` 和 `attribute` 子字段，各支持 `disable`（禁用默认规则索引）和 `append`（追加自定义规则）。 |
+| `world_rules` | `dict` | 从 init YAML 注入的规则配置。`physics`/`attribute` 子字段用于 LLM prompt 规则注入；`deterministic` 子字段用于 Python 侧系统规则预判，可声明 `disable`（禁用内置规则索引）和 `append`（追加正则/数值条件规则）。 |
 | `narrative_style` | `dict[str, str]` | 从 init YAML 注入的叙事风格配置，含 `style_description`（文风描述）和 `style_example`（参考文段示例）。默认为空 dict，使用内置默认文风。 |
 | `event_log` | `list[str]` | 全局事件日志，只追加。 |
 
@@ -142,6 +142,7 @@ state_apply
 - `objects`
 - `locations`
 - `environment`
+- `world_rules`
 
 输出字段：
 
@@ -152,6 +153,9 @@ state_apply
 
 - 填充或更新 `feasibility`、`feasibility_reason`、`success_probability`、`requires_roll`。
 - 会先调用 `src/game/rules.py::check_action_feasibility()` 生成系统规则预判。
+- `world_rules.deterministic` 可在系统规则预判阶段追加自定义规则：`match_action` 使用正则匹配行动文本，`condition` 使用安全的 `if(cond, out; ...; else_out)` 数值条件表达式。
+- `world_rules.deterministic.disable` 可禁用内置预判规则：1=`blocked_common`，2=`extraordinary`，3=`strength_vs_weight`，4=`skill_vs_lock`，5=`body_width_vs_passage`。
+- 自定义规则按 YAML 顺序检查，第一条命中即作为系统预判；解析或求值失败的自定义规则只记录 warning 并跳过，不中断游戏。
 - 系统规则预判必须传入 LLM；LLM 不应被跳过。
 - 除非当前场景存在明确、具体、且优先级更高的反例，LLM 应遵循系统规则预判；若反驳预判，必须在 `feasibility_reason` 中说明原因。
 - `blocked` 行动不应直接修改世界。
