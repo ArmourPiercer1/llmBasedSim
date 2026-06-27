@@ -344,5 +344,35 @@ def config_loader_to_game_state(config_loader: ConfigLoader) -> GameState:
         environment=world_config.environment.model_dump(),
         characters=characters,
         player=player,
+        world_rules={},
+        narrative_style={},
+        game_time={"hour": 18, "minute": 0},
+        ticks_per_game_minute=0.2,
         event_log=["[系统] 从配置文件开始游戏。", *position_events],
     )
+
+
+def load_init_file_set(dir_path: str | Path) -> GameState:
+    dir_path = Path(dir_path)
+    if not dir_path.is_dir():
+        raise FileNotFoundError(f"目录不存在: {dir_path}")
+    loader = ConfigLoader(str(dir_path))
+    state = config_loader_to_game_state(loader)
+
+    settings_path = dir_path / "settings.yaml"
+    if settings_path.exists():
+        with open(settings_path, "r", encoding="utf-8") as f:
+            settings = yaml.safe_load(f) or {}
+        if isinstance(settings, dict):
+            if "world_rules" in settings:
+                state["world_rules"] = settings["world_rules"] or {}
+            if "narrative_style" in settings:
+                state["narrative_style"] = settings["narrative_style"] or {}
+            if "max_ticks" in settings:
+                state["max_ticks"] = int(settings["max_ticks"])
+            if "game_time" in settings:
+                state["game_time"] = dict(settings["game_time"])
+            if "ticks_per_game_minute" in settings:
+                state["ticks_per_game_minute"] = float(settings["ticks_per_game_minute"])
+
+    return state

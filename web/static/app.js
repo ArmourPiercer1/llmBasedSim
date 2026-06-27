@@ -162,6 +162,10 @@ async function startGameFromInitFile(initFile) {
   await startGame({ mode: "init_file", init_file: initFile });
 }
 
+async function startGameFromInitDir(initDir) {
+  await startGame({ mode: "init_dir", init_dir: initDir });
+}
+
 async function startGameFromSave(savePath) {
   await startGame({ mode: "save", save_path: savePath });
 }
@@ -324,10 +328,16 @@ async function showInitFileList() {
     for (const file of state.initFiles) {
       const button = document.createElement("button");
       button.className = "menu-item";
-      button.innerHTML = `${escapeHtml(file.name)}<br><span class="npc-action">${escapeHtml(file.path)} · ${escapeHtml(file.source)}</span>`;
+      const isDirSet = file.type === "dir_set";
+      const label = isDirSet ? ` [拆分配置]` : "";
+      button.innerHTML = `${escapeHtml(file.name)}${label}<br><span class="npc-action">${escapeHtml(file.path)} · ${escapeHtml(file.source)}</span>`;
       button.addEventListener("click", () => {
         closeModal();
-        startGameFromInitFile(file.path);
+        if (isDirSet) {
+          startGameFromInitDir(file.path);
+        } else {
+          startGameFromInitFile(file.path);
+        }
       });
       container.appendChild(button);
     }
@@ -339,6 +349,14 @@ async function showInitFileList() {
       promptOtherInitFile();
     });
     container.appendChild(otherButton);
+    const otherDirButton = document.createElement("button");
+    otherDirButton.className = "menu-item";
+    otherDirButton.textContent = "其他：指定电脑上的开局文件组（目录）";
+    otherDirButton.addEventListener("click", () => {
+      closeModal();
+      promptOtherInitDir();
+    });
+    container.appendChild(otherDirButton);
     showModalNode("选择开局文件", container);
   } catch (error) {
     showModal("读取开局文件失败", [error.message]);
@@ -349,6 +367,12 @@ function promptOtherInitFile() {
   const filePath = window.prompt("请输入 YAML 开局文件路径（可用绝对路径，或相对项目根目录的路径）", "");
   if (!filePath) return;
   startGameFromInitFile(filePath.trim());
+}
+
+function promptOtherInitDir() {
+  const dirPath = window.prompt("请输入开局文件组目录路径（含 world.yaml 的目录，可用绝对路径，或相对项目根目录的路径）", "");
+  if (!dirPath) return;
+  startGameFromInitDir(dirPath.trim());
 }
 
 async function showSaveList() {

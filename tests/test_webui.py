@@ -1,6 +1,6 @@
 import pytest
 
-from src.web.app import GameSession, StartRequest, WebTurnStatus, WebUIError, _safe_init_file_path, attribute_items, list_init_files, save_game, sense_items, snapshot
+from src.web.app import GameSession, StartRequest, WebTurnStatus, WebUIError, _safe_init_file_path, _safe_init_dir, attribute_items, list_init_files, save_game, sense_items, snapshot
 
 
 def _web_state():
@@ -120,3 +120,58 @@ def test_web_turn_status_snapshots_step_and_sub_progress():
 
     status.reset()
     assert status.snapshot(busy=False)["step"] == "等待中..."
+
+
+def test_list_init_files_discovers_dir_sets(tmp_path, monkeypatch):
+    public_dir = tmp_path / "public_start"
+    public_dir.mkdir()
+    (public_dir / "single.yaml").write_text("world:\n  name: 单文件\n", encoding="utf-8")
+    subdir = public_dir / "my_scenario"
+    subdir.mkdir()
+    (subdir / "world.yaml").write_text("world:\n  name: 拆分配置场景\n", encoding="utf-8")
+    (subdir / "player.yaml").write_text("player:\n  name: P\n", encoding="utf-8")
+    (subdir / "characters").mkdir()
+
+    import src.web.app as app_mod
+    monkeypatch.setattr(app_mod, "START_DIRS", (public_dir,))
+    monkeypatch.setattr(app_mod, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(app_mod, "load_init_file", lambda p: (
+        __import__("yaml").safe_load(open(p, encoding="utf-8")) if p.suffix in (".yaml", ".yml") else {}
+    ))
+
+    result = list_init_files()
+    items = result["init_files"]
+
+    singles = [i for i in items if i.get("type") != "dir_set"]
+    dirs = [i for i in items if i.get("type") == "dir_set"]
+
+    assert len(singles) == 1
+    assert singles[0]["name"] == "单文件"
+    assert len(dirs) == 1
+    assert dirs[0]["name"] == "拆分配置场景"
+    assert dirs[0]["type"] == "dir_set"
+
+
+def test_safe_init_dir_rejects_missing_world_yaml(tmp_path):
+    empty_dir = tmp_path / "empty_scenario"
+    empty_dir.mkdir()
+
+    import src.web.app as app_mod
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(app_mod, "PROJECT_ROOT", tmp_path)
+    with __import__("pytest").raises(WebUIError):
+        _safe_init_dir(str(empty_dir))
+    monkeypatch.undo()
+
+
+def test_safe_init_dir_accepts_valid_dir(tmp_path):
+    valid_dir = tmp_path / "valid_scenario"
+    valid_dir.mkdir()
+    (valid_dir / "world.yaml").write_text("world:\n  name: OK\n", encoding="utf-8")
+
+    import src.web.app as app_mod
+    monkeypatch = __import__("pytest").MonkeyPatch()
+    monkeypatch.setattr(app_mod, "PROJECT_ROOT", tmp_path)
+    result = _safe_init_dir(str(valid_dir))
+    assert result == valid_dir.resolve()
+    monkeypatch.undo()

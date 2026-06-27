@@ -8,6 +8,7 @@ from src.models.config import (
     WorldConfig,
     PlayerConfig,
     CharacterConfig,
+    PlayerConfigModel,
 )
 
 T = TypeVar("T")
@@ -24,10 +25,15 @@ class ConfigLoader:
         return self._load_yaml("world.yaml", WorldConfig)
 
     def load_player(self) -> PlayerConfig:
+        path = self._root / "player.yaml"
+        if not path.exists():
+            return PlayerConfig(player=PlayerConfigModel())
         return self._load_yaml("player.yaml", PlayerConfig)
 
     def load_all_characters(self) -> list[CharacterConfig]:
         chars_dir = self._root / "characters"
+        if not chars_dir.is_dir():
+            return []
         configs: list[CharacterConfig] = []
         for filepath in sorted(chars_dir.glob("*.yaml")):
             configs.append(self._load_yaml(str(filepath.relative_to(self._root)), CharacterConfig))

@@ -17,7 +17,7 @@ _load_dotenv_path = Path(__file__).resolve().parent.parent / ".env"
 if _load_dotenv_path.exists():
     load_dotenv(_load_dotenv_path)
 
-from src.agents.init import config_loader_to_game_state, init_game, init_file_to_game_state, load_init_file
+from src.agents.init import config_loader_to_game_state, init_game, init_file_to_game_state, load_init_file, load_init_file_set
 from src.config.loader import ConfigLoader
 from src.graph.game_graph import build_game_graph
 from src.graph.game_state import normalize_state, reset_tick_transients, strip_transient_state
@@ -116,6 +116,7 @@ async def main():
 
     # ── Init Phase ──
     init_file_arg = None
+    init_file_set_arg = None
     load_arg = None
     loaded_from_save = False
     from_config = False
@@ -125,6 +126,8 @@ async def main():
             load_arg = args[i + 1]
         elif arg == "--init-file" and i + 1 < len(args):
             init_file_arg = args[i + 1]
+        elif arg == "--init-file-set" and i + 1 < len(args):
+            init_file_set_arg = args[i + 1]
         elif arg == "--from-config":
             from_config = True
 
@@ -148,6 +151,15 @@ async def main():
         except Exception as e:
             console.print(f"[red]加载初始化文件失败: {e}[/red]")
             logger.exception("init file load failed", error=str(e))
+            sys.exit(1)
+    elif init_file_set_arg:
+        ui.display_title("=== LLM 互动模拟游戏 ===\n")
+        ui.display(f"[dim]从初始化文件组加载: {init_file_set_arg}[/dim]")
+        try:
+            game_state = load_init_file_set(init_file_set_arg)
+        except Exception as e:
+            console.print(f"[red]加载初始化文件组失败: {e}[/red]")
+            logger.exception("init file set load failed", error=str(e))
             sys.exit(1)
     elif from_config:
         ui.display_title("=== LLM 互动模拟游戏 ===\n")

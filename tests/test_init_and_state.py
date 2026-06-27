@@ -1,4 +1,4 @@
-from src.agents.init import config_loader_to_game_state, init_file_to_game_state, load_init_file
+from src.agents.init import config_loader_to_game_state, init_file_to_game_state, load_init_file, load_init_file_set
 from src.config.loader import ConfigLoader
 from src.graph.game_state import normalize_state, strip_transient_state
 
@@ -183,3 +183,83 @@ def test_narrative_style_survive_save_load_round_trip():
     }
     state2 = init_file_to_game_state(raw_no_style)
     assert state2["narrative_style"] == {}
+
+
+def test_load_init_file_set_from_dir(tmp_path):
+    (tmp_path / "world.yaml").write_text(
+        """
+world:
+  name: 测试场景
+  description: 拆分配置测试
+  locations:
+    - id: plaza
+      name: 广场
+      description: 中央广场
+  objects: []
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "player.yaml").write_text(
+        """
+player:
+  name: 测试玩家
+  persona: 测试角色
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "characters").mkdir()
+    (tmp_path / "characters" / "guard.yaml").write_text(
+        """
+character:
+  id: guard
+  name: 守卫
+""".strip(),
+        encoding="utf-8",
+    )
+    (tmp_path / "settings.yaml").write_text(
+        """
+world_rules:
+  physics:
+    disable: [1]
+narrative_style:
+  style_description: 测试文风
+max_ticks: 50
+game_time:
+  hour: 6
+  minute: 30
+ticks_per_game_minute: 0.5
+""".strip(),
+        encoding="utf-8",
+    )
+
+    state = load_init_file_set(str(tmp_path))
+
+    assert state["world_name"] == "测试场景"
+    assert state["world_description"] == "拆分配置测试"
+    assert len(state["locations"]) == 1
+    assert state["player"]["name"] == "测试玩家"
+    assert "guard" in state["characters"]
+    assert state["world_rules"]["physics"]["disable"] == [1]
+    assert state["narrative_style"]["style_description"] == "测试文风"
+    assert state["max_ticks"] == 50
+    assert state["game_time"]["hour"] == 6
+    assert state["ticks_per_game_minute"] == 0.5
+
+
+def test_load_init_file_set_minimal_world_only(tmp_path):
+    (tmp_path / "world.yaml").write_text(
+        """
+world:
+  name: 最小场景
+  description: 仅世界文件
+  locations: []
+  objects: []
+""".strip(),
+        encoding="utf-8",
+    )
+
+    state = load_init_file_set(str(tmp_path))
+
+    assert state["world_name"] == "最小场景"
+    assert state["player"]["name"]  # default from ConfigLoader
+    assert state["world_rules"] == {}

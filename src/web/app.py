@@ -17,7 +17,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-from src.agents.init import init_file_to_game_state, load_init_file
+from src.agents.init import init_file_to_game_state, load_init_file, load_init_file_set
 from src.config.loader import ConfigLoader
 from src.graph.game_graph import build_game_graph
 from src.graph.game_state import GameState, normalize_state, reset_tick_transients, strip_transient_state
@@ -72,6 +72,7 @@ class WebTurnStatus:
 class StartRequest:
     mode: str = "init_file"
     init_file: str | None = None
+    init_dir: str | None = None
     save_path: str | None = None
 
     @classmethod
@@ -79,6 +80,7 @@ class StartRequest:
         return cls(
             mode=str(payload.get("mode") or "init_file"),
             init_file=payload.get("init_file"),
+            init_dir=payload.get("init_dir"),
             save_path=payload.get("save_path"),
         )
 
@@ -138,6 +140,11 @@ class GameSession:
             save_path = _safe_existing_path(request.save_path, SAVES_DIR)
             with open(save_path, "r", encoding="utf-8") as f:
                 state = normalize_state(json.load(f))
+        elif request.mode == "init_dir":
+            if not request.init_dir:
+                raise WebUIError(400, "选择开局文件组需要 init_dir")
+            dir_path = _safe_init_dir(request.init_dir)
+            state = load_init_file_set(dir_path)
         else:
             init_file = request.init_file or str(DEFAULT_INIT_FILE)
             init_path = _safe_init_file_path(init_file)
@@ -343,9 +350,12 @@ def list_init_files() -> dict[str, Any]:
     for start_dir in START_DIRS:
         if not start_dir.exists():
             continue
-        for path in sorted(start_dir.rglob("*.yml")) + sorted(start_dir.rglob("*.yaml")):
+        for path in sorted(start_dir.glob("*.yml")) + sorted(start_dir.glob("*.yaml")):
             files.append(init_file_item(path, start_dir.name))
-    files.sort(key=lambda item: (item["source"], item["name"], item["path"]))
+        for subdir in sorted(start_dir.iterdir()):
+            if subdir.is_dir() and (subdir / "world.yaml").exists():
+                files.append(init_dir_item(subdir, start_dir.name))
+    files.sort(key=lambda item: (item["source"], item.get("type", ""), item["name"], item["path"]))
     return {"init_files": files}
 
 
@@ -365,6 +375,27 @@ def init_file_item(path: Path, source: str) -> dict[str, Any]:
         "path": rel_path,
         "source": source,
         "description": description,
+    }
+
+
+def init_dir_item(dir_path: Path, source: str) -> dict[str, Any]:
+    rel_path = dir_path.relative_to(PROJECT_ROOT).as_posix()
+    world_name = dir_path.name
+    description = ""
+    try:
+        world_path = dir_path / "world.yaml"
+        raw = load_init_file(world_path)
+        world = raw.get("world", {}) if isinstance(raw, dict) else {}
+        world_name = str(world.get("name") or dir_path.name)
+        description = str(world.get("description") or "")
+    except Exception:
+        pass
+    return {
+        "name": world_name,
+        "path": rel_path,
+        "source": source,
+        "description": description,
+        "type": "dir_set",
     }
 
 
@@ -532,6 +563,18 @@ def _safe_init_file_path(raw_path: str) -> Path:
         raise WebUIError(404, f"文件不存在: {raw_path}")
     if resolved.suffix.lower() not in {".yaml", ".yml"}:
         raise WebUIError(400, "开局文件必须是 .yaml 或 .yml 文件")
+    return resolved
+
+
+def _safe_init_dir(raw_path: str) -> Path:
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    resolved = path.resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        raise WebUIError(404, f"目录不存在: {raw_path}")
+    if not (resolved / "world.yaml").exists():
+        raise WebUIError(400, "开局文件组目录必须包含 world.yaml")
     return resolved
 
 
