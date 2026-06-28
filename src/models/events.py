@@ -17,6 +17,7 @@ class ActionIntent(BaseModel):
     target_position: Position | None = None
     intensity: float = 1.0
     emotion: str = "neutral"
+    duration_minutes: float = Field(default=0.0, ge=0.0, description="NPC该行动预计耗时（分钟）。短行动0.1-1，中等5-15，长行动30-120。")
 
 
 class PhysicsOutcome(BaseModel):

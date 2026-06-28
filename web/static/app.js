@@ -26,6 +26,7 @@ const els = {
   app: $("#app"),
   worldTitle: $("#worldTitle"),
   timeDisplay: $("#timeDisplay"),
+  mobileTimeDisplay: $("#mobileTimeDisplay"),
   weatherDisplay: $("#weatherDisplay"),
   tickDisplay: $("#tickDisplay"),
   startScreen: $("#startScreen"),
@@ -38,6 +39,11 @@ const els = {
   slashMenu: $("#slashMenu"),
   rightPanel: $("#rightPanel"),
   toggleStatus: $("#toggleStatus"),
+  mobileStatusToggle: $("#mobileStatusToggle"),
+  mobileMenuToggle: $("#mobileMenuToggle"),
+  closeMobileMenu: $("#closeMobileMenu"),
+  closeMobileStatus: $("#closeMobileStatus"),
+  mobileBackdrop: $("#mobileBackdrop"),
   playerName: $("#playerName"),
   attributeList: $("#attributeList"),
   npcList: $("#npcList"),
@@ -56,6 +62,7 @@ init();
 
 async function init() {
   applySettings();
+  syncCommandBarLayout();
   bindEvents();
   const data = await api("/api/state");
   state.initFiles = data.init_files || [];
@@ -91,6 +98,7 @@ function bindEvents() {
     }
     if (event.key === "Escape") {
       hideSlashMenu();
+      closeMobileOverlays();
     }
   });
 
@@ -99,10 +107,21 @@ function bindEvents() {
   });
 
   els.toggleStatus.addEventListener("click", () => {
-    const collapsed = !els.rightPanel.classList.toggle("collapsed");
-    state.settings.statusExpanded = collapsed;
-    saveSettings();
+    const collapsed = !els.rightPanel.classList.contains("collapsed");
+    setStatusExpanded(collapsed);
   });
+
+  els.mobileStatusToggle?.addEventListener("click", () => {
+    toggleMobileStatus(!els.rightPanel.classList.contains("mobile-open"));
+  });
+
+  els.mobileMenuToggle?.addEventListener("click", () => {
+    toggleMobileMenu(!els.app.classList.contains("mobile-menu-open"));
+  });
+
+  els.closeMobileMenu?.addEventListener("click", () => toggleMobileMenu(false));
+  els.closeMobileStatus?.addEventListener("click", () => closeMobileOverlays());
+  els.mobileBackdrop?.addEventListener("click", () => closeMobileOverlays());
 
   $("#quickSave").addEventListener("click", () => promptSave());
   $("#openSaveList").addEventListener("click", () => showSaveList());
@@ -125,7 +144,14 @@ function bindEvents() {
     if (event.key === "Escape") {
       closeModal();
       els.settingsDrawer.classList.add("hidden");
+      closeMobileOverlays();
     }
+  });
+
+  window.addEventListener("resize", () => {
+    syncResponsiveUi();
+    syncCommandBarLayout();
+    syncMobileTime(state.current);
   });
 
   bindSetting("fontSize", "fontSize", Number);
@@ -136,6 +162,7 @@ function bindEvents() {
   bindSetting("debugMode", "debugMode", Boolean);
   bindSetting("simpleMode", "simpleMode", Boolean);
 }
+
 
 function bindSetting(id, key, caster) {
   const el = $("#" + id);
@@ -220,12 +247,14 @@ function renderState(data, { appendStory }) {
   els.worldTitle.textContent = data.world_name || "互动模拟游戏";
   els.tickDisplay.textContent = `${data.tick ?? 0} / ${data.max_ticks ?? "?"}`;
   els.timeDisplay.textContent = formatGameTime(data);
+  syncMobileTime(data);
   els.weatherDisplay.textContent = [data.time_of_day, data.weather, formatTemperature(data.temperature_c)].filter(Boolean).join(" · ") || "环境未知";
   els.playerName.textContent = data.player?.name || "玩家";
 
   renderAttributes(data.player_attributes || []);
   renderNpcs(data.npc_dynamics || []);
   renderEvents(data.recent_events || []);
+  syncCommandBarLayout();
 
   if (appendStory && data.narrative) {
     appendStoryEntry(data);
@@ -236,6 +265,80 @@ function renderState(data, { appendStory }) {
   if (!data.can_continue && data.started) {
     els.commandInput.placeholder = "游戏已结束";
   }
+}
+
+function formatMobileTime(data) {
+  const gt = data?.game_time || state.current?.game_time || {};
+  if (typeof gt.hour === "number" && typeof gt.minute === "number") {
+    return `${String(gt.hour).padStart(2, "0")}:${String(gt.minute).padStart(2, "0")}`;
+  }
+  return "--:--";
+}
+
+function syncMobileTime(data) {
+  if (els.mobileTimeDisplay) {
+    els.mobileTimeDisplay.textContent = formatMobileTime(data);
+  }
+}
+
+function setStatusExpanded(expanded, { mobile = false } = {}) {
+  els.rightPanel.classList.toggle("collapsed", !expanded);
+  state.settings.statusExpanded = expanded;
+  saveSettings();
+  if (mobile) {
+    els.rightPanel.classList.toggle("mobile-open", expanded);
+    document.body.classList.toggle("mobile-panel-open", expanded);
+    updateMobileBackdrop();
+  }
+}
+
+function toggleMobileStatus(open) {
+  els.rightPanel.classList.toggle("mobile-open", open);
+  updateMobileBackdrop();
+}
+
+function toggleMobileMenu(open) {
+  els.app.classList.toggle("mobile-menu-open", open);
+  if (!open) {
+    els.rightPanel.classList.remove("mobile-open");
+  }
+  updateMobileBackdrop();
+}
+
+function closeMobileOverlays() {
+  els.app.classList.remove("mobile-menu-open");
+  els.rightPanel.classList.remove("mobile-open");
+  updateMobileBackdrop();
+}
+
+function updateMobileBackdrop() {
+  const open = els.app.classList.contains("mobile-menu-open") || els.rightPanel.classList.contains("mobile-open");
+  els.mobileBackdrop?.classList.toggle("hidden", !open);
+  document.body.classList.toggle("mobile-panel-open", open);
+}
+
+function syncResponsiveUi() {
+  const mobile = window.matchMedia("(max-width: 640px)").matches;
+  els.app.classList.remove("mobile-menu-open");
+  els.rightPanel.classList.remove("mobile-open");
+  if (!mobile) {
+    document.body.classList.remove("mobile-panel-open");
+  }
+  updateMobileBackdrop();
+}
+
+function syncCommandBarLayout() {
+  if (window.matchMedia("(max-width: 640px)").matches) {
+    document.documentElement.style.removeProperty("--command-bar-left");
+    document.documentElement.style.removeProperty("--command-bar-width");
+    return;
+  }
+  const storyColumn = els.storyStream?.closest(".story-column") || document.querySelector(".story-column");
+  const commandBar = els.commandForm;
+  if (!storyColumn || !commandBar) return;
+  const rect = storyColumn.getBoundingClientRect();
+  document.documentElement.style.setProperty("--command-bar-left", `${Math.max(0, rect.left)}px`);
+  document.documentElement.style.setProperty("--command-bar-width", `${Math.max(0, rect.width)}px`);
 }
 
 function appendStoryEntry(data) {
@@ -581,6 +684,7 @@ function applySettings() {
   document.documentElement.style.setProperty("--line-height", state.settings.lineHeight);
   document.documentElement.style.setProperty("--story-width", `${state.settings.storyWidth}px`);
   els.rightPanel.classList.toggle("collapsed", !state.settings.statusExpanded);
+  els.rightPanel.classList.toggle("mobile-open", false);
   document.body.classList.toggle("simple-mode", state.settings.simpleMode);
   $$(".quick-actions, .sensor-card").forEach((el) => el.classList.toggle("hidden", !state.settings.showSensors));
   const controls = {
@@ -597,6 +701,9 @@ function applySettings() {
     if (el.type === "checkbox") el.checked = Boolean(state.settings[key]);
     else el.value = state.settings[key];
   });
+  syncMobileTime(state.current);
+  syncCommandBarLayout();
+  updateMobileBackdrop();
 }
 
 async function api(path, options = {}) {

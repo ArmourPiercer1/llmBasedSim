@@ -2,6 +2,7 @@
 - 时间：{{ environment.time_of_day }}
 - 天气：{{ environment.weather }}
 - 温度：{{ environment.temperature_c }}°C
+- 本 tick 时间跨度：{{ tick_duration_minutes | default(5.0) | round(1) }} 分钟
 
 ## 场景中的所有物体
 {% if objects %}

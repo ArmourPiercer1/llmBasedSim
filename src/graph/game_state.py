@@ -32,6 +32,7 @@ class GameState(TypedDict, total=False):
 
     game_time: dict[str, int]
     ticks_per_game_minute: float
+    tick_duration_minutes: float
 
     event_log: Annotated[list[str], operator.add]
 
@@ -75,6 +76,7 @@ def normalize_state(raw: Mapping[str, Any] | BaseModel) -> GameState:
         "action_continuation": data.get("action_continuation"),
         "game_time": data.get("game_time", {"hour": 18, "minute": 0}),
         "ticks_per_game_minute": float(data.get("ticks_per_game_minute", 0.2)),
+        "tick_duration_minutes": float(data.get("tick_duration_minutes", 0.0)),
         "event_log": data.get("event_log", []) or [],
     }
 
@@ -90,16 +92,13 @@ def reset_tick_transients(state: Mapping[str, Any], player_input: str | None) ->
     next_state["player_percept"] = None
     next_state["action_intents"] = []
     next_state["physics_outcomes"] = []
+    next_state["tick_duration_minutes"] = 0.0
     return next_state
 
 
-def advance_game_time(current: dict[str, Any] | None, ticks_per_minute: float) -> dict[str, int]:
+def advance_game_time(current: dict[str, Any] | None, minutes_to_add: float) -> dict[str, int]:
     c = current or {"hour": 18, "minute": 0}
-    tp = float(ticks_per_minute) if ticks_per_minute else 0.2
-    if tp <= 0:
-        tp = 0.2
-    minutes_to_add = 1.0 / tp
-    total = int(c.get("hour", 18)) * 60 + int(c.get("minute", 0)) + minutes_to_add
+    total = int(c.get("hour", 18)) * 60 + int(c.get("minute", 0)) + max(0.05, minutes_to_add)
     total = total % (24 * 60)
     return {"hour": int(total // 60), "minute": int(total % 60)}
 
@@ -121,6 +120,6 @@ def time_of_day_from_hour(hour: int) -> str:
 
 
 def strip_transient_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    transient = {"player_input", "player_action", "action_intents", "physics_outcomes"}
+    transient = {"player_input", "player_action", "action_intents", "physics_outcomes", "tick_duration_minutes"}
     normalized = normalize_state(state)
     return {k: v for k, v in normalized.items() if k not in transient}

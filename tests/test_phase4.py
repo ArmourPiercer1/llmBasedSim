@@ -95,9 +95,30 @@ def test_relationship_increases_on_friendly_speech():
 
 
 def test_advance_game_time():
-    result = advance_game_time({"hour": 23, "minute": 59}, 0.2)
+    # New signature: advance_game_time(current, minutes_to_add)
+    result = advance_game_time({"hour": 23, "minute": 59}, 5.0)
     assert result["hour"] == 0
-    assert result["minute"] == 4  # 1/0.2 = 5 min per tick
+    assert result["minute"] == 4
+
+    # Edge: exactly midnight
+    result = advance_game_time({"hour": 0, "minute": 0}, 1.0)
+    assert result["hour"] == 0
+    assert result["minute"] == 1
+
+    # Edge: 24-hour wraparound
+    result = advance_game_time({"hour": 23, "minute": 58}, 3.0)
+    assert result["hour"] == 0
+    assert result["minute"] == 1
+
+    # Edge: None current time
+    result = advance_game_time(None, 5.0)
+    assert result["hour"] == 18
+    assert result["minute"] == 5
+
+    # Edge: tiny increment gets at least 0.05 min
+    result = advance_game_time({"hour": 12, "minute": 0}, 0.01)
+    assert result["hour"] == 12
+    assert result["minute"] == 0  # 0.01 < 0.05 floor
 
 
 def test_time_of_day_from_hour():

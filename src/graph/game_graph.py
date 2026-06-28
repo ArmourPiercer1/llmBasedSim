@@ -17,6 +17,7 @@ from src.game.attributes import (
 )
 from src.graph.game_state import GameState, advance_game_time, time_of_day_from_hour
 from src.game.rules import check_action_feasibility
+from src.game.tick_eval import TickEvalError, evaluate_tick_expression
 from src.game.state_apply import apply_npc_actions, apply_player_action, compact_event_log
 from src.llm.parser import generate_structured
 from src.models.events import (
@@ -216,9 +217,7 @@ def build_game_graph(
             if resolved.feasibility:
                 event += f"（{resolved.feasibility}: {resolved.feasibility_reason or '无说明'}）"
 
-            # ── Action duration / truncation ──
-            tick_duration_minutes = 1.0 / max(state.get("ticks_per_game_minute", 0.2), 0.01)
-            max_tick_duration = tick_duration_minutes * 3
+            # ── Action duration estimation (truncation handled by tick_speed_resolve) ──
             action_duration = resolved.duration_minutes
             action_continuation = None
 
@@ -236,14 +235,13 @@ def build_game_graph(
                         + (float(tp.get("y", pp.get("y", 0))) - float(pp.get("y", 0))) ** 2
                         + (float(tp.get("z", pp.get("z", 0))) - float(pp.get("z", 0))) ** 2
                     )
-                    max_move = 30.0
-                    if dist > max_move:
-                        action_duration = tick_duration_minutes * (dist / max_move)
+                    if dist > 30.0:
+                        action_duration = max(1.0, dist * 0.5)
                         resolved.duration_minutes = action_duration
                         resolved.continue_until = "blocked"
-                        event += f"（超长移动 {dist:.0f} 单位，自动截断）"
+                        event += f"（超长移动 {dist:.0f} 单位，预计 {action_duration:.1f} 分钟）"
 
-            # If continue_until is set, always treat as multi-tick action
+            # If continue_until is set, treat as multi-tick action
             if resolved.continue_until:
                 if resolved.feasibility == "uncertain":
                     resolved.feasibility = "allowed"
@@ -251,16 +249,8 @@ def build_game_graph(
                     resolved.success_probability = None
                     resolved.feasibility_reason = "多步行动：每步单独执行，直到目标达成或被阻止"
                     event += "（多步行动，自动延续）"
-                action_duration = action_duration or tick_duration_minutes
+                action_duration = action_duration or 5.0
                 resolved.duration_minutes = action_duration
-
-            if action_duration and action_duration > max_tick_duration:
-                resolved.duration_minutes = tick_duration_minutes
-                remaining = action_duration - tick_duration_minutes
-                action_continuation = {
-                    **(resolved.model_dump()),
-                    "duration_minutes": remaining,
-                }
 
             return {
                 "player_action": resolved.model_dump(),
@@ -346,6 +336,89 @@ def build_game_graph(
             "event_log": all_events,
         }
 
+    # ── Node: tick_speed_resolve (deterministic, no LLM) ──
+
+    async def tick_speed_resolve(state: GameState) -> dict[str, Any]:
+        if status:
+            status.update("正在计算本 tick 时间跨度...")
+        player_action = state.get("player_action") or {}
+        player_duration = float(player_action.get("duration_minutes", 0) or 0)
+
+        npc_durations = []
+        for intent in state.get("action_intents", []):
+            d = float(intent.get("duration_minutes", 0) or 0)
+            if d > 0:
+                npc_durations.append(d)
+
+        fallback = 1.0 / max(state.get("ticks_per_game_minute", 0.2), 0.01)
+
+        # Read world_rules.tick_speed config
+        rules = (state.get("world_rules") or {}).get("tick_speed", {})
+        if isinstance(rules, dict):
+            default = float(rules.get("default", fallback))
+            min_m = float(rules.get("min_minutes", 0.1))
+            max_m = float(rules.get("max_minutes", fallback * 10))
+            expression = rules.get("rule", "")
+        else:
+            default = fallback
+            min_m = 0.1
+            max_m = fallback * 10
+            expression = ""
+
+        # Evaluate tick duration
+        if expression:
+            try:
+                tick_duration = evaluate_tick_expression(expression, {
+                    "player_duration": player_duration,
+                    "npc_durations": npc_durations,
+                    "player": state.get("player", {}),
+                    "player_action": player_action,
+                    "default": default,
+                })
+            except TickEvalError:
+                tick_duration = default
+        else:
+            # Default strategy: min of NPC durations, else player duration, else fallback
+            tick_duration = (
+                min(npc_durations) if npc_durations
+                else (player_duration if player_duration > 0 else default)
+            )
+
+        tick_duration = max(min_m, min(tick_duration, max_m))
+
+        # Truncate actions exceeding tick duration
+        new_player_action = dict(player_action)
+        new_action_intents = list(state.get("action_intents", []))
+        action_continuation = state.get("action_continuation")
+
+        # Player action truncation
+        if player_duration > tick_duration and player_action.get("action_type") not in ("speak", "wait", "observe"):
+            new_player_action["duration_minutes"] = tick_duration
+            remaining = player_duration - tick_duration
+            action_continuation = {
+                **{k: v for k, v in player_action.items() if k != "duration_minutes"},
+                "duration_minutes": remaining,
+            }
+
+        # NPC action truncation (only move/interact/use_item, not speak/wait/observe)
+        truncated_intents = []
+        for intent in new_action_intents:
+            intent_dur = float(intent.get("duration_minutes", 0) or 0)
+            if intent_dur > tick_duration and intent.get("action_type") not in ("speak", "wait", "observe"):
+                truncated = dict(intent)
+                truncated["duration_minutes"] = tick_duration
+                truncated_intents.append(truncated)
+            else:
+                truncated_intents.append(intent)
+
+        return {
+            "tick_duration_minutes": tick_duration,
+            "player_action": new_player_action,
+            "action_intents": truncated_intents,
+            "action_continuation": action_continuation,
+            "event_log": [f"[时间] 本 tick 推进 {tick_duration:.1f} 分钟"],
+        }
+
     # ── Node: physics_resolve ──
 
     async def physics_resolve(state: GameState) -> dict[str, Any]:
@@ -364,6 +437,7 @@ def build_game_graph(
                 "action_intents": state.get("action_intents", []),
                 "player_action": state.get("player_action"),
                 "environment": state.get("environment", {}),
+                "tick_duration_minutes": state.get("tick_duration_minutes", fallback),
             })
 
             resolution = await generate_structured(llm, [
@@ -458,7 +532,10 @@ def build_game_graph(
         if len(compacted) < len(current_log):
             compaction_event = [compacted[0]]  # The summary line
 
-        new_game_time = advance_game_time(state.get("game_time"), state.get("ticks_per_game_minute", 0.2))
+        tick_dur = state.get("tick_duration_minutes", 0.0) or 0.0
+        if tick_dur <= 0:
+            tick_dur = 1.0 / max(state.get("ticks_per_game_minute", 0.2), 0.01)
+        new_game_time = advance_game_time(state.get("game_time"), tick_dur)
         new_environment = dict(state.get("environment", {}))
         new_environment["time_of_day"] = time_of_day_from_hour(new_game_time["hour"])
 
@@ -660,6 +737,7 @@ def build_game_graph(
     builder.add_node("player_intent_process", player_intent_process)
     builder.add_node("player_action_resolve", player_action_resolve)
     builder.add_node("characters_all_decide", characters_all_decide)
+    builder.add_node("tick_speed_resolve", tick_speed_resolve)
     builder.add_node("physics_resolve", physics_resolve)
     builder.add_node("state_apply", state_apply)
     builder.add_node("attribute_update", attribute_update)
@@ -669,7 +747,8 @@ def build_game_graph(
     builder.add_edge(START, "player_intent_process")
     builder.add_edge("player_intent_process", "player_action_resolve")
     builder.add_edge("player_action_resolve", "characters_all_decide")
-    builder.add_edge("characters_all_decide", "physics_resolve")
+    builder.add_edge("characters_all_decide", "tick_speed_resolve")
+    builder.add_edge("tick_speed_resolve", "physics_resolve")
     builder.add_edge("physics_resolve", "state_apply")
     builder.add_edge("state_apply", "attribute_update")
     builder.add_edge("state_apply", "sensory_filter")

@@ -9,6 +9,7 @@
 <body>
   <div id="app" class="app-shell is-loading">
     <aside class="sidebar panel chrome-frame">
+      <button id="closeMobileMenu" class="mobile-drawer-close" type="button" aria-label="关闭菜单">×</button>
       <div class="brand-block">
         <div class="eyebrow">SIMULATION ARCHIVE</div>
         <div class="title-row">
@@ -35,15 +36,22 @@
 
     <main class="story-column">
       <header class="top-toolbar chrome-frame">
-        <div>
-          <span class="toolbar-label">回合</span>
-          <strong id="tickDisplay">0</strong>
+        <div class="toolbar-mobile-row">
+          <button id="mobileMenuToggle" class="mobile-icon-button" type="button" aria-label="展开菜单">☰</button>
+          <div id="mobileTimeDisplay" class="mobile-time-display">--:--</div>
+          <button id="mobileStatusToggle" class="mobile-status-button" type="button" aria-label="展开状态">状态</button>
         </div>
-        <div class="quick-actions" aria-label="感官快捷入口">
-          <button data-command="/see">看</button>
-          <button data-command="/hear">听</button>
-          <button data-command="/feel">感</button>
-          <button data-command="/idid">行</button>
+        <div class="toolbar-desktop-row">
+          <div>
+            <span class="toolbar-label">回合</span>
+            <strong id="tickDisplay">0</strong>
+          </div>
+          <div class="quick-actions" aria-label="感官快捷入口">
+            <button data-command="/see">看</button>
+            <button data-command="/hear">听</button>
+            <button data-command="/feel">感</button>
+            <button data-command="/idid">行</button>
+          </div>
         </div>
       </header>
 
@@ -73,6 +81,7 @@
 
     <aside id="rightPanel" class="status-panel panel chrome-frame collapsed">
       <button id="toggleStatus" class="panel-toggle" aria-label="展开或折叠状态面板">状态</button>
+      <button id="closeMobileStatus" class="mobile-drawer-close hidden" type="button" aria-label="关闭状态">×</button>
       <div class="status-content">
         <section class="card">
           <div class="card-label">你的状态</div>
@@ -104,6 +113,8 @@
   </div>
 
   <button id="exitSimpleMode" class="simple-mode-exit" type="button">退出简约模式</button>
+
+  <div id="mobileBackdrop" class="mobile-backdrop hidden"></div>
 
   <div id="modalBackdrop" class="modal-backdrop hidden">
     <section class="modal chrome-frame" role="dialog" aria-modal="true">
@@ -137,3 +148,4 @@
   <script src="/static/app.js" defer></script>
 </body>
 </html>
+
