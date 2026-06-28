@@ -67,7 +67,10 @@ async function init() {
   const data = await api("/api/state");
   state.initFiles = data.init_files || [];
   if (data.started) {
-    renderState(data, { appendStory: true });
+    state.storyKeys.clear();
+    els.storyStream.innerHTML = "";
+    restoreNarrativeHistory(data.narrative_history || []);
+    renderState(data, { appendStory: false });
   } else {
     els.app.classList.remove("is-loading");
   }
@@ -345,12 +348,26 @@ function appendStoryEntry(data) {
   const key = `${data.tick}:${data.narrative}`;
   if (state.storyKeys.has(key)) return;
   state.storyKeys.add(key);
+  els.storyStream.appendChild(buildStoryEntry(data.tick, data.narrative, data.game_time));
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }));
+}
+
+function restoreNarrativeHistory(history) {
+  if (!history.length) return;
+  for (const entry of history) {
+    const key = `${entry.tick}:${entry.narrative}`;
+    if (state.storyKeys.has(key)) continue;
+    state.storyKeys.add(key);
+    els.storyStream.appendChild(buildStoryEntry(entry.tick, entry.narrative, entry.game_time));
+  }
+}
+
+function buildStoryEntry(tick, narrative, gameTime) {
   const template = $("#storyTemplate");
   const fragment = template.content.cloneNode(true);
-  fragment.querySelector(".entry-meta").textContent = `TURN ${data.tick} · ${formatGameTime(data)}`;
-  fragment.querySelector(".entry-text").textContent = data.narrative;
-  els.storyStream.appendChild(fragment);
-  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }));
+  fragment.querySelector(".entry-meta").textContent = `TURN ${tick} · ${formatGameTime({ tick, game_time: gameTime })}`;
+  fragment.querySelector(".entry-text").textContent = narrative;
+  return fragment;
 }
 
 function renderAttributes(attributes) {

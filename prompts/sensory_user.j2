@@ -25,6 +25,15 @@
 （没有需要直接感知的数值状态）
 {% endif %}
 
+### 玩家属性变化（本回合）
+{% if attribute_deltas %}
+{% for d in attribute_deltas %}
+{% if d.entity_type == "player" and not d.hidden %}
+- {{ d.attribute_name }}：{{ d.old_value }}{% if d.unit %} {{ d.unit }}{% endif %} → {{ d.new_value }}{% if d.unit %} {{ d.unit }}{% endif %}（变化：{% if d.delta > 0 %}+{% endif %}{{ d.delta }}{% if d.unit %} {{ d.unit }}{% endif %}）
+{% endif %}
+{% endfor %}
+{% endif %}
+
 ### 附近的物体
 {% if nearby_objects %}
 {% for obj in nearby_objects %}

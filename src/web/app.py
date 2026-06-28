@@ -463,6 +463,7 @@ def snapshot(state: dict[str, Any]) -> dict[str, Any]:
         "all_player_attributes": all_player_attribute_items(normalized),
         "npc_dynamics": npc_dynamics(normalized),
         "recent_events": normalized.get("event_log", [])[-8:],
+        "narrative_history": normalized.get("narrative_history", []),
         "can_continue": normalized.get("game_phase") != "ended" and normalized.get("tick", 0) < normalized.get("max_ticks", 100),
         "tick_duration_minutes": normalized.get("tick_duration_minutes", 0.0),
     }

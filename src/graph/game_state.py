@@ -29,11 +29,13 @@ class GameState(TypedDict, total=False):
     player_input: str | None
     player_action: dict[str, Any] | None
     action_continuation: dict[str, Any] | None
+    attribute_deltas: list[dict[str, Any]]
 
     game_time: dict[str, int]
     ticks_per_game_minute: float
     tick_duration_minutes: float
 
+    narrative_history: Annotated[list[dict[str, Any]], operator.add]
     event_log: Annotated[list[str], operator.add]
 
 
@@ -77,6 +79,8 @@ def normalize_state(raw: Mapping[str, Any] | BaseModel) -> GameState:
         "game_time": data.get("game_time", {"hour": 18, "minute": 0}),
         "ticks_per_game_minute": float(data.get("ticks_per_game_minute", 0.2)),
         "tick_duration_minutes": float(data.get("tick_duration_minutes", 0.0)),
+        "narrative_history": data.get("narrative_history", []) or [],
+        "attribute_deltas": data.get("attribute_deltas", []) or [],
         "event_log": data.get("event_log", []) or [],
     }
 
@@ -93,6 +97,7 @@ def reset_tick_transients(state: Mapping[str, Any], player_input: str | None) ->
     next_state["action_intents"] = []
     next_state["physics_outcomes"] = []
     next_state["tick_duration_minutes"] = 0.0
+    next_state["attribute_deltas"] = []
     return next_state
 
 
@@ -120,6 +125,6 @@ def time_of_day_from_hour(hour: int) -> str:
 
 
 def strip_transient_state(state: Mapping[str, Any]) -> dict[str, Any]:
-    transient = {"player_input", "player_action", "action_intents", "physics_outcomes", "tick_duration_minutes"}
+    transient = {"player_input", "player_action", "action_intents", "physics_outcomes", "tick_duration_minutes", "attribute_deltas"}
     normalized = normalize_state(state)
     return {k: v for k, v in normalized.items() if k not in transient}

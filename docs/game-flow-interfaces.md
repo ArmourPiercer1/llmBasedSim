@@ -66,6 +66,7 @@
 | `action_intents` | `list[dict]` | NPC 行动意图。 |
 | `physics_outcomes` | `list[dict]` | 物理节点输出的物理后果。 |
 | `player_percept` | `dict | None` | 玩家最近一次可感知信息；进入存档以便 `--load` 后直接渲染上一轮结果。 |
+| `attribute_deltas` | `list[dict]` | 本 tick 自然属性变化的结构化 diff（由 `natural_attribute_delta` 节点产出，供 `sensory_filter` 消费）。 |
 
 ### 2.3 Reducer Fields
 
@@ -74,6 +75,7 @@
 ```python
 event_log: Annotated[list[str], operator.add]
 action_intents: Annotated[list[dict], operator.add]
+narrative_history: Annotated[list[dict], operator.add]
 ```
 
 如果后续新增并发节点追加字段，也必须显式定义 reducer。
@@ -94,8 +96,9 @@ characters_all_decide
 physics_resolve
   ↓
 state_apply
-  ├─ attribute_update ──→ END
-  └─ sensory_filter → narrative_stylize → END
+  ├─ natural_attribute_delta
+  │    ├─ attribute_update ──→ END
+  │    └─ sensory_filter → narrative_stylize → END
 ```
 
 每个节点只读取所需字段，并返回 partial update。节点不应直接修改传入 state 对象。
@@ -242,13 +245,38 @@ state_apply
 - `blocked` 行动可以记录事件，但不应改变对应世界状态。
 - `uncertain` 且 `requires_roll=true` 的行动由 Python 侧 roll 决定成功/失败。
 
-### 4.6 `attribute_update`
+### 4.5b `natural_attribute_delta`
 
-职责：根据本 tick 的行动、物理后果、近期事件和自然变化规则更新玩家与 NPC 的任意数值属性。
+职责：确定性应用每 tick 的自然属性变化（`natural_delta_per_minute * tick_duration_minutes`），然后对 locked 属性执行系统自动计算（`apply_deterministic_attributes`），最后计算结构化 diff 供感官节点消费。
 
 输入字段：
 
 - `player.attributes`
+- `characters[*].attributes`
+- `tick_duration_minutes`
+- `world_rules.locked_attributes`（规则列表，传给 `apply_deterministic_attributes`）
+
+输出字段：
+
+- `player`（应用自然变化后）
+- `characters`（应用自然变化后）
+- `event_log`（自然变化事件）
+- `attribute_deltas`（结构化变化 diff）
+
+规则：
+
+- 纯确定性，不调用 LLM。
+- 在 `state_apply` 之后、fan-out 之前执行，确保 `sensory_filter` 和 `attribute_update` 都能看到应用后的值。
+- `attribute_deltas` 包含所有实体（玩家+NPC）的属性变化，含 `hidden` 标记供下游过滤。
+- 在自然 delta 应用后，调用 `apply_deterministic_attributes()` 对 locked 属性执行系统自动计算。该函数是纯规则解释器：读取 `world_rules.locked_attributes` 中的声明式规则列表，按 `type` 分发到对应执行器（`timer`/`stage`/`snapshot`/`list_constraint`）。规则中所有属性 key 不存在时自动跳过。规则按声明顺序执行。
+
+### 4.6 `attribute_update`
+
+职责：根据本 tick 的行动、物理后果、近期事件，通过 LLM 判断并应用事件驱动的属性变化。
+
+输入字段：
+
+- `player.attributes`（已由 `natural_attribute_delta` 应用自然变化）
 - `characters[*].attributes`
 - `player_action`
 - `action_intents`
@@ -265,11 +293,9 @@ state_apply
 
 规则：
 
-- 属性存放在角色自身 dict 的 `attributes` 字段下，不新增顶层属性状态。
-- 每个属性由 init/config 自由定义 key，通用字段包括 `name`、`value`、`min`、`max`、`natural_delta_per_minute`、`description`、`hidden`、`unit`、`tags`、`locked`。
-- Python 先应用 `natural_delta_per_minute` × `tick_duration_minutes` 并执行 min/max 裁剪。
+- 自然变化（`natural_delta_per_minute`）已由上游 `natural_attribute_delta` 节点预处理；本节点接收的是已应用自然变化后的状态。
 - LLM 只输出 `AttributeUpdateResolution` 补丁；不存在的属性 key 应被忽略，不自动创建。
-- 与 `sensory_filter` 并行运行；第一版不保证同一 tick 的属性变化会立即出现在玩家感官文本中。
+- 与 `sensory_filter` 并行运行；自然变化通过 `attribute_deltas` 对感官系统可见，LLM 事件变化在下 tick 叙事中体现。
 
 ### 4.7 `sensory_filter`
 
@@ -444,7 +470,7 @@ YAML 配置由 `src/config/loader.py` 读取，并由 `src/models/config.py` 校
 
 - 默认保存到 `saves/`。
 - 存档应包含 persistent state 和最近一次 `player_percept`，以便 `--load` 后先渲染上一轮结果再等待新输入。
-- `player_input`、`player_action`、`action_intents`、`physics_outcomes` 等 tick 中间状态不写入存档。
+- `player_input`、`player_action`、`action_intents`、`physics_outcomes`、`attribute_deltas` 等 tick 中间状态不写入存档。
 - 存档可能包含玩家设定和对话内容，应视为用户数据。
 - 后续应确保 `saves/` 不被提交。
 

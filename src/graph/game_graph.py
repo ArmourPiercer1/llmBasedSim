@@ -11,7 +11,9 @@ from langgraph.graph import END, START, StateGraph
 
 from src.game.attributes import (
     apply_attribute_changes,
+    apply_deterministic_attributes,
     apply_natural_attribute_deltas,
+    compute_attribute_deltas_diff,
     summarize_attributes_for_prompt,
     visible_player_attributes,
 )
@@ -601,6 +603,7 @@ def build_game_graph(
                 "recent_events": state.get("event_log", [])[-10:],
                 "environment": state.get("environment", {}),
                 "game_time": state.get("game_time"),
+                "attribute_deltas": state.get("attribute_deltas", []),
             })
 
             percept = await generate_structured(llm, [
@@ -624,23 +627,57 @@ def build_game_graph(
                 "event_log": ["[错误] 感官过滤失败，使用默认感知。"],
             }
 
+    # ── Node: natural_attribute_delta (deterministic, no LLM) ──
+
+    def natural_attribute_delta(state: GameState) -> dict[str, Any]:
+        """Apply natural per-minute attribute deltas deterministically. Microseconds.
+
+        Computes structured diffs so the sensory prompt can describe what changed
+        this tick without waiting for the attribute_update LLM.
+        """
+        player_before = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
+        characters_before = state.get("characters", {}) if isinstance(state.get("characters"), dict) else {}
+        tick_dur = float(state.get("tick_duration_minutes", 5.0) or 5.0)
+
+        player_after, characters_after, natural_events = apply_natural_attribute_deltas(
+            player_before, characters_before, tick_duration_minutes=tick_dur,
+        )
+
+        # Apply deterministic system-calculated updates to locked attributes
+        locked_rules = (state.get("world_rules", {}) or {}).get("locked_attributes", [])
+        player_det, characters_det, det_events = apply_deterministic_attributes(
+            player_after, characters_after,
+            tick_duration_minutes=tick_dur,
+            rules=locked_rules,
+        )
+        player_after, characters_after = player_det, characters_det
+        natural_events.extend(det_events)
+
+        deltas = compute_attribute_deltas_diff(
+            player_before, characters_before,
+            player_after, characters_after,
+        )
+        return {
+            "player": player_after,
+            "characters": characters_after,
+            "event_log": natural_events,
+            "attribute_deltas": deltas,
+        }
+
     # ── Node: attribute_update ──
 
     async def attribute_update(state: GameState) -> dict[str, Any]:
+        # Natural deltas already applied by upstream natural_attribute_delta.
         player = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
         characters = state.get("characters", {}) if isinstance(state.get("characters"), dict) else {}
-        tick_dur = state.get("tick_duration_minutes", 5.0)
-        natural_player, natural_characters, natural_events = apply_natural_attribute_deltas(
-            player, characters, tick_duration_minutes=tick_dur,
-        )
 
-        attribute_summary = summarize_attributes_for_prompt(natural_player, natural_characters)
+        attribute_summary = summarize_attributes_for_prompt(player, characters)
         has_attributes = bool(attribute_summary.get("player", {}).get("attributes")) or any(
             bool(char.get("attributes"))
             for char in attribute_summary.get("characters", {}).values()
         )
         if not has_attributes:
-            return {"player": natural_player, "characters": natural_characters, "event_log": natural_events}
+            return {}
 
         try:
             if status:
@@ -667,20 +704,18 @@ def build_game_graph(
             ], AttributeUpdateResolution)
             changes = [change.model_dump() for change in resolution.changes]
             updated_player, updated_characters, change_events = apply_attribute_changes(
-                natural_player,
-                natural_characters,
+                player,
+                characters,
                 changes,
             )
             return {
                 "player": updated_player,
                 "characters": updated_characters,
-                "event_log": [*natural_events, *change_events],
+                "event_log": change_events,
             }
         except Exception:
             return {
-                "player": natural_player,
-                "characters": natural_characters,
-                "event_log": [*natural_events, "[错误] 属性更新失败，已跳过本轮属性事件更新。"],
+                "event_log": ["[错误] 属性更新失败，已跳过本轮属性事件更新。"],
             }
 
     # ── Node: narrative_stylize ──
@@ -724,12 +759,26 @@ def build_game_graph(
 
             enriched = dict(percept)
             enriched["narrative"] = result.narrative
-            return {"player_percept": enriched}
+            history_entry = {
+                "tick": state.get("tick", 0),
+                "narrative": result.narrative,
+                "game_time": state.get("game_time", {}),
+            }
+            return {
+                "player_percept": enriched,
+                "narrative_history": [history_entry],
+            }
         except Exception:
             enriched = dict(percept)
             enriched["narrative"] = percept.get("summary", "")
+            history_entry = {
+                "tick": state.get("tick", 0),
+                "narrative": enriched["narrative"],
+                "game_time": state.get("game_time", {}),
+            }
             return {
                 "player_percept": enriched,
+                "narrative_history": [history_entry],
                 "event_log": ["[错误] 叙事渲染失败，使用原始感知文本。"],
             }
 
@@ -743,6 +792,7 @@ def build_game_graph(
     builder.add_node("tick_speed_resolve", tick_speed_resolve)
     builder.add_node("physics_resolve", physics_resolve)
     builder.add_node("state_apply", state_apply)
+    builder.add_node("natural_attribute_delta", natural_attribute_delta)
     builder.add_node("attribute_update", attribute_update)
     builder.add_node("sensory_filter", sensory_filter)
     builder.add_node("narrative_stylize", narrative_stylize)
@@ -753,8 +803,9 @@ def build_game_graph(
     builder.add_edge("characters_all_decide", "tick_speed_resolve")
     builder.add_edge("tick_speed_resolve", "physics_resolve")
     builder.add_edge("physics_resolve", "state_apply")
-    builder.add_edge("state_apply", "attribute_update")
-    builder.add_edge("state_apply", "sensory_filter")
+    builder.add_edge("state_apply", "natural_attribute_delta")
+    builder.add_edge("natural_attribute_delta", "attribute_update")
+    builder.add_edge("natural_attribute_delta", "sensory_filter")
     builder.add_edge("attribute_update", END)
     builder.add_edge("sensory_filter", "narrative_stylize")
     builder.add_edge("narrative_stylize", END)

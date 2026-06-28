@@ -29,17 +29,4 @@
   "reason": "简短中文原因"
 }
 
-下面是必须用 new_value 的属性及其有效值：
-
-- out_status: 字符串列表。有效元素: crown / head / front-shoulder / shoulders / chest / body。
-  例如 {"new_value": ["crown", "head"]}
-- placenta_delivered: 布尔值。true 或 false。
-- newborn_breathing: 字符串。absent / irregular / regular / labored。
-- newborn_color: 字符串。pink / acrocyanotic / pale / blue。
-- cord_pulse: 字符串。strong / weak / absent / absent_post_birth。
-- fetal_presentation: 字符串。cephalic / breech / transverse / oblique。
-- maternal_posture: 字符串。standing / sitting / quadruped / side_lying / supine / squatting / hands_and_knees / leaning_forward。
-- maternal_special_conditions: 字符串列表。有效元素: uterine_inertia / perineal_edema / cervical_edema / labor_arrest / hypertonic_contractions / chorioamnionitis / postpartum_hemorrhage。
-
-以下属性为系统自动计算（locked），你对它们的任何 change 都会被忽略：
-labor_stage, time_since_membrane_rupture, time_without_station_progress, time_abnormal_fhr, _prev_fetal_station
+具体属性的有效值请参考上方规则部分。系统锁定的属性（locked: true）不应修改。
