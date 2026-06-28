@@ -12,7 +12,7 @@ class CharacterAttribute(BaseModel):
     value: float = 0.0
     min: float | None = None
     max: float | None = None
-    natural_delta_per_tick: float = 0.0
+    natural_delta_per_minute: float = 0.0
     description: str = ""
     hidden: bool = False
     tags: list[str] = Field(default_factory=list)

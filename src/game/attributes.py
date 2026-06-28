@@ -43,6 +43,7 @@ def _normalize_attributes(entity: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def apply_natural_attribute_deltas(
     player: dict[str, Any],
     characters: dict[str, dict[str, Any]],
+    tick_duration_minutes: float = 5.0,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[str]]:
     new_player = deepcopy(player)
     new_characters = deepcopy(characters)
@@ -51,7 +52,7 @@ def apply_natural_attribute_deltas(
     def apply_for_entity(entity: dict[str, Any], label: str) -> None:
         attrs = _normalize_attributes(entity)
         for key, attr in attrs.items():
-            delta = float(attr.get("natural_delta_per_tick") or 0.0)
+            delta = float(attr.get("natural_delta_per_minute") or 0.0) * tick_duration_minutes
             if delta == 0.0:
                 continue
             applied = _apply_delta(attr, delta)
@@ -132,7 +133,7 @@ def summarize_attributes_for_prompt(
                 "value": attr.get("value", 0.0),
                 "min": attr.get("min"),
                 "max": attr.get("max"),
-                "natural_delta_per_tick": attr.get("natural_delta_per_tick", 0.0),
+                "natural_delta_per_minute": attr.get("natural_delta_per_minute", 0.0),
                 "description": attr.get("description", ""),
                 "hidden": bool(attr.get("hidden", False)),
             }

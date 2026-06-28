@@ -266,8 +266,8 @@ state_apply
 规则：
 
 - 属性存放在角色自身 dict 的 `attributes` 字段下，不新增顶层属性状态。
-- 每个属性由 init/config 自由定义 key，通用字段包括 `name`、`value`、`min`、`max`、`natural_delta_per_tick`、`description`、`hidden`、`unit`、`tags`、`locked`。
-- Python 先应用 `natural_delta_per_tick` 并执行 min/max 裁剪。
+- 每个属性由 init/config 自由定义 key，通用字段包括 `name`、`value`、`min`、`max`、`natural_delta_per_minute`、`description`、`hidden`、`unit`、`tags`、`locked`。
+- Python 先应用 `natural_delta_per_minute` × `tick_duration_minutes` 并执行 min/max 裁剪。
 - LLM 只输出 `AttributeUpdateResolution` 补丁；不存在的属性 key 应被忽略，不自动创建。
 - 与 `sensory_filter` 并行运行；第一版不保证同一 tick 的属性变化会立即出现在玩家感官文本中。
 

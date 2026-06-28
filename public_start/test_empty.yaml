@@ -116,14 +116,14 @@ player:
       value: 80
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 对探索和发现的驱动力。
     fatigue:
       name: 疲劳
       value: 10
       min: 0
       max: 100
-      natural_delta_per_tick: 0.5
+      natural_delta_per_minute: 0.1
       description: 身体和精神疲劳程度。每tick自然增加。高于80时行动效率下降。
   subconscious_rules: []
   subconscious_memory: []

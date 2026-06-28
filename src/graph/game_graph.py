@@ -629,7 +629,10 @@ def build_game_graph(
     async def attribute_update(state: GameState) -> dict[str, Any]:
         player = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
         characters = state.get("characters", {}) if isinstance(state.get("characters"), dict) else {}
-        natural_player, natural_characters, natural_events = apply_natural_attribute_deltas(player, characters)
+        tick_dur = state.get("tick_duration_minutes", 5.0)
+        natural_player, natural_characters, natural_events = apply_natural_attribute_deltas(
+            player, characters, tick_duration_minutes=tick_dur,
+        )
 
         attribute_summary = summarize_attributes_for_prompt(natural_player, natural_characters)
         has_attributes = bool(attribute_summary.get("player", {}).get("attributes")) or any(

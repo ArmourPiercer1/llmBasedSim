@@ -360,50 +360,49 @@ player:
       value: 82
       min: 0
       max: 100
-      natural_delta_per_tick: 0.3
+      natural_delta_per_minute: 0.06
       description: 阿斯塔特的超人耐力。战斗、强行军和爆破作业消耗体力；短暂休整可缓慢恢复。
     resolve:
       name: 意志
       value: 88
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 塔尔维茨在绝境中保持冷静的能力。目睹战友惨死、发现血天使被活体抽取基因种子时受到考验。
     squad_cohesion:
       name: 小队凝聚力
       value: 70
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 塔尔维茨手下残存战士的团结和士气。战友阵亡、指挥失误或内部分歧时下降；战术成功、救出幸存者和激励性讲话时上升。
     lucidity:
       name: 清醒度
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: -0.2
+      natural_delta_per_minute: -0.04
       description: 在杀戮世界中保持理性和判断力的能力。持续暴露于放射性风暴、巨蛛族尸体的生物毒素和睡眠剥夺中缓慢下降。低于40可能导致判断失误。
     honor_integrity:
       name: 荣誉感
       value: 95
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 塔尔维茨对帝王之子军团核心信条——纯洁而非优越——的信念。在艾多伦的傲慢、卢修斯的实用主义和军团内部矛盾的冲击下受到考验。
     gene_seed_samples:
       name: 基因种子回收数
       value: 0
       min: 0
       max: 50
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 从阵亡战友遗体上回收的基因种子（progenoid glands）数量。每一个都代表一个可以被继承的帝王之子。回收至20个以上将触发特殊事件。回收越多，战后军团重建的可能越大。
     storm_tolerance:
       name: 风暴耐受
       value: 75
       min: 0
       max: 100
-      natural_delta_per_tick: -0.5
-      description: 对谋杀星持续放射性风暴的适应程度。长时间暴露、频繁的闪电近距离爆炸和电离辐射会侵蚀此值。低于30可能出现感官过载。
+      natural_delta_per_minute: -0.1
   subconscious_rules:
   - '规则1: 军阶必须被尊重，即使指挥官错了。你对艾多伦大人有意见——但不能在士兵面前表现出来。'
   - '规则2: 纯洁不是优越。帝王之子的追求是像帝皇一样完美——不是比所有人都好。当有人混淆这两者时，你会在心底感到不适。'
@@ -476,21 +475,20 @@ characters:
       value: 92
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 卢修斯的剑术水平——当前已是军团顶尖。在面临新的强敌时可能突破提升；受伤或被羞辱时可能暂时下降。
     narcissism:
       name: 自恋程度
       value: 78
       min: 0
       max: 100
-      natural_delta_per_tick: 0.2
-      description: 卢修斯对自身完美的关注程度。每次战斗胜利、被称赞或完成华丽击杀时上升。超过85时他会为了美感而非效率作战；超过95时他可能背弃战友以追求个人荣耀。
+      natural_delta_per_minute: 0.04每次战斗胜利、被称赞或完成华丽击杀时上升。超过85时他会为了美感而非效率作战；超过95时他可能背弃战友以追求个人荣耀。
     loyalty_to_tarvitz:
       name: 对塔尔维茨的忠诚
       value: 65
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 卢修斯对塔尔维茨的私人忠诚——这与他向上爬的本能存在冲突。塔尔维茨救他性命或证明正确时上升；被塔尔维茨在公开场合纠正或感到被压制时下降。低于30时卢修斯可能在关键时刻选择自己而非战友。
     corruption_risk:
       name: 腐败风险
@@ -498,14 +496,13 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0.1
-      description: 卢修斯对异形和极端体验的隐秘迷恋程度。使用异形武器、沉迷战斗快感或独自探索巨蛛族结构时上升。隐藏属性。达到100时他可能走上不可逆转的道路。
+      natural_delta_per_minute: 0.02使用异形武器、沉迷战斗快感或独自探索巨蛛族结构时上升。隐藏属性。达到100时他可能走上不可逆转的道路。
     combat_readiness:
       name: 战斗状态
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 卢修斯的当前战斗准备状态。受伤或疲劳时下降；休息和胜利后恢复。
 - id: bulle
   name: 布勒
@@ -549,28 +546,28 @@ characters:
       value: 95
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 布勒在战斗中执行命令的可靠程度。几乎不可能动摇。
     morale:
       name: 士气
       value: 80
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 布勒的个人士气。战友阵亡时下降；与塔尔维茨并肩作战时稳固。
     anger:
       name: 愤怒
       value: 45
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 布勒对异形和指挥失误积累的怒火。目睹战友被钉在树上或军官撒谎时急剧上升；超过70时可能不顾命令擅自行动。
     combat_readiness:
       name: 战斗状态
       value: 88
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 布勒的当前战斗状态。
 - id: sakian
   name: 萨基安
@@ -613,21 +610,20 @@ characters:
       value: 88
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 萨基安的通讯和爆破技术能力。在修理关键设备时发挥。
     injury_severity:
       name: 伤势
       value: 55
       min: 0
       max: 100
-      natural_delta_per_tick: -2
-      description: 右臂骨折的严重程度。每tick自然恢复2点（基因强化愈合）。高于60时严重限制战斗能力；低于20时完全恢复。
+      natural_delta_per_minute: -0.4每tick自然恢复2点（基因强化愈合）。高于60时严重限制战斗能力；低于20时完全恢复。
     resolve:
       name: 意志
       value: 82
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 负伤继续战斗的意志力。对自身能力的怀疑或被当作累赘时下降。
 - id: lord_eidolon
   name: 艾多伦大人
@@ -674,21 +670,21 @@ characters:
       value: 95
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 艾多伦的骄傲——他的驱动力也是他的盲点。被批评、被证明错误或被迫接受下属建议时下降；但这不会让他谦卑，只会让他更愤怒。低于70时他可能接受现实；高于95时他宁可死也不承认错误。
     honor_standing:
       name: 荣誉值
       value: 40
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 艾多伦在本次任务中的荣誉值——从近乎崩塌开始。成功摧毁异形结构、救出幸存者、获得荷鲁斯认可时上升；更多伤亡、被托加顿公开羞辱或被血天使原体追责时下降。
     tactical_judgment:
       name: 战术判断
       value: 60
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 艾多伦做出正确战术决定的能力。当他的骄傲被抑制时，他是一个极其优秀的指挥官；但当骄傲主导时，他的判断严重扭曲。低于50时他会做出鲁莽的错误决定。
     grudging_respect_tarvitz:
       name: 对塔尔维茨的隐秘赏识
@@ -696,7 +692,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 艾多伦在内心深处对塔尔维茨能力的不情愿认可。隐藏属性。塔尔维茨的成功、被塔尔维茨救下或塔尔维茨的想法被证明正确时上升。达到70时艾多伦可能会罕见地公开表扬他。
 - id: blood_angel_survivor
   name: 血天使幸存者
@@ -734,21 +730,20 @@ characters:
       value: 75
       min: 0
       max: 100
-      natural_delta_per_tick: -0.5
+      natural_delta_per_minute: -0.1
       description: 血天使的求生意志。连接在抽取装置上时每tick缓慢下降。被救援和获得战友遗体基因种子时恢复。
     physical_condition:
       name: 身体状况
       value: 25
       min: 0
       max: 100
-      natural_delta_per_tick: -0.3
-      description: 基因种子被持续抽取导致的极度虚弱。被断开连接后会缓慢恢复。低于10可能导致器官衰竭。
+      natural_delta_per_minute: -0.06被断开连接后会缓慢恢复。低于10可能导致器官衰竭。
     genetic_legacy_saved:
       name: 保存的基因遗产
       value: 1
       min: 0
       max: 30
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 从死亡兄弟身上回收并藏匿的基因种子数量。每一颗都代表一个可以被继承的血天使。
     hidden_knowledge:
       name: 隐蔽知识
@@ -756,7 +751,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 血天使在巢穴中被动观察四周学到的关于巨蛛族行为、巢穴结构和弱点的知识。隐藏属性。达到100时他可以提供精确的情报。
 starting_scene_description: '空降舱穿过风暴层的感觉就像被一双巨大的手攥住然后反复砸向岩石。 第十三号舱的陀螺稳定仪在第二次闪电击中时就失效了—— 从那一刻起，你们不是降落，而是坠落。
       撞击。金属尖叫。肋骨在胸甲内撞得生疼。然后是寂静—— 被风暴的嗡鸣和巨草茎摇曳的呻吟填满的寂静。

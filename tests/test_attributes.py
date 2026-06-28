@@ -10,7 +10,7 @@ def test_natural_delta_applies_and_clamps_player_attribute():
     player = {
         "name": "玩家",
         "attributes": {
-            "stamina": {"name": "体力", "value": 99, "min": 0, "max": 100, "natural_delta_per_tick": 5}
+            "stamina": {"name": "体力", "value": 99, "min": 0, "max": 100, "natural_delta_per_minute": 1}
         },
     }
 
@@ -24,7 +24,7 @@ def test_natural_delta_applies_and_clamps_player_attribute():
 def test_natural_delta_skips_locked_attribute():
     player = {
         "attributes": {
-            "curse": {"name": "诅咒", "value": 10, "natural_delta_per_tick": -1, "locked": True}
+            "curse": {"name": "诅咒", "value": 10, "natural_delta_per_minute": -1, "locked": True}
         }
     }
 

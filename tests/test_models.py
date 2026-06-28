@@ -22,12 +22,12 @@ class TestCharacterAttribute:
     def test_defaults(self):
         attr = CharacterAttribute()
         assert attr.value == 0.0
-        assert attr.natural_delta_per_tick == 0.0
+        assert attr.natural_delta_per_minute == 0.0
         assert attr.hidden is False
         assert attr.tags == []
 
     def test_model_dump(self):
-        attr = CharacterAttribute(name="体力", value=80, min=0, max=100, natural_delta_per_tick=1)
+        attr = CharacterAttribute(name="体力", value=80, min=0, max=100, natural_delta_per_minute=1)
         dumped = attr.model_dump()
         assert dumped["name"] == "体力"
         assert dumped["value"] == 80

@@ -269,57 +269,56 @@ player:
       value: 95
       min: 0
       max: 100
-      natural_delta_per_tick: 0.5
+      natural_delta_per_minute: 0.1
       description: 阿斯塔特的超人耐力。战斗、突击、扛重物时加速消耗；待命或休整时缓慢恢复。
     resolve:
       name: 意志
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 精神坚毅程度。面对Samus的低语、不可名状的恐怖时受到考验；成功克服恐惧后缓慢恢复。
     imperial_truth_devotion:
       name: 对帝国真理的信奉
       value: 85
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 对唯物主义世界观的信念强度。目睹超自然现象（尸体复生、混沌附身）时被动摇；获得科学解释时可部分恢复。
     brotherhood_trust:
       name: 兄弟信任
       value: 80
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 对阿斯塔特兄弟的信赖程度。目睹兄弟背叛或被附身时崩溃式下降；并肩作战时缓慢提升。
     sanity:
       name: 理智
       value: 88
       min: -100
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 对战锤40000残酷宇宙的心理承受力。暴露于混沌污染、极度暴力或违背常理的恐怖时下降。低于30可能引发短时幻觉或冲动行为。
     cold_resistance:
       name: 抗寒
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 耳语山极端低温环境（-15°C）下的抗寒能力。动力装甲提供额外保护；长时间暴露于高山寒风时缓慢下降。
     vox_integrity:
       name: 通讯稳定度
       value: 60
       min: 0
       max: 100
-      natural_delta_per_tick: -2
-      description: Vox通讯频道的稳定程度。深入山腹越深，Samus的低语越强，通讯越不稳定；返回开阔地带或重启设备可恢复。
+      natural_delta_per_minute: -0.4深入山腹越深，Samus的低语越强，通讯越不稳定；返回开阔地带或重启设备可恢复。
     corruption_resistance:
       name: 混沌抗性
       value: 100
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 抵抗亚空间腐败的内在屏障。此值对玩家隐藏。当Samus的低语被听到、接触混沌附身者或在恐怖面前意志动摇时下降。降至0可能导致改变。
   subconscious_rules:
   - '规则1: 帝国真理是唯一的真理。任何看似''超自然''的现象都一定有科学解释。绝不在公开场合使用''鬼神''、''恶魔''或''附身''这类字眼。'
@@ -391,28 +390,28 @@ characters:
       value: 95
       min: -100
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 尼禄对连长加维尔·洛肯的忠诚度。核心人格驱动力。被洛肯忽视或不信任时可能下降；并肩作战时提升。
     morale:
       name: 士气
       value: 75
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 战斗意志和乐观程度。伤亡、恐怖事件、Samus低语会削弱士气；战术胜利和兄弟间的鼓励会提升。
     combat_readiness:
       name: 战斗状态
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 战斗准备状态。持续作战消耗体力；短暂休整可恢复。
     anger:
       name: 愤怒
       value: 35
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 尼禄的愤怒程度——他是个热血的人。战友伤亡、不公正事件和背叛会激怒他；冷静思考时逐渐平复。高于70可能导致他冲动行事。
     corruption_exposure:
       name: 混沌接触度
@@ -420,7 +419,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 暴露于Samus影响的程度。在深渊之室和听到Samus低语时上升。隐藏属性。
 - id: xavyer_jubal
   name: 泽维尔·朱巴尔
@@ -470,21 +469,21 @@ characters:
       value: 65
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 朱巴尔因未被提拔而积累的怨恨。这是他被Samus附身的关键心理裂隙。受冷落、被忽视或目睹维普斯受宠时会上升。超过85时Samus可以完全控制他。
     sanity:
       name: 理智
       value: 55
       min: -100
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 朱巴尔的心理状态。Samus的低语持续侵蚀他的理智；低于30时他开始失去对自我意识的控制，低于10时Samus将完全取代他。
     combat_readiness:
       name: 战斗状态
       value: 88
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 战斗准备状态。仍保持着老兵的专业素养。
     corruption_level:
       name: 混沌附身程度
@@ -492,8 +491,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 3
-      description: Samus对朱巴尔意识的渗透程度。每tick自然增长3点。达到100时朱巴尔将彻底失控屠杀战友，尸体随后复生为混沌怪物。这是整个场景的核心叙事驱动。
+      natural_delta_per_minute: 0.6每tick自然增长3点。达到100时朱巴尔将彻底失控屠杀战友，尸体随后复生为混沌怪物。这是整个场景的核心叙事驱动。
 - id: rassek
   name: 拉塞克
   character_id: rassek
@@ -537,28 +535,28 @@ characters:
       value: 95
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: Terminator战术无畏装甲的结构完整性。承受重火力时下降；维修可恢复。低于30可能导致装甲系统故障。
     combat_readiness:
       name: 战斗状态
       value: 95
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 拉塞克的战斗状态。作为Terminator，他的消耗远高于普通战士。
     suppression_fire_count:
       name: 压制火力
       value: 100
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 重型风暴爆弹枪的弹药储备。每次开火压制消耗；补给可恢复。
     focus:
       name: 专注
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 拉塞克对任务的专注程度。通常极高，但Samus的低语可能干扰判断。
     corruption_exposure:
       name: 混沌接触度
@@ -566,7 +564,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 暴露于Samus影响的程度。Terminator装甲的隔离层提供一定保护。隐藏属性。
 - id: kyril_sindermann
   name: 基里尔·辛德曼
@@ -616,21 +614,21 @@ characters:
       value: 70
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 辛德曼对帝国真理唯物主义的信念稳定性。面对不可解释的超自然事件时崩溃式下降。低于20时他不再能提供理性建议。
     fatigue:
       name: 疲劳
       value: 40
       min: 0
       max: 100
-      natural_delta_per_tick: 1
+      natural_delta_per_minute: 0.2
       description: 凡人的身体和精神疲劳。辛德曼年事已高，长时间工作、缺乏睡眠和过度焦虑都会增加疲劳；休息可恢复。高于80可能导致错误判断。
     courage:
       name: 勇气
       value: 55
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 辛德曼的学术勇气——面对真相的坚强程度。在目睹Samus复活尸体时受到最严峻的考验。
     secret_knowledge:
       name: 隐秘知识
@@ -638,7 +636,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 辛德曼对亚空间真相的了解程度。私下研究发现越多越高；可能影响后续行为和建议。
 - id: euphrati_keeler
   name: 尤弗拉提·基勒
@@ -688,28 +686,28 @@ characters:
       value: 85
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 基勒面对恐怖的非凡勇气。在Samus化朱巴尔扑来时举起相机而非逃跑——这定义了她是怎样的人。
     fatigue:
       name: 疲劳
       value: 30
       min: 0
       max: 100
-      natural_delta_per_tick: 1
+      natural_delta_per_minute: 0.2
       description: 凡人的身体疲劳。山区高海拔和低温加速消耗；休息可恢复。
     evidence_integrity:
       name: 证据安全度
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 基勒所持禁忌照片的安全程度。被马洛赫斯特发现或设备被没收时下降。降至0则所有证据被销毁。
     resolve:
       name: 意志
       value: 80
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 在巨大心理压力下坚持记录真相的决心。目睹同伴被屠杀时下降；战胜恐惧后恢复。
 - id: ignace_karkasy
   name: 伊格纳斯·卡卡西
@@ -758,28 +756,28 @@ characters:
       value: 40
       min: 0
       max: 100
-      natural_delta_per_tick: -1
+      natural_delta_per_minute: -0.2
       description: 卡卡西的清醒程度——每tick自然下降1点（他在偷偷喝酒）。洛肯的监督、正式场合和灵感爆发可提升；独处、压力和无聊会加速下降。低于20时他说的话可能惹祸上身。
     inspiration:
       name: 创作灵感
       value: 30
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 卡卡西的诗歌创作灵感。目睹重大事件（如Samus的照片）可大幅提升；酗酒和消沉会抑制灵感。高于80时他可能写出传世之作。
     reputation:
       name: 声誉
       value: 15
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 卡卡西在远征舰队中的名声。行为端正和为洛肯出力可缓慢恢复；再次酗酒闹事会暴跌。低于10时他将被强制遣返地球。
     self_loathing:
       name: 自我厌恶
       value: 70
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 卡卡西的自我厌恶程度。被信任和认可时可能减轻；失败和羞辱时加深。高于85可能导致严重的自毁行为。
 - id: maloghurst
   name: 马洛赫斯特
@@ -827,21 +825,21 @@ characters:
       value: 85
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 马洛赫斯特对Samus事件信息的掌控程度。证据被隐匿、目击者被说服、官方叙事被接受时上升；真相泄露、洛肯追问、基勒的照片传播时下降。
     authority:
       name: 权威
       value: 90
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 马洛赫斯特作为战帅侍从长的影响力和权威。被质疑、被忽视或被绕过时下降；成功执行战帅意志时恢复。
     trust_in_loken:
       name: 对洛肯的评价
       value: 60
       min: 0
       max: 100
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 马洛赫斯特对洛肯可靠性（从战帅视角）的评估。洛肯配合官方叙事时上升；追问真相、帮助基勒或公开质疑时下降。低于30时马洛赫斯特将采取对策。
     corruption_knowledge:
       name: 混沌知识
@@ -849,7 +847,7 @@ characters:
       min: 0
       max: 100
       hidden: true
-      natural_delta_per_tick: 0
+      natural_delta_per_minute: 0
       description: 马洛赫斯特对亚空间混沌的真实了解程度——远比他说出来的多。隐藏属性。
 starting_scene_description: '寒风如刀，撕扯着耳语山五千公尺高空的每一寸裸露岩石。风暴鸟运输机的 引擎轰鸣刚刚消散在稀薄的空气中，第十连的战士们正从机舱中鱼贯而出—— 白色的马克IV型动力装甲在刺眼的白日光下几乎融入冰原的背景。
 
