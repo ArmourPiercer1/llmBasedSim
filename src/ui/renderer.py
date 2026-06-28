@@ -11,10 +11,17 @@ def _format_attribute_value(attr: dict) -> str:
     value = attr.get("value", 0)
     maximum = attr.get("max")
     unit = attr.get("unit", "")
-    try:
-        value_text = f"{float(value):g}"
-    except (TypeError, ValueError):
-        value_text = str(value)
+    if isinstance(value, list):
+        value_text = ", ".join(str(v) for v in value) if value else "(无)"
+    elif isinstance(value, bool):
+        value_text = "是" if value else "否"
+    elif isinstance(value, str):
+        value_text = value
+    else:
+        try:
+            value_text = f"{float(value):g}"
+        except (TypeError, ValueError):
+            value_text = str(value)
     if maximum is not None:
         try:
             text = f"{value_text}/{float(maximum):g}"

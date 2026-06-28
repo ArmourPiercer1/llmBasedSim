@@ -21,10 +21,20 @@ def _attribute_name(key: str, attr: dict[str, Any]) -> str:
 def _apply_delta(attr: dict[str, Any], delta: float) -> tuple[dict[str, Any], float, float] | None:
     if attr.get("locked"):
         return None
-    current = float(attr.get("value", 0.0))
+    try:
+        current = float(attr.get("value", 0.0))
+    except (TypeError, ValueError):
+        return None
     updated = _clamp(current + delta, attr)
     new_attr = {**attr, "value": updated}
     return new_attr, current, updated
+
+
+def _apply_new_value(attr: dict[str, Any], new_value: Any) -> tuple[dict[str, Any], object, object] | None:
+    if attr.get("locked"):
+        return None
+    old = attr.get("value")
+    return {**attr, "value": new_value}, old, new_value
 
 
 def _normalize_attributes(entity: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -36,7 +46,10 @@ def _normalize_attributes(entity: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if isinstance(value, dict):
             normalized[str(key)] = {**value}
         else:
-            normalized[str(key)] = {"name": str(key), "value": float(value)}
+            try:
+                normalized[str(key)] = {"name": str(key), "value": float(value)}
+            except (TypeError, ValueError):
+                normalized[str(key)] = {"name": str(key), "value": value}
     return normalized
 
 
@@ -104,16 +117,29 @@ def apply_attribute_changes(
             continue
 
         attr = attrs[attr_key]
-        applied = _apply_delta(attr, float(change.get("delta") or 0.0))
-        if not applied:
+        nv = change.get("new_value")
+        if nv is not None:
+            applied = _apply_new_value(attr, nv)
+            if not applied:
+                entity["attributes"] = attrs
+                continue
+            new_attr, old, new = applied
+            attrs[attr_key] = new_attr
             entity["attributes"] = attrs
-            continue
-        new_attr, old, new = applied
-        attrs[attr_key] = new_attr
-        entity["attributes"] = attrs
-        if old != new:
-            reason = str(change.get("reason") or "属性事件")
-            events.append(f"[属性] {label}的{_attribute_name(attr_key, attr)} {old:g} → {new:g}（{reason}）")
+            if old != new:
+                reason = str(change.get("reason") or "属性事件")
+                events.append(f"[属性] {label}的{_attribute_name(attr_key, attr)}: {old} → {new}（{reason}）")
+        else:
+            applied = _apply_delta(attr, float(change.get("delta") or 0.0))
+            if not applied:
+                entity["attributes"] = attrs
+                continue
+            new_attr, old, new = applied
+            attrs[attr_key] = new_attr
+            entity["attributes"] = attrs
+            if old != new:
+                reason = str(change.get("reason") or "属性事件")
+                events.append(f"[属性] {label}的{_attribute_name(attr_key, attr)} {old:g} → {new:g}（{reason}）")
 
     return new_player, new_characters, events
 
@@ -126,8 +152,6 @@ def summarize_attributes_for_prompt(
         attrs = _normalize_attributes(entity)
         result = {}
         for key, attr in attrs.items():
-            if attr.get("locked"):
-                continue
             result[key] = {
                 "name": attr.get("name") or key,
                 "value": attr.get("value", 0.0),

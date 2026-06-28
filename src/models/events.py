@@ -76,7 +76,8 @@ class AttributeChange(BaseModel):
     entity_type: Literal["player", "character"]
     entity_id: str = ""
     attribute_key: str
-    delta: float
+    delta: float = 0.0
+    new_value: Any = None
     reason: str = ""
 
 

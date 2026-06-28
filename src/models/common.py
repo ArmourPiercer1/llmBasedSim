@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -9,7 +11,7 @@ class Position(BaseModel):
 
 class CharacterAttribute(BaseModel):
     name: str = ""
-    value: float = 0.0
+    value: Any = 0.0
     min: float | None = None
     max: float | None = None
     natural_delta_per_minute: float = 0.0

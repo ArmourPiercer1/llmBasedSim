@@ -391,10 +391,22 @@ function renderEvents(events) {
 }
 
 function formatAttribute(attr) {
-  const value = formatNumber(attr.value);
+  const value = attr.value;
+  // Non-numeric types
+  if (Array.isArray(value)) {
+    return value.length ? value.join(", ") : "(无)";
+  }
+  if (typeof value === "boolean") {
+    return value ? "是" : "否";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  // Numeric (existing behavior)
+  const formatted = formatNumber(value);
   const max = attr.max === null || attr.max === undefined ? "" : `/${formatNumber(attr.max)}`;
   const unit = attr.unit ? ` ${attr.unit}` : "";
-  return `${value}${max}${unit}`;
+  return `${formatted}${max}${unit}`;
 }
 
 function formatNumber(value) {
