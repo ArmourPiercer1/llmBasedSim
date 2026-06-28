@@ -292,7 +292,257 @@ world_rules:
 - 默认物理规则共 10 条（重力、碰撞检测、连锁反应、声音传播等），默认属性规则共 7 条。
 - 完整示例参见 [`public_start/whisperheads.yaml`](public_start/whisperheads.yaml)（耳语山场景：禁用"物理一致性"规则以体现 Warp 影响区域的物理异常，追加 5 条物理规则和 3 条属性规则）。
 
-### 接口文档
+### 编写启动文件
+
+项目支持两种启动文件格式：**单文件 YAML**（一个 `.yaml` 包含所有内容）和**启动文件组**（一个子目录包含多个拆分文件）。
+
+#### 单文件 YAML（推荐）
+
+放在 `public_start/` 或 `private_start/` 下，一个文件就是一个完整场景。
+
+**最简示例：**
+
+```yaml
+world:
+  name: 测试场景
+  description: 一个简单的测试房间
+  locations:
+    - id: room
+      name: 房间
+      description: 一间普通的石室
+  objects:
+    - id: table
+      name: 桌子
+      object_type: furniture
+      description: 一张木桌
+      properties:
+        weight_kg: 30
+player:
+  name: 冒险者
+  persona: 一个普通的冒险者
+characters:
+  - id: guard
+    name: 守卫
+    personality:
+      traits: [严肃, 尽责]
+    starting_position:
+      x: 2
+      y: 0
+      z: 0
+starting_scene_description: 你推开石门，走进一间昏暗的石室。角落里站着一个沉默的守卫。
+```
+
+**完整字段参考：**
+
+| 顶层字段 | 必需 | 说明 |
+|---|---|---|
+| `world` | 是 | 世界定义，含 `name`、`description`、`locations`、`objects`、`environment` |
+| `player` | 是 | 玩家定义，含 `name`、`persona`、`capabilities`、`physical_profile`、`attributes` |
+| `characters` | 是 | NPC 列表，每个含 `id`、`name`、`personality`、`position`、`attributes` |
+| `starting_scene_description` | 是 | 开场叙事文本 |
+| `max_ticks` | 否 | 最大回合数（默认 100） |
+| `game_time` | 否 | 初始游戏时间 `{hour, minute}`（默认清晨 6:00） |
+| `ticks_per_game_minute` | 否 | 每 tick 推进的游戏分钟数（默认 0.2，即 1 tick = 5 分钟） |
+| `world_rules` | 否 | 世界规则注入，含 `physics`/`attribute`/`deterministic` |
+| `narrative_style` | 否 | 叙事风格控制，含 `style_description` 和 `style_example` |
+
+**玩家字段：**
+
+```yaml
+player:
+  name: 角色名
+  persona: 性格描述（一段话，可含人设限制）
+  position: {x: 0, y: 0, z: 0}          # 可选，默认自动推断
+  capabilities:
+    sight_range_m: 50.0                   # 视野范围（米）
+    hearing_range_m: 100.0                # 听力范围（米）
+    special_senses: [夜视, 热感应]
+    allowed_extraordinary_actions:        # 玩家可执行的超凡行动
+      - 灵能感知
+      - 指挥部队
+    blocked_common_actions:               # 人设限制：禁止的普通行动
+      - 飞行
+      - 对盟友使用致命武力
+    skill_levels:                         # 技能等级 (0.0-1.0)
+      sword: 0.8
+      lockpicking: 0.3
+  physical_profile:
+    strength: 0.8                         # 力量系数（影响可移动物体重量）
+    body_width_cm: 60.0                   # 身体宽度（影响通过窄通道）
+  attributes:                             # 自定义数值属性
+    stamina: {name: 体力, value: 100, max: 100}
+    sanity: {name: 理智, value: 80, max: 100, hidden: true}  # hidden: 不在 UI 中展示
+  subconscious_rules:                     # 潜意识修正规则
+    - 在公开场合不承认超自然现象的存在
+  speech_examples:                        # 语言风格示例
+    - 我不需要你的怜悯。
+```
+
+**NPC 字段：**
+
+```yaml
+characters:
+  - id: knight_rain
+    name: 雷恩
+    personality:
+      traits: [忠诚, 沉默, 敏锐]
+      motivations:
+        - 保护主角
+        - 寻找失踪的妹妹
+      speech_style: 寡言但精准，偶尔流露出深藏的温柔
+      background: 曾是王都骑士团的成员，在一次任务失败后自我放逐
+    position: {x: 3, y: 0, z: 1}         # 初始坐标
+    relationships:                         # 初始好感度 (-1.0 ~ 1.0)
+      player: 0.3
+    attributes:
+      loyalty: {name: 忠诚度, value: 70, max: 100}
+    speech_examples:
+      - 我建议你不要走那条路。
+      - 我曾经见过这样的东西……在很远的地方。
+```
+
+**地点字段：**
+
+```yaml
+locations:
+  - id: hall
+    name: 大厅
+    description: 一座宏伟的大理石大厅，穹顶上绘着褪色的壁画
+    connections: {north: garden, east: kitchen}   # 或 [north, east]
+    ambient_light: 昏黄的烛光
+    ambient_sound: 壁炉的噼啪声和远处的风啸
+    properties:                             # 可选属性
+      width_cm: 300                         # 通道宽度（影响身体宽度判定）
+```
+
+**物体字段：**
+
+```yaml
+objects:
+  - id: ancient_desk
+    name: 古旧书桌
+    object_type: furniture
+    description: 一张橡木书桌，抽屉半开着
+    position: {x: 1, y: 0, z: 2}
+    state: {locked: false}
+    properties:
+      weight_kg: 80
+      lock_difficulty: 0.6                 # 锁难度 (0-1)，触发技能检定
+```
+
+物体 `object_type` 可选值：`furniture`、`container`、`decoration`、`tool`、`food`、`weapon`、`character_equipment`、`device`、`document`、`clothing`、`misc`。
+
+#### 启动文件组（拆分配置）
+
+放在 `public_start/<场景名>/` 或 `private_start/<场景名>/` 下，将世界、玩家、NPC 分别放在不同文件中。WebUI 会自动发现含 `world.yaml` 的子目录并标记为 `[拆分配置]`。
+
+**目录结构：**
+
+```
+public_start/murder/
+  world.yaml          ← 必需。世界、地点、物体、环境
+  player.yaml         ← 可选。玩家设定（缺失时使用默认值）
+  characters/         ← 可选。NPC 目录（缺失时无 NPC）
+    lucius.yaml
+    eidolon.yaml
+  settings.yaml       ← 可选。world_rules、narrative_style、max_ticks、game_time 等
+```
+
+**`world.yaml`：**
+
+```yaml
+world:
+  name: 谋杀星
+  description: 第六十三之十九号世界，当地人称之为"谋杀"
+  environment:
+    time_of_day: 清晨
+    weather: 离子风暴前夕，空气电离
+    temperature_c: 35.0
+  locations:
+    - id: landing_zone
+      name: 登陆区
+      description: 风暴鸟降落的金属平台
+      connections: {north: forest_edge}
+  objects:
+    - id: stormbird
+      name: 风暴鸟运输机
+      object_type: device
+      description: 第十连的专属运输机
+      properties: {weight_kg: 8000}
+```
+
+**`player.yaml`：**
+
+```yaml
+player:
+  name: 萨乌尔·塔维茨
+  persona: 帝皇之子第十连一线连长，一位完美主义者
+  capabilities:
+    allowed_extraordinary_actions:
+      - 以帝皇之子完美战术指挥战斗
+    skill_levels:
+      swordsmanship: 0.95
+  physical_profile:
+    strength: 0.9
+  attributes:
+    stamina: {name: 体力, value: 95, max: 100}
+```
+
+**`characters/lucius.yaml`：**
+
+```yaml
+character:
+  id: lucius
+  name: 卢修斯
+  personality:
+    traits: [傲慢, 天才, 残忍]
+    motivations:
+      - 证明自己是全军团最伟大的剑士
+  position: {x: 5, y: 0, z: 3}
+  attributes:
+    pride: {name: 傲慢值, value: 90, max: 100}
+```
+
+**`settings.yaml`（可选）：**
+
+```yaml
+world_rules:
+  physics:
+    append:
+      - 11. **离子风暴干扰**：Vox通讯间歇性失灵
+  deterministic:
+    append:
+      - id: storm_survival
+        description: 离子风暴中行动受限
+        condition: "if(player.storm_tolerance < 30, blocked; player.storm_tolerance < 60, uncertain:0.4; allowed)"
+narrative_style:
+  style_description: 战锤40K哥特式军事科幻
+  style_example: 离子风暴的紫光照亮了登陆平台……
+max_ticks: 80
+game_time: {hour: 5, minute: 30}
+ticks_per_game_minute: 0.5
+```
+
+**启动方式：**
+
+```bash
+# CLI — 单文件
+python -m src.main --init-file public_start/whisperheads.yaml
+
+# CLI — 文件组
+python -m src.main --init-file-set public_start/murder
+
+# WebUI — 开局菜单中选择对应条目即可
+```
+
+#### 启动文件位置
+
+| 目录 | 用途 |
+|---|---|
+| `public_start/` | 公开发布的场景，纳入版本控制 |
+| `private_start/` | 私人/编辑中的场景，`.gitignore` 排除 |
+
+WebUI 和 CLI 都可以从任意电脑路径加载（通过"其他"选项或直接传绝对路径）。
 
 - `docs/game-flow-interfaces.md`
 
