@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from copy import deepcopy
 from typing import Any, Protocol
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -10,6 +11,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from src.game.attributes import (
+    _apply_delta,
+    _attribute_name,
+    _normalize_attributes,
     apply_attribute_changes,
     apply_deterministic_attributes,
     apply_natural_attribute_deltas,
@@ -121,19 +125,20 @@ def build_game_graph(
     async def player_intent_process(state: GameState) -> dict[str, Any]:
         player_input = state.get("player_input")
         continuation = state.get("action_continuation")
+        normalized_input = player_input.strip().lower() if player_input else ""
 
-        if continuation and (not player_input or player_input.strip().lower() != "/stop"):
+        if continuation and normalized_input == "/c":
             if status:
                 status.update("正在延续上一轮行动...")
-            return {"player_action": continuation, "action_continuation": continuation, "event_log": []}
+            return {"player_action": continuation, "action_continuation": continuation, "event_log": ["[系统] 继续长任务。"]}
 
-        if continuation and player_input and player_input.strip().lower() == "/stop":
+        if continuation and normalized_input == "/stop":
             return {"player_action": None, "action_continuation": None, "event_log": ["[系统] 行动已终止。"]}
 
         if not player_input:
             if status:
                 status.update("本轮无玩家输入，跳过意图解析")
-            return {"player_action": None}
+            return {"player_action": None, "action_continuation": None}
 
         player = state.get("player", {})
         try:
@@ -155,14 +160,20 @@ def build_game_graph(
                 HumanMessage(content=user_prompt),
             ], PlayerAction)
             action.raw_input = player_input
+            events = []
+            if continuation:
+                events.append("[系统] 长任务已被新输入打断。")
+            events.append(f"[玩家意图] {action.action_description or action.interpreted_intent}")
 
             return {
                 "player_action": action.model_dump(),
-                "event_log": [f"[玩家意图] {action.action_description or action.interpreted_intent}"],
+                "action_continuation": None,
+                "event_log": events,
             }
         except Exception:
             return {
                 "player_action": None,
+                "action_continuation": None,
                 "event_log": ["[错误] 玩家输入处理失败，本轮输入被忽略。"],
             }
 
@@ -204,6 +215,26 @@ def build_game_graph(
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt),
             ], PlayerAction)
+
+            preserved_action_fields = {
+                key: player_action.get(key)
+                for key in (
+                    "raw_input",
+                    "interpreted_intent",
+                    "subconscious_adjustment",
+                    "action_type",
+                    "action_description",
+                    "speech_content",
+                    "target_object_id",
+                    "target_character_id",
+                    "target_position",
+                    "emotion",
+                    "duration_minutes",
+                    "continue_until",
+                )
+                if key in player_action
+            }
+            resolved = PlayerAction.model_validate({**resolved.model_dump(), **preserved_action_fields})
 
             if rule_result:
                 if resolved.feasibility is None:
@@ -262,6 +293,7 @@ def build_game_graph(
         except Exception:
             return {
                 "player_action": player_action,
+                "action_continuation": None,
                 "event_log": ["[错误] 玩家行动可行性判断失败，跳过可行性检查。"],
             }
 
@@ -391,16 +423,17 @@ def build_game_graph(
         # Truncate actions exceeding tick duration
         new_player_action = dict(player_action)
         new_action_intents = list(state.get("action_intents", []))
-        action_continuation = state.get("action_continuation")
+        action_continuation = None
 
         # Player action truncation
         if player_duration > tick_duration and player_action.get("action_type") not in ("speak", "wait", "observe"):
             new_player_action["duration_minutes"] = tick_duration
             remaining = player_duration - tick_duration
-            action_continuation = {
-                **{k: v for k, v in player_action.items() if k != "duration_minutes"},
-                "duration_minutes": remaining,
-            }
+            if player_action.get("continue_until"):
+                action_continuation = {
+                    **{k: v for k, v in player_action.items() if k != "duration_minutes"},
+                    "duration_minutes": remaining,
+                }
 
         # NPC action truncation (only move/interact/use_item, not speak/wait/observe)
         truncated_intents = []
@@ -634,21 +667,32 @@ def build_game_graph(
 
         Computes structured diffs so the sensory prompt can describe what changed
         this tick without waiting for the attribute_update LLM.
+
+        Attributes and rules marked ``update_position: post_narrative`` are
+        deferred to ``deferred_natural_deltas`` / ``deferred_locked_rules``
+        and applied later by the ``post_narrative_update`` node.
         """
         player_before = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
         characters_before = state.get("characters", {}) if isinstance(state.get("characters"), dict) else {}
         tick_dur = float(state.get("tick_duration_minutes", 5.0) or 5.0)
 
+        deferred_natural: list[dict[str, Any]] = []
         player_after, characters_after, natural_events = apply_natural_attribute_deltas(
-            player_before, characters_before, tick_duration_minutes=tick_dur,
+            player_before, characters_before,
+            tick_duration_minutes=tick_dur,
+            defer_post=True,
+            deferred=deferred_natural,
         )
 
         # Apply deterministic system-calculated updates to locked attributes
         locked_rules = (state.get("world_rules", {}) or {}).get("locked_attributes", [])
+        deferred_locked: list[dict[str, Any]] = []
         player_det, characters_det, det_events = apply_deterministic_attributes(
             player_after, characters_after,
             tick_duration_minutes=tick_dur,
             rules=locked_rules,
+            defer_post=True,
+            deferred=deferred_locked,
         )
         player_after, characters_after = player_det, characters_det
         natural_events.extend(det_events)
@@ -662,6 +706,8 @@ def build_game_graph(
             "characters": characters_after,
             "event_log": natural_events,
             "attribute_deltas": deltas,
+            "deferred_natural_deltas": deferred_natural,
+            "deferred_locked_rules": deferred_locked,
         }
 
     # ── Node: attribute_update ──
@@ -732,12 +778,20 @@ def build_game_graph(
         player = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
         env = state.get("environment", {}) or {}
 
+        # Collect last 2 narrative segments for continuity
+        prev_narratives = [
+            h.get("narrative", "")
+            for h in (state.get("narrative_history") or [])[-2:]
+            if h.get("narrative")
+        ]
+
         try:
             if status:
                 status.update("正在渲染叙事...")
             system_prompt = prompt_loader.render("narrative_system.j2", {
                 "style_description": style_description,
                 "style_example": style_example,
+                "has_previous": bool(prev_narratives),
             })
             user_prompt = prompt_loader.render("narrative_user.j2", {
                 "player_name": player.get("name", "你"),
@@ -750,6 +804,7 @@ def build_game_graph(
                 "senses": percept.get("senses", []),
                 "summary": percept.get("summary", ""),
                 "player_attributes": percept.get("player_attributes", {}),
+                "previous_narratives": prev_narratives,
             })
 
             result = await generate_structured(llm, [
@@ -782,6 +837,86 @@ def build_game_graph(
                 "event_log": ["[错误] 叙事渲染失败，使用原始感知文本。"],
             }
 
+    # ── Node: post_narrative_update (deterministic, no LLM) ──
+
+    def post_narrative_update(state: GameState) -> dict[str, Any]:
+        """Apply deferred post-narrative attribute deltas and locked-attribute rules.
+
+        These changes happen AFTER narrative rendering, so the player does not
+        perceive them in the current tick's narrative. They take effect for
+        the next tick's state checks.
+        """
+        deferred_deltas = state.get("deferred_natural_deltas", []) or []
+        deferred_rules = state.get("deferred_locked_rules", []) or []
+
+        if not deferred_deltas and not deferred_rules:
+            return {}
+
+        player = state.get("player", {}) if isinstance(state.get("player"), dict) else {}
+        characters = state.get("characters", {}) if isinstance(state.get("characters"), dict) else {}
+        tick_dur = float(state.get("tick_duration_minutes", 5.0) or 5.0)
+        events: list[str] = []
+
+        new_player, new_characters = dict(player), dict(characters)
+
+        if deferred_deltas:
+            # Reconstruct per-entity natural deltas and apply to fresh copies
+            player_deltas = [d for d in deferred_deltas if d.get("entity_type") == "player"]
+            char_deltas = [d for d in deferred_deltas if d.get("entity_type") == "character"]
+
+            if player_deltas:
+                pd = deepcopy(new_player)
+                for d in player_deltas:
+                    attrs = _normalize_attributes(pd)
+                    key = d["attribute_key"]
+                    attr = attrs.get(key, {})
+                    delta = float(attr.get("natural_delta_per_minute") or 0.0) * tick_dur
+                    if delta != 0.0:
+                        applied = _apply_delta(attr, delta)
+                        if applied:
+                            new_attr, old, new = applied
+                            attrs[key] = new_attr
+                            if old != new:
+                                events.append(f"[属性] {pd.get('name','玩家')}的{_attribute_name(key, attr)}自然变化 {old:g} → {new:g}（叙事后）")
+                    pd["attributes"] = attrs
+                new_player = pd
+
+            for cid in {d["entity_id"] for d in char_deltas}:
+                if cid in new_characters and isinstance(new_characters[cid], dict):
+                    cd = deepcopy(new_characters[cid])
+                    cd_deltas = [d for d in char_deltas if d["entity_id"] == cid]
+                    for d in cd_deltas:
+                        attrs = _normalize_attributes(cd)
+                        key = d["attribute_key"]
+                        attr = attrs.get(key, {})
+                        delta = float(attr.get("natural_delta_per_minute") or 0.0) * tick_dur
+                        if delta != 0.0:
+                            applied = _apply_delta(attr, delta)
+                            if applied:
+                                new_attr, old, new = applied
+                                attrs[key] = new_attr
+                                if old != new:
+                                    events.append(f"[属性] {cd.get('name',cid)}的{_attribute_name(key, attr)}自然变化 {old:g} → {new:g}（叙事后）")
+                        cd["attributes"] = attrs
+                    new_characters[cid] = cd
+
+        if deferred_rules:
+            new_player, new_characters, rule_events = apply_deterministic_attributes(
+                new_player, new_characters,
+                tick_duration_minutes=tick_dur,
+                rules=deferred_rules,
+            )
+            # Tag events to distinguish from pre-narrative
+            events.extend(e.replace("[属性]", "[属性](叙事后)") for e in rule_events)
+
+        return {
+            "player": new_player,
+            "characters": new_characters,
+            "deferred_natural_deltas": [],
+            "deferred_locked_rules": [],
+            "event_log": events,
+        }
+
     # ── Build the graph ──
 
     builder = StateGraph(GameState)
@@ -796,6 +931,7 @@ def build_game_graph(
     builder.add_node("attribute_update", attribute_update)
     builder.add_node("sensory_filter", sensory_filter)
     builder.add_node("narrative_stylize", narrative_stylize)
+    builder.add_node("post_narrative_update", post_narrative_update)
 
     builder.add_edge(START, "player_intent_process")
     builder.add_edge("player_intent_process", "player_action_resolve")
@@ -808,7 +944,8 @@ def build_game_graph(
     builder.add_edge("natural_attribute_delta", "sensory_filter")
     builder.add_edge("attribute_update", END)
     builder.add_edge("sensory_filter", "narrative_stylize")
-    builder.add_edge("narrative_stylize", END)
+    builder.add_edge("narrative_stylize", "post_narrative_update")
+    builder.add_edge("post_narrative_update", END)
 
     if checkpointer is None:
         checkpointer = InMemorySaver()

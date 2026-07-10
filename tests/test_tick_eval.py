@@ -325,3 +325,141 @@ def test_empty_list_aggregate_raises():
 def test_unknown_expression_start_raises():
     with pytest.raises(TickEvalError):
         evaluate_tick_expression("42", _context())
+
+
+# ── boolean logic ──
+
+
+def test_and_in_condition():
+    ctx = _context(player_duration=3.0)
+    result = evaluate_tick_expression(
+        "if(player_duration > 1.0 and player_duration < 5.0, 3.0; 10.0)", ctx
+    )
+    assert result == 3.0
+
+
+def test_and_in_condition_false():
+    ctx = _context(player_duration=3.0)
+    result = evaluate_tick_expression(
+        "if(player_duration > 1.0 and player_duration > 5.0, 3.0; 10.0)", ctx
+    )
+    assert result == 10.0
+
+
+def test_or_in_condition():
+    ctx = _context(player_duration=0.5)
+    result = evaluate_tick_expression(
+        "if(player_duration < 1.0 or player_duration > 10.0, 0.5; 5.0)", ctx
+    )
+    assert result == 0.5
+
+
+def test_not_in_condition():
+    ctx = _context(player_duration=3.0)
+    result = evaluate_tick_expression(
+        "if(not (player_duration > 10.0), 5.0; 1.0)", ctx
+    )
+    assert result == 5.0
+
+
+# ── set operations ──
+
+
+def test_in_operator_in_condition():
+    ctx = _context(player={"attributes": {"flags": {"value": ["alert", "danger"]}}})
+    result = evaluate_tick_expression(
+        'if("alert" in player.attributes.flags.value, 1.0; 5.0)', ctx
+    )
+    assert result == 1.0
+
+
+def test_len_in_condition():
+    ctx = _context(player={"attributes": {"flags": {"value": ["alert", "danger", "boss"]}}})
+    result = evaluate_tick_expression(
+        "if(len(player.attributes.flags.value) > 2, 1.0; 5.0)", ctx
+    )
+    assert result == 1.0
+
+
+# ── nested if ──
+
+
+def test_nested_if_as_value():
+    ctx = _context(player_duration=15.0)
+    result = evaluate_tick_expression(
+        "if(player_duration > 10.0, if(player_duration > 20.0, 1.0; 3.0); 5.0)", ctx
+    )
+    assert result == 3.0
+
+
+def test_nested_if_as_default():
+    ctx = _context(player_duration=3.0)
+    result = evaluate_tick_expression(
+        "if(player_duration < 1.0, 0.5; if(player_duration < 5.0, 2.0; 8.0))", ctx
+    )
+    assert result == 2.0
+
+
+def test_nested_if_condition_chain():
+    ctx = _context(player_duration=8.0)
+    result = evaluate_tick_expression(
+        "if(player_duration < 1.0, 0.5; if(player_duration < 5.0, 2.0; if(player_duration < 10.0, 4.0; 8.0)))",
+        ctx,
+    )
+    assert result == 4.0
+
+
+# ── combined ──
+
+
+def test_boolean_with_contains():
+    ctx = _context(
+        player={"status_effects": {"fighting": True}},
+        player_action={"action_type": "move", "duration_minutes": 3.0},
+    )
+    result = evaluate_tick_expression(
+        "if(player.status_effects contains fighting and player_action.duration_minutes > 2.0, 1.0; 5.0)",
+        ctx,
+    )
+    assert result == 1.0
+
+
+def test_string_literal_in_condition():
+    ctx = _context(player={"attributes": {"stage": {"value": "active"}}})
+    result = evaluate_tick_expression(
+        'if(player.attributes.stage.value = "active", 2.0; 5.0)', ctx
+    )
+    assert result == 2.0
+
+
+# ── Random function tests ──
+
+
+def test_rand_in_tick_condition():
+    result = evaluate_tick_expression(
+        "if(rand() < 1.0, 1.0; 2.0)", _context()
+    )
+    assert result == 1.0
+
+
+def test_rand_in_tick_default():
+    result = evaluate_tick_expression(
+        "if(rand() < 0.0, 1.0; 2.0)", _context()
+    )
+    assert result == 2.0
+
+
+def test_randint_in_tick_value():
+    ctx = _context()
+    result = evaluate_tick_expression(
+        "if(true, randint(1, 6); 0.0)", ctx
+    )
+    assert 1 <= result <= 6
+
+
+def test_rand_range_in_tick_value():
+    ctx = _context()
+    result = evaluate_tick_expression(
+        "if(true, rand(10, 20); 0.0)", ctx
+    )
+    assert 10 <= result < 20

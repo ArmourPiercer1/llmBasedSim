@@ -210,8 +210,9 @@ state_apply             ← 确定性状态应用
 natural_attribute_delta ← 自然属性变化 + locked 属性自动计算 + 变化 diff
   ├─ attribute_update   ← LLM 根据事件判断属性变化
   └─ sensory_filter     ← 生成玩家感知 + 自行动反馈
-      └─ narrative_stylize ← 小说化叙事改写
-          ↓
+      └─ narrative_stylize    ← 小说化叙事改写
+          └─ post_narrative_update ← 延迟确定性更新（叙事后属性变更）
+              ↓
 END
 ```
 
@@ -223,10 +224,11 @@ END
 - `tick_speed_resolve`：根据当前情境（战斗/旅行/对话等）决定本 tick 代表的游戏时间（0.5-30 分钟）；
 - `physics_resolve`：根据玩家和 NPC 行动推演物理结果；
 - `state_apply`：用确定性 Python 逻辑应用状态变化；
-- `natural_attribute_delta`：确定性节点（不调用 LLM），依次执行：`apply_natural_attribute_deltas()`（`natural_delta_per_minute × tick_duration`）→ `apply_deterministic_attributes()`（locked 属性规则解释器）→ `compute_attribute_deltas_diff()`（结构化变化 diff 供感官节点消费）；
+- `natural_attribute_delta`：确定性节点（不调用 LLM），依次执行：`apply_natural_attribute_deltas()`（`natural_delta_per_minute × tick_duration`，跳过 `update_position: post_narrative` 的属性）→ `apply_deterministic_attributes()`（locked 属性规则解释器，跳过 `update_position: post_narrative` 的规则）→ `compute_attribute_deltas_diff()`（结构化变化 diff 供感官节点消费）。延迟项存入 `deferred_natural_deltas` / `deferred_locked_rules`；
 - `attribute_update`：LLM 根据本 tick 的行动、物理后果和事件判断事件驱动的属性变化；
 - `sensory_filter`：生成玩家可感知信息，同时反馈玩家角色本回合实际做了什么/说了什么；可读取 `attribute_deltas` 描述同 tick 属性变化感受；
-- `narrative_stylize`：将结构化感知数据改写为小说化的沉浸式叙事文本，文风可通过 init YAML 的 `narrative_style` 字段控制。同时将叙事追加到 `narrative_history`（WebUI 刷新后可恢复）。
+- `narrative_stylize`：将结构化感知数据改写为小说化的沉浸式叙事文本，文风可通过 init YAML 的 `narrative_style` 字段控制。同时将叙事追加到 `narrative_history`（WebUI 刷新后可恢复）；
+- `post_narrative_update`：确定性节点（不调用 LLM），应用叙事渲染前被跳过的 `update_position: post_narrative` 自然 delta 和 locked_attributes 规则。这些变更不会出现在当前 tick 的叙事中，仅影响下一 tick 的判定。
 
 ### Agent 初始化层
 

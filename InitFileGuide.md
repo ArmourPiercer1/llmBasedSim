@@ -519,26 +519,61 @@ world_rules:
 
 #### Deterministic 条件表达式语法
 
-使用 `if(condition1, result1; condition2, result2; else_result)` 格式：
+使用 `if(condition1, result1; condition2, result2; else_result)` 格式，其中 `result` 为 `allowed` / `blocked` / `uncertain`（或 `uncertain:概率`）：
 
 ```
 if(player.sanity < 20, blocked; player.sanity < 40, uncertain:0.3; allowed)
 ```
 
-支持的操作：
-- **比较**：`<`、`>`、`=`、`<=`、`>=`、`!=`
-- **算术**：`+`、`-`、`*`、`/`
-- **聚合**：`min(a, b)`、`max(a, b)`
-- **分组**：`(a + b) * c`
-- **变量前缀**：
-  - `player.` → 读取玩家属性、技能（`player.stamina`）、物理数据（`player.strength`）、能力限制等
-  - `target.` → 读取目标物体属性，支持别名：`target.weight` → `weight_kg`、`target.width` → `effective_width_cm` / `width_cm`
+**condition 支持的运算：**
+
+| 类别 | 操作符/函数 | 示例 |
+|---|---|---|
+| 数值比较 | `<` `>` `=` `!=` `<=` `>=` | `player.sanity < 40` |
+| 字符串比较 | `=` `!=` | `player.stage = "active"` |
+| 算术 | `+` `-` `*` `/` `-x` `( )` | `player.strength * 50` |
+| 函数 | `rand()` `rand(a,b)` `randint(a,b)` `min(a,b)` `max(a,b)` `len(x)` | `rand() < 0.3`、`min(player.sanity, player.resolve)` |
+| 布尔逻辑 | `and` `or` `not` | `player.sanity < 40 and player.resolve > 60` |
+| 集合运算 | `in` `not in` `subset` `superset` `intersects` `disjoint` `contains` | `"alert" in player.flags` |
+| 嵌套分组 | `(cond)` | `(a < 1 or a > 5) and b = 3` |
+
+**变量前缀：**
+- `player.` → 读取玩家属性值（`player.stamina`）、技能（`player.lockpicking`）、物理数据（`player.strength`）、status_effects、capabilities。对于属性（dict 含 `value` 字段），自动提取 `.value`。
+- `target.` → 读取目标物体属性，支持别名：`target.weight` → `weight_kg`、`target.width` → `effective_width_cm` / `width_cm`。
+
+**value 位置支持嵌套 `if()`：**
+
+```
+if(player.sanity < 20, blocked; if(player.resolve < 30, uncertain:0.3; allowed))
+```
+
+注意：condition 中不支持嵌套 `if()`（condition 必须返回布尔值，`if()` 返回 `ConditionOutcome` 不可直接作为布尔使用）。
+
+**`uncertain` 的概率支持表达式：**
+
+`uncertain:概率` 中的概率值不仅可以是固定数字，还可以是引用属性、算术运算或函数调用的表达式：
+
+```
+# 固定概率
+if(player.sanity < 40, uncertain:0.3; allowed)
+
+# 引用技能等级作为概率
+if(player.strength * 50 < target.weight, uncertain:player.strength; allowed)
+
+# 算术表达式
+if(player.sanity < 40, uncertain:player.lockpicking * 0.5; allowed)
+
+# 函数调用——概率不超过 0.9
+if(player.sanity < 20, uncertain:min(player.resolve / 100, 0.9); allowed)
+```
+
+概率值解析走完整的算术表达式链，支持 `player.` / `target.` 变量引用、`+` `-` `*` `/` 运算、`min()` `max()` 函数。最终值必须落在 `0 < p < 1` 范围内，否则报错。
 
 ### Locked 属性自动计算（`world_rules.locked_attributes`）
 
 `locked: true` 属性的值由引擎自动计算，LLM 无法修改。通过 `locked_attributes` 列表声明计算规则，每条规则包含 `type` 字段和类型特定的参数。
 
-#### 四种规则类型
+#### 五种规则类型
 
 **`timer`** — 当 condition 满足时累加 tick_duration_minutes，否则重置为 0。跨越阈值时写 warning 事件：
 
@@ -581,21 +616,124 @@ if(player.sanity < 20, blocked; player.sanity < 40, uncertain:0.3; allowed)
   value: alert                        # 要追加的值
 ```
 
+**`compute`** — 使用 `if(...)` 表达式计算任意值并赋值给属性（数字、字符串、布尔、列表均支持）：
+
+```yaml
+- type: compute
+  target_key: threat_level             # 被赋值的属性 key
+  expression: >-                       # if() 表达式
+    if(danger > 80, 100;
+       danger > 50 and alert_timer > 10, danger * 2;
+       0)
+```
+
+`expression` 使用 `if(condition1, value1; condition2, value2; ...; default_value)` 语法：
+- **condition**：纯布尔表达式，支持 locked_attributes condition 的全部运算（见下表）。
+- **value**：任意表达式，支持数字/字符串/布尔/列表字面量、属性引用、算术运算（`+` `-` `*` `/`）、函数调用（`rand()` `rand(a,b)` `randint(a,b)` `min` `max` `abs` `len`）、嵌套 `if()`。
+
+示例：
+```yaml
+# 字符串映射
+- type: compute
+  target_key: status
+  expression: 'if(hp <= 0, "dead"; hp < 30, "wounded"; "healthy")'
+
+# 带集合运算的条件
+- type: compute
+  target_key: alert_level
+  expression: 'if("boss" in active_threats, 100; len(active_threats) > 3, 50; 0)'
+
+# 嵌套 if()
+- type: compute
+  target_key: strategy
+  expression: 'if(hp > 80, "aggressive"; if(hp > 30, "balanced"; "defensive"))'
+
+# 列表赋值
+- type: compute
+  target_key: flags
+  expression: 'if(len(flags) > 2, ["overloaded"]; flags)'
+
+# 随机 1-6
+- type: compute
+  target_key: dice_roll
+  expression: 'if(true, randint(1, 6); 0)'
+
+# 随机在 condition 中使用
+- type: compute
+  target_key: event_trigger
+  expression: 'if(rand() < 0.1, "rare_event"; "normal")'
+```
+
+`target_key` 必须已存在于实体 attributes 中（通过 init YAML 定义）。若不存在则安静跳过。属性值类型保留——数字赋值数字、字符串赋值字符串、布尔赋值布尔、列表赋值列表。
+
 #### Condition 表达式语法
 
 与 deterministic 规则的 `if(...)` 不同，locked_attributes 的 condition 是**纯布尔表达式**：
 
 | 能力 | 示例 |
 |---|---|
-| 数值比较 | `hp < 100` |
-| 字符串比较 | `stage == "active"` |
+| 数值比较 | `hp < 100`、`hp > 50` |
+| 等于比较 | `stage == "active"`、`stage = "active"` |
+| 不等于比较 | `hp != 50` |
 | 布尔比较 | `flag == true` |
 | 算术运算 | `max_value - current_value < 15` |
 | 逻辑或/与 | `val < 100 or val > 180`、`x > 30 and x < 60` |
+| 逻辑非 | `not flag`、`not (x > 100)` |
 | abs 函数 | `abs(value - _prev_value) < 0.001` |
+| len 函数 | `len(flags) > 3`、`len(flags) == 0` |
+| rand() 0-1 随机浮点 | `rand() < 0.3` |
+| rand(a,b) 区间随机浮点 | `rand(10, 20) > 15` |
+| randint(a,b) 区间随机整数 | `randint(1, 6) >= 4` |
+| 元素属于列表 | `"alert" in flags` |
+| 元素不属于列表 | `"boss" not in tags` |
+| 子集 | `required subset inventory` |
+| 超集 | `inventory superset required` |
+| 交集（有公共元素） | `tags intersects danger_tags` |
+| 无交集 | `tags disjoint blocked_tags` |
 | 分组 | `(a + b) / 2 > c` |
 
+集合运算说明：
+- `in`/`not in`：左操作数为标量，右操作数为列表（或字符串，做子串检查）。
+- `subset`/`superset`/`intersects`/`disjoint`：两端都必须是 list 类型，否则报错。
+- `len()`：对列表返回元素个数，对字符串返回字符数。
+- `rand()`：返回 [0, 1) 范围内的随机浮点数。
+- `rand(a, b)`：返回 [a, b) 范围内的随机浮点数。
+- `randint(a, b)`：返回 [a, b] 范围内的随机整数（包含两端）。
+
 所有标识符自动解析为当前实体的属性值。关键字：`true`→True、`false`→False、`null`→None。
+
+#### `update_position` 字段
+
+每种 locked_attributes 规则和每个 `natural_delta_per_minute` 属性都支持可选的 `update_position` 字段，控制确定性更新的执行时机：
+
+| 值 | 说明 |
+|---|---|
+| `"pre_narrative"` | **默认值**。在叙事渲染前执行。变更会进入 `attribute_deltas`，玩家在同一 tick 的叙事中感知到变化。 |
+| `"post_narrative"` | 在叙事渲染后（`post_narrative_update` 节点）执行。玩家**不会**在当前 tick 的叙事中感知到变化，但状态已更新，影响下一 tick 的判定。 |
+
+适用场景：
+- **pre_narrative**：体力自然下降、威胁等级变化——玩家应该能"感觉到"的变化
+- **post_narrative**：感染进度 +0.05、内部计时器累加、回合结束清理临时标记——纯内部追踪，不应出现在叙事中
+
+示例：
+```yaml
+attributes:
+  infection_progress:
+    value: 0
+    natural_delta_per_minute: 0.05
+    update_position: post_narrative   # 叙事后更新
+
+locked_attributes:
+  - type: compute
+    target_key: threat_level
+    expression: "if(danger > 80, 100; 0)"
+    update_position: pre_narrative    # 默认，可省略
+  - type: list_constraint
+    list_key: turn_flags
+    condition: "true"
+    value: cleanup
+    update_position: post_narrative   # 回合结束时清理
+```
 
 #### 规则执行顺序
 
@@ -773,6 +911,7 @@ game_time:
 | `locked` | bool | `false` | LLM 是否不可修改 |
 | `unit` | str | `""` | 单位 |
 | `tags` | list[str] | `[]` | 分类标签 |
+| `update_position` | str | `"pre_narrative"` | 确定性更新的时机：`"pre_narrative"`（叙事前，玩家可感知）或 `"post_narrative"`（叙事后，仅影响下一 tick）。仅对 `natural_delta_per_minute` 非零的属性有效 |
 
 ---
 
@@ -796,6 +935,7 @@ game_time:
 | Pydantic 校验模型 | `src/models/config.py` |
 | 确定性规则解析 | `src/game/deterministic_rules.py` |
 | 条件表达式求值 | `src/game/condition_eval.py` |
+| Tick 速度表达式求值 | `src/game/tick_eval.py` |
 | 行动可行性判定 | `src/game/rules.py` |
 | 状态应用 | `src/game/state_apply.py` |
 | 属性引擎 | `src/game/attributes.py` |

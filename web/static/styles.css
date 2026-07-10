@@ -239,6 +239,29 @@ button.primary,
   width: 100%;
 }
 
+.toolbar-desktop-row > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.long-task-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(199, 152, 85, 0.58);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #19150f;
+  background: linear-gradient(180deg, #e3bd7f, #b9803f);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
 .quick-actions {
   display: flex;
   gap: 8px;
@@ -744,12 +767,25 @@ body.simple-mode .story-column {
     padding: 0 12px;
   }
 
+  .mobile-time-wrap {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
   .mobile-time-display {
     min-width: 0;
     text-align: center;
     color: var(--gold);
     font-family: "JetBrains Mono", "Cascadia Code", monospace;
     font-size: 13px;
+  }
+
+  .mobile-time-wrap .long-task-badge {
+    padding: 2px 7px;
+    font-size: 10px;
   }
 
   .toolbar-desktop-row > div:first-child {

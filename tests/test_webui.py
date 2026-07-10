@@ -48,6 +48,14 @@ def test_snapshot_exposes_webui_display_fields():
     assert data["npc_dynamics"] == [{"id": "npc_1", "name": "雷恩", "action": "注视着石桥"}]
 
 
+def test_snapshot_exposes_long_task_flag():
+    state = _web_state()
+    state["action_continuation"] = {"action_description": "继续搜查", "duration_minutes": 3.0}
+
+    data = snapshot(state)
+
+    assert data["has_long_task"] is True
+
 def test_attribute_items_hide_hidden_by_default():
     attrs = _web_state()["player"]["attributes"]
 

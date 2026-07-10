@@ -185,7 +185,7 @@ class GameSession:
         lowered = stripped.lower()
         if lowered == "/help":
             data = snapshot(self.state or {})
-            data["message"] = "命令: /help, /status, /idid, /see, /hear, /feel, /save <name>, /stop"
+            data["message"] = "命令: /help, /status, /idid, /see, /hear, /feel, /save <name>, /c, /stop"
             return data
         if lowered == "/status":
             data = snapshot(self.state or {})
@@ -466,6 +466,7 @@ def snapshot(state: dict[str, Any]) -> dict[str, Any]:
         "narrative_history": normalized.get("narrative_history", []),
         "can_continue": normalized.get("game_phase") != "ended" and normalized.get("tick", 0) < normalized.get("max_ticks", 100),
         "tick_duration_minutes": normalized.get("tick_duration_minutes", 0.0),
+        "has_long_task": bool(normalized.get("action_continuation")),
     }
 
 

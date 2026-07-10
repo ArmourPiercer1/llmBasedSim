@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re as _re
+import random as _random
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
@@ -113,16 +114,32 @@ def apply_natural_attribute_deltas(
     player: dict[str, Any],
     characters: dict[str, dict[str, Any]],
     tick_duration_minutes: float = 5.0,
+    defer_post: bool = False,
+    deferred: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[str]]:
+    """Apply per-minute natural attribute deltas.
+
+    If *defer_post* is True, attributes with ``update_position: "post_narrative"``
+    are skipped and their descriptors appended to *deferred* (in-place).
+    """
     new_player = deepcopy(player)
     new_characters = deepcopy(characters)
     events: list[str] = []
+    deferred = deferred if deferred is not None else []
 
-    def apply_for_entity(entity: dict[str, Any], label: str) -> None:
+    def apply_for_entity(entity: dict[str, Any], label: str,
+                         entity_type: str, entity_id: str) -> None:
         attrs = _normalize_attributes(entity)
         for key, attr in attrs.items():
             delta = float(attr.get("natural_delta_per_minute") or 0.0) * tick_duration_minutes
             if delta == 0.0:
+                continue
+            if defer_post and attr.get("update_position") == "post_narrative":
+                deferred.append({
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "attribute_key": key,
+                })
                 continue
             applied = _apply_delta(attr, delta)
             if not applied:
@@ -133,10 +150,11 @@ def apply_natural_attribute_deltas(
                 events.append(f"[属性] {label}的{_attribute_name(key, attr)}自然变化 {old:g} → {new:g}")
         entity["attributes"] = attrs
 
-    apply_for_entity(new_player, new_player.get("name", "玩家"))
+    pid = str(player.get("player_id", "player_1"))
+    apply_for_entity(new_player, new_player.get("name", "玩家"), "player", pid)
     for cid, char in new_characters.items():
         if isinstance(char, dict):
-            apply_for_entity(char, char.get("name", cid))
+            apply_for_entity(char, char.get("name", cid), "character", cid)
 
     return new_player, new_characters, events
 
@@ -144,9 +162,9 @@ def apply_natural_attribute_deltas(
 # ── Locked-attribute condition evaluator ──
 
 _LC_TOKEN_RE = _re.compile(
-    r'\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<string>"[^"]*")|(?P<name>[A-Za-z_][A-Za-z0-9_]*)|(?P<op>==|<=|>=|!=|[+\-*/<>=(),]))'
+    r'\s*(?:(?P<number>\d+(?:\.\d+)?)|(?P<string>"[^"]*")|(?P<name>[A-Za-z_][A-Za-z0-9_]*)|(?P<op>==|<=|>=|!=|[+\-*/<>=(),;\[\]]))'
 )
-_LC_COMPARATORS = frozenset({"<", ">", "<=", ">=", "==", "!="})
+_LC_COMPARATORS = frozenset({"<", ">", "<=", ">=", "==", "!=", "="})
 
 
 class _LockedConditionError(ValueError):
@@ -185,14 +203,19 @@ class _LCParser:
     Grammar:
       or_expr   = and_expr ("or" and_expr)*
       and_expr  = comp ("and" comp)*
-      comp      = arith (COMPARATOR arith)?
+      comp      = arith (COMPARATOR arith
+                   | "in" arith
+                   | "not" "in" arith
+                   | "subset"|"superset"|"intersects"|"disjoint" arith)?
       arith     = term (("+"|"-") term)*
       term      = primary (("*"|"/") primary)*
-      primary   = "-" primary | NAME "(" arith ")" | "(" arith ")"
-                | NUMBER | STRING | NAME
+      primary   = "not" primary | "-" primary | "len" "(" arith ")"
+                | NAME "(" arith ")"
+                | "(" or_expr ")" | NUMBER | STRING | NAME
 
     NAME tokens resolve to entity attribute values via _normalize_attributes().
     Special names: "true"→True, "false"→False, "null"→None, "abs"→abs().
+    Set keywords: "in", "not in", "subset", "superset", "intersects", "disjoint".
     """
 
     def __init__(self, tokens: list[_LCToken], attrs: dict[str, dict[str, Any]]):
@@ -209,27 +232,77 @@ class _LCParser:
     def _parse_or(self) -> Any:
         left = self._parse_and()
         while self._match_name("or"):
-            left = left or self._parse_and()
+            right = self._parse_and()
+            left = bool(left) or bool(right)
         return left
 
     def _parse_and(self) -> Any:
         left = self._parse_comp()
         while self._match_name("and"):
-            left = left and self._parse_comp()
+            right = self._parse_comp()
+            left = bool(left) and bool(right)
         return left
+
+    _SET_KEYWORDS = frozenset({"subset", "superset", "intersects", "disjoint"})
 
     def _parse_comp(self) -> Any:
         left = self._parse_arith()
         token = self._peek()
-        if token and token.kind == "op" and token.value in _LC_COMPARATORS:
+        if token is None:
+            return left  # truthy single-value
+
+        # Numeric/string comparison: < > <= >= == !=
+        if token.kind == "op" and token.value in _LC_COMPARATORS:
             op = self._advance().value
             right = self._parse_arith()
             if op == "<":   return left < right
             if op == ">":   return left > right
             if op == "<=":  return left <= right
             if op == ">=":  return left >= right
-            if op == "==":  return left == right
+            if op in ("=", "=="):  return left == right
             if op == "!=":  return left != right
+
+        # element in list / element not in list
+        if token.kind == "name":
+            if token.value == "in":
+                self._advance()
+                right = self._parse_arith()
+                if isinstance(right, str):
+                    return str(left) in right
+                if isinstance(right, (list, tuple, set)):
+                    return left in set(right)
+                raise _LockedConditionError(
+                    f"in 右边必须是列表或字符串，实际类型为 {type(right).__name__}"
+                )
+            if token.value == "not":
+                # Lookahead: "not in" vs unary "not"
+                if self._peek(1) and self._peek(1).kind == "name" and self._peek(1).value == "in":
+                    self._advance()  # consume "not"
+                    self._advance()  # consume "in"
+                    right = self._parse_arith()
+                    if isinstance(right, str):
+                        return str(left) not in right
+                    if isinstance(right, (list, tuple, set)):
+                        return left not in set(right)
+                    raise _LockedConditionError(
+                        f"not in 右边必须是列表或字符串，实际类型为 {type(right).__name__}"
+                    )
+                # unary "not" is handled in _parse_primary; reaching here means
+                # "not" follows a value without "in" → truthy fallback
+            if token.value in self._SET_KEYWORDS:
+                keyword = self._advance().value
+                right = self._parse_arith()
+                left_set = self._to_set(left, keyword)
+                right_set = self._to_set(right, keyword)
+                if keyword == "subset":
+                    return left_set.issubset(right_set)
+                if keyword == "superset":
+                    return left_set.issuperset(right_set)
+                if keyword == "intersects":
+                    return not left_set.isdisjoint(right_set)
+                if keyword == "disjoint":
+                    return left_set.isdisjoint(right_set)
+
         return left  # truthy single-value
 
     def _parse_arith(self) -> Any:
@@ -256,6 +329,12 @@ class _LCParser:
                 return value
 
     def _parse_primary(self) -> Any:
+        # Boolean NOT (unary prefix). Must be checked first since "not" is a name token,
+        # not an op. The "not in" case is already handled in _parse_comp before
+        # _parse_primary is called for the RHS, so "not" here is always boolean NOT.
+        if self._match_name("not"):
+            return not bool(self._parse_primary())
+
         if self._match_op("-"):
             return -self._parse_primary()
 
@@ -266,14 +345,34 @@ class _LCParser:
             if next_token and next_token.kind == "op" and next_token.value == "(":
                 func_name = self._advance().value
                 self._consume_op("(")
+                if func_name == "rand":
+                    if self._match_op(")"):
+                        return _random.random()
+                    lo = self._parse_arith()
+                    self._consume_op(",")
+                    hi = self._parse_arith()
+                    self._consume_op(")")
+                    return _random.uniform(lo, hi)
+                if func_name == "randint":
+                    lo = int(self._parse_arith())
+                    self._consume_op(",")
+                    hi = int(self._parse_arith())
+                    self._consume_op(")")
+                    return _random.randint(lo, hi)
                 arg = self._parse_arith()
                 self._consume_op(")")
                 if func_name == "abs":
                     return abs(arg)
+                if func_name == "len":
+                    if isinstance(arg, (list, tuple, set, str)):
+                        return len(arg)
+                    raise _LockedConditionError(
+                        f"len() 需要列表或字符串，实际类型为 {type(arg).__name__}"
+                    )
                 raise _LockedConditionError(f"未知函数 {func_name!r}")
 
         if self._match_op("("):
-            value = self._parse_arith()
+            value = self._parse_or()
             self._consume_op(")")
             return value
 
@@ -298,10 +397,9 @@ class _LCParser:
             return attr.get("value")
         raise _LockedConditionError(f"未知属性 {name!r}")
 
-    def _peek(self) -> _LCToken | None:
-        if self.pos >= len(self.tokens):
-            return None
-        return self.tokens[self.pos]
+    def _peek(self, offset: int = 0) -> _LCToken | None:
+        idx = self.pos + offset
+        return self.tokens[idx] if idx < len(self.tokens) else None
 
     def _advance(self) -> _LCToken:
         token = self._peek()
@@ -329,13 +427,336 @@ class _LCParser:
             found = self._peek().value if self._peek() else "表达式结束"
             raise _LockedConditionError(f"预期 {value!r}，但得到 {found!r}")
 
+    @staticmethod
+    def _to_set(value: Any, keyword: str) -> set:
+        """Convert value to set for set operations; raise on non-list types."""
+        if isinstance(value, (list, tuple, set)):
+            return set(value)
+        raise _LockedConditionError(
+            f"{keyword} 运算需要列表类型，实际类型为 {type(value).__name__}"
+        )
+
+
+# ── Compute expression parser (if(condition, value; ...; default)) ──
+
+class _ComputeEvalError(ValueError):
+    pass
+
+
+class _ComputeParser:
+    """Recursive-descent parser for compute if() expressions.
+
+    Grammar:
+      if_expr   = "if" "(" (condition "," value ";")* value ")"
+      condition = <delegated to _eval_locked_condition, extracted as raw substring>
+      value     = "if" "(" ... ")" | arith
+      arith     = term (("+"|"-") term)*
+      term      = primary (("*"|"/") primary)*
+      primary   = "-" primary | NAME "(" arith ("," arith)? ")"
+                | "[" (arith ("," arith)*)? "]"
+                | "(" arith ")" | NUMBER | STRING | NAME
+    """
+
+    _COMPARATORS = frozenset({"<", ">", "=", "<=", ">=", "!="})
+
+    def __init__(self, tokens: list[_LCToken], attrs: dict[str, dict[str, Any]]):
+        self.tokens = tokens
+        self.attrs = attrs
+        self.pos = 0
+
+    def parse(self) -> Any:
+        result = self._parse_if()
+        if self._peek() is not None:
+            raise _ComputeEvalError(f"表达式末尾存在多余内容: {self._peek().value!r}")
+        return result
+
+    def _parse_if(self) -> Any:
+        name = self._consume_name()
+        if name != "if":
+            raise _ComputeEvalError("compute 表达式必须以 if(...) 开始")
+        self._consume_op("(")
+
+        while True:
+            if self._looks_like_condition():
+                condition_expr = self._extract_condition()
+                matched = _eval_locked_condition(condition_expr, self.attrs)
+                self._consume_op(",")
+                value = self._parse_value()
+                if matched:
+                    self._skip_until_if_end()
+                    return value
+                if self._match_op(";"):
+                    continue
+                self._consume_op(")")
+                raise _ComputeEvalError("if(...) 缺少 else 输出")
+
+            value = self._parse_value()
+            self._consume_op(")")
+            return value
+
+    # ── Value expression parsing ──
+
+    def _parse_value(self) -> Any:
+        token = self._peek()
+        if token and token.kind == "name" and token.value == "if":
+            return self._parse_if()
+        return self._parse_arith()
+
+    def _parse_arith(self) -> Any:
+        value = self._parse_term()
+        while True:
+            if self._match_op("+"):
+                value = value + self._parse_term()
+            elif self._match_op("-"):
+                value = value - self._parse_term()
+            else:
+                return value
+
+    def _parse_term(self) -> Any:
+        value = self._parse_primary()
+        while True:
+            if self._match_op("*"):
+                value = value * self._parse_primary()
+            elif self._match_op("/"):
+                divisor = self._parse_primary()
+                if divisor == 0:
+                    raise _ComputeEvalError("条件表达式中出现除零")
+                value = value / divisor
+            else:
+                return value
+
+    def _parse_primary(self) -> Any:
+        if self._match_op("-"):
+            return -self._parse_primary()
+
+        token = self._peek()
+        if token is None:
+            raise _ComputeEvalError("表达式意外结束")
+
+        # Function call: NAME "(" ... ")"
+        if token.kind == "name":
+            next_token = self._peek(1)
+            if next_token and next_token.kind == "op" and next_token.value == "(":
+                func_name = self._advance().value
+                self._consume_op("(")
+                if func_name == "rand":
+                    if self._match_op(")"):
+                        return _random.random()
+                    # rand(min, max) — random float in [min, max)
+                    lo = self._parse_arith()
+                    self._consume_op(",")
+                    hi = self._parse_arith()
+                    self._consume_op(")")
+                    return _random.uniform(lo, hi)
+                if func_name == "randint":
+                    lo = int(self._parse_arith())
+                    self._consume_op(",")
+                    hi = int(self._parse_arith())
+                    self._consume_op(")")
+                    return _random.randint(lo, hi)
+                if func_name == "len":
+                    arg = self._parse_arith()
+                    self._consume_op(")")
+                    if isinstance(arg, (list, tuple, set, str)):
+                        return len(arg)
+                    raise _ComputeEvalError(
+                        f"len() 需要列表或字符串，实际类型为 {type(arg).__name__}"
+                    )
+                # min, max, abs — single arg or two args
+                first = self._parse_arith()
+                if self._match_op(","):
+                    second = self._parse_arith()
+                    self._consume_op(")")
+                    if func_name == "min":
+                        return min(first, second)
+                    if func_name == "max":
+                        return max(first, second)
+                    raise _ComputeEvalError(f"未知函数 {func_name!r}")
+                self._consume_op(")")
+                if func_name == "abs":
+                    return abs(first)
+                raise _ComputeEvalError(f"未知函数 {func_name!r}")
+
+        # List literal: "[" ... "]"
+        if token.kind == "op" and token.value == "[":
+            self._advance()  # consume "["
+            items: list[Any] = []
+            if not (self._peek() and self._peek().kind == "op" and self._peek().value == "]"):
+                items.append(self._parse_arith())
+                while self._match_op(","):
+                    items.append(self._parse_arith())
+            self._consume_op("]")
+            return items
+
+        # Parenthesized expression
+        if self._match_op("("):
+            value = self._parse_arith()
+            self._consume_op(")")
+            return value
+
+        token = self._advance()
+        if token.kind == "number":
+            return float(token.value)
+        if token.kind == "string":
+            return token.value
+        if token.kind == "name":
+            return self._resolve_name(token.value)
+        raise _ComputeEvalError(f"表达式中不应出现 {token.value!r}")
+
+    # ── Condition extraction ──
+
+    def _looks_like_condition(self) -> bool:
+        """Heuristic: is current position a condition branch or a default value?"""
+        depth = 0
+        i = self.pos
+        while i < len(self.tokens):
+            t = self.tokens[i]
+            if t.kind == "op":
+                if t.value == "(":
+                    depth += 1
+                elif t.value == ")":
+                    if depth == 0:
+                        return False
+                    depth -= 1
+                elif depth == 0:
+                    if t.value in self._COMPARATORS:
+                        return True
+                    if t.value == ",":
+                        return True
+                    if t.value == ";":
+                        return False
+            elif t.kind == "name" and depth == 0:
+                if t.value in ("and", "or", "not", "in", "contains", "subset",
+                               "superset", "intersects", "disjoint"):
+                    return True
+            i += 1
+        return False
+
+    def _extract_condition(self) -> str:
+        """Collect tokens from current position to the next ',' or ';' at depth 0,
+        skipping nested parentheses and nested if()."""
+        depth = 0
+        parts: list[str] = []
+        while self.pos < len(self.tokens):
+            t = self.tokens[self.pos]
+            if t.kind == "op":
+                if t.value == "(":
+                    depth += 1
+                elif t.value == ")":
+                    if depth == 0:
+                        break
+                    depth -= 1
+                elif depth == 0 and t.value in {",", ";"}:
+                    break
+            elif t.kind == "name" and t.value == "if" and depth == 0:
+                # Nested if() — skip the entire nested expression
+                self.pos += 1  # skip "if"
+                if self.pos < len(self.tokens) and self.tokens[self.pos].value == "(":
+                    self.pos += 1
+                    nested_depth = 1
+                    while self.pos < len(self.tokens) and nested_depth > 0:
+                        nt = self.tokens[self.pos]
+                        if nt.kind == "op" and nt.value == "(":
+                            nested_depth += 1
+                        elif nt.kind == "op" and nt.value == ")":
+                            nested_depth -= 1
+                        self.pos += 1
+                continue
+            # Reconstruct the token text
+            if t.kind == "string":
+                parts.append('"' + t.value + '"')
+            else:
+                parts.append(t.value)
+            self.pos += 1
+        return " ".join(parts)
+
+    # ── Variable resolution ──
+
+    def _resolve_name(self, name: str) -> Any:
+        if name == "true":
+            return True
+        if name == "false":
+            return False
+        if name == "null":
+            return None
+        attr = self.attrs.get(name)
+        if isinstance(attr, dict):
+            return attr.get("value")
+        raise _ComputeEvalError(f"未知属性 {name!r}")
+
+    # ── Skip to end of if() ──
+
+    def _skip_until_if_end(self) -> None:
+        depth = 0
+        while self._peek() is not None:
+            t = self._advance()
+            if t.kind == "op":
+                if t.value == "(":
+                    depth += 1
+                elif t.value == ")":
+                    if depth == 0:
+                        return
+                    depth -= 1
+
+    # ── Token helpers ──
+
+    def _peek(self, offset: int = 0) -> _LCToken | None:
+        idx = self.pos + offset
+        return self.tokens[idx] if idx < len(self.tokens) else None
+
+    def _advance(self) -> _LCToken:
+        token = self._peek()
+        if token is None:
+            raise _ComputeEvalError("表达式意外结束")
+        self.pos += 1
+        return token
+
+    def _match_op(self, value: str) -> bool:
+        token = self._peek()
+        if token and token.kind == "op" and token.value == value:
+            self.pos += 1
+            return True
+        return False
+
+    def _match_name(self, value: str) -> bool:
+        token = self._peek()
+        if token and token.kind == "name" and token.value == value:
+            self.pos += 1
+            return True
+        return False
+
+    def _consume_op(self, value: str) -> None:
+        if not self._match_op(value):
+            found = self._peek().value if self._peek() else "表达式结束"
+            raise _ComputeEvalError(f"预期 {value!r}，但得到 {found!r}")
+
+    def _consume_name(self) -> str:
+        token = self._advance()
+        if token.kind != "name":
+            raise _ComputeEvalError(f"预期名称，但得到 {token.value!r}")
+        return token.value
+
+
+def _eval_compute_expression(expression: str, attrs: dict[str, dict[str, Any]]) -> Any:
+    """Evaluate a compute if() expression against entity attributes.
+
+    Returns the computed value (number, string, bool, list, or nested if result).
+    Delegates condition sub-expressions to ``_eval_locked_condition``.
+    """
+    tokens = _lc_tokenize(expression)
+    parser = _ComputeParser(tokens, attrs)
+    return parser.parse()
+
 
 def _eval_locked_condition(expression: str, attrs: dict[str, dict[str, Any]]) -> bool:
     """Evaluate a locked-attribute condition expression against entity attributes.
 
     All identifiers in *expression* resolve to ``attrs[key]["value"]`` (after
     ``_normalize_attributes``).  Special names: ``true``, ``false``, ``null``,
-    ``abs``.
+    ``abs``, ``len``, ``not``.
+
+    Supports numeric/string comparisons, arithmetic, boolean logic (and/or/not),
+    set operations (in/not in/subset/superset/intersects/disjoint), and len().
     """
     tokens = _lc_tokenize(expression)
     parser = _LCParser(tokens, attrs)
@@ -478,11 +899,37 @@ def _exec_list_constraint(
     return [f"[属性] {label}: {list_key} 已追加 {value!r}。"]
 
 
+def _exec_compute(
+    entity: dict[str, Any], attrs: dict[str, dict[str, Any]],
+    rule: dict[str, Any], _tick_dur: float, label: str,
+) -> list[str]:
+    """Execute a `compute` rule: evaluate if() expression and assign result."""
+    target_key = str(rule.get("target_key", ""))
+    expression = str(rule.get("expression", ""))
+
+    if target_key not in attrs or not expression:
+        return []
+
+    try:
+        result = _eval_compute_expression(expression, attrs)
+    except (_ComputeEvalError, _LockedConditionError) as exc:
+        return [f"[警告] {label}: compute 表达式求值失败 — {exc}"]
+
+    old_val = attrs[target_key].get("value")
+    if old_val == result:
+        return []
+
+    attrs[target_key]["value"] = result
+    entity["attributes"] = attrs
+    return [f"[属性] {label}的{attrs[target_key].get('name', target_key)}: {old_val!r} → {result!r}（compute）"]
+
+
 _DISPATCH = {
     "timer": _exec_timer,
     "stage": _exec_stage,
     "snapshot": _exec_snapshot,
     "list_constraint": _exec_list_constraint,
+    "compute": _exec_compute,
 }
 
 
@@ -492,18 +939,34 @@ def apply_deterministic_attributes(
     *,
     tick_duration_minutes: float = 1.0,
     rules: list[dict[str, Any]] | None = None,
+    defer_post: bool = False,
+    deferred: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], list[str]]:
     """Apply system-calculated updates to locked attributes (bypasses locked check).
 
     Rules are read from *rules*, a list of dicts each with a ``type`` field.
-    Supported types: ``timer``, ``stage``, ``snapshot``, ``list_constraint``.
+    Supported types: ``timer``, ``stage``, ``snapshot``, ``list_constraint``, ``compute``.
     Rules execute in declaration order; rules referencing snapshot values must
     appear after the corresponding ``snapshot`` rule.
+
+    If *defer_post* is True, rules with ``update_position: "post_narrative"``
+    are skipped and appended to *deferred* (in-place).
 
     If *rules* is empty or None this function is a no-op.
     """
     rule_list = rules or []
     if not rule_list:
+        return player, characters, []
+
+    deferred = deferred if deferred is not None else []
+    pre_rules: list[dict[str, Any]] = []
+    for rule in rule_list:
+        if isinstance(rule, dict) and defer_post and rule.get("update_position") == "post_narrative":
+            deferred.append(rule)
+        else:
+            pre_rules.append(rule)
+
+    if not pre_rules:
         return player, characters, []
 
     new_player = deepcopy(player)
@@ -512,7 +975,7 @@ def apply_deterministic_attributes(
 
     def _handle_entity(entity: dict[str, Any], label: str) -> None:
         attrs = _normalize_attributes(entity)
-        for rule in rule_list:
+        for rule in pre_rules:
             if not isinstance(rule, dict):
                 continue
             rule_type = str(rule.get("type", ""))

@@ -69,7 +69,7 @@ class PlayerAction(BaseModel):
     confidence: float = Field(default=1.0, description="必填。你对此次解析的置信度（0.0-1.0）。")
     notes: str = Field(default="", description="调试说明，不展示给玩家。")
     duration_minutes: float = Field(default=0.0, ge=0.0, description="必填。行动预计时长（分钟）。短行动填0。搜查/搜索/行走/讲述等长行动估算分钟数。")
-    continue_until: Literal["", "done", "blocked", "goal"] = Field(default="", description="必填。多步行动标志。空字符串=单步行动即可完成。blocked=持续直到被物理或NPC阻止。done=持续直到玩家手动停止。goal=持续直到目标达成。")
+    continue_until: Literal["", "done", "blocked", "goal"] = Field(default="", description="必填。多步行动标志。空字符串=本轮一次即可完成。只有当玩家明确要求持续/反复/直到某条件/指定时长时才填非空：done=持续到指定时长耗尽；blocked=持续直到被阻止；goal=持续直到明确目标达成。")
 
 
 class AttributeChange(BaseModel):

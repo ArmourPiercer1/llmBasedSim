@@ -38,13 +38,17 @@
       <header class="top-toolbar chrome-frame">
         <div class="toolbar-mobile-row">
           <button id="mobileMenuToggle" class="mobile-icon-button" type="button" aria-label="展开菜单">☰</button>
-          <div id="mobileTimeDisplay" class="mobile-time-display">--:--</div>
+          <div class="mobile-time-wrap">
+            <div id="mobileTimeDisplay" class="mobile-time-display">--:--</div>
+            <span id="mobileLongTaskBadge" class="long-task-badge hidden">长任务</span>
+          </div>
           <button id="mobileStatusToggle" class="mobile-status-button" type="button" aria-label="展开状态">状态</button>
         </div>
         <div class="toolbar-desktop-row">
           <div>
             <span class="toolbar-label">回合</span>
             <strong id="tickDisplay">0</strong>
+            <span id="desktopLongTaskBadge" class="long-task-badge hidden">长任务</span>
           </div>
           <div class="quick-actions" aria-label="感官快捷入口">
             <button data-command="/see">看</button>

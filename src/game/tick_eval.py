@@ -13,6 +13,7 @@ Examples:
 from __future__ import annotations
 
 import re
+import random as _random
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +30,7 @@ class Token:
 
 _TOKEN_RE = re.compile(
     r"\s*(?:(?P<number>\d+(?:\.\d+)?)"
+    r"|(?P<string>\"[^\"]*\")"
     r"|(?P<name>[A-Za-z_][A-Za-z0-9_.]*|[一-鿿][一-鿿A-Za-z0-9_.]*)"
     r"|(?P<op><=|>=|!=|[+\-*/<>=(),;:]))"
 )
@@ -45,6 +47,8 @@ def _tokenize(expression: str) -> list[Token]:
         pos = m.end()
         if m.lastgroup == "number":
             tokens.append(Token("number", m.group(m.lastgroup)))
+        elif m.lastgroup == "string":
+            tokens.append(Token("string", m.group(m.lastgroup)[1:-1]))
         elif m.lastgroup == "name":
             tokens.append(Token("name", m.group(m.lastgroup)))
         elif m.lastgroup == "op":
@@ -65,6 +69,9 @@ def evaluate_tick_expression(expression: str, context: dict[str, Any]) -> float:
 # ---------------------------------------------------------------------------
 
 class _Parser:
+    _SET_KEYWORDS = frozenset({"subset", "superset", "intersects", "disjoint"})
+    _CONDITION_KEYWORDS = frozenset({"and", "or", "not", "in", "contains"}).union(_SET_KEYWORDS)
+
     def __init__(self, tokens: list[Token], context: dict[str, Any]) -> None:
         self.tokens = tokens
         self.context = context
@@ -80,7 +87,7 @@ class _Parser:
 
         while True:
             if self._looks_like_condition():
-                matched = self._eval_condition()
+                matched = self._parse_condition()
                 self._consume_op(",")
                 value = self.parse_value()
                 if matched:
@@ -101,92 +108,135 @@ class _Parser:
                 f"Unexpected trailing content: {self._peek().value!r}"
             )
 
-    # -- condition evaluation (returns bool) --------------------------------
+    # -- Boolean condition parsing ------------------------------------------
 
-    def _eval_condition(self) -> bool:
-        """Handle a condition branch — contains, string comparison, or numeric."""
-        # Look-ahead for "X contains Y" pattern
-        saved = self.pos
-        first_name = self._peek()
-        if first_name and first_name.kind == "name":
-            second = self._peek(1)
-            if second and second.kind == "name" and second.value == "contains":
-                return self._eval_contains()
+    def _parse_condition(self) -> bool:
+        return bool(self._parse_or())
 
-        # String comparison: dotted_path = bare_name (e.g. player_action.action_type = move)
-        self.pos = saved
-        left_tok = self._peek()
-        if left_tok and left_tok.kind == "name" and "." in left_tok.value:
-            op_tok = self._peek(1)
-            if op_tok and op_tok.kind == "op" and op_tok.value in ("=", "!="):
-                right_tok = self._peek(2)
-                if right_tok and right_tok.kind == "name":
-                    left_val = _resolve_path(left_tok.value, self.context)
-                    if isinstance(left_val, str):
-                        self.pos += 3
-                        op = op_tok.value
-                        return (left_val == right_tok.value) if op == "=" else (left_val != right_tok.value)
+    def _parse_or(self) -> Any:
+        left = self._parse_and()
+        while self._match_name("or"):
+            right = self._parse_and()
+            left = bool(left) or bool(right)
+        return left
 
-        # Numeric comparison
-        self.pos = saved
+    def _parse_and(self) -> Any:
+        left = self._parse_not()
+        while self._match_name("and"):
+            right = self._parse_not()
+            left = bool(left) and bool(right)
+        return left
+
+    def _parse_not(self) -> Any:
+        if self._match_name("not"):
+            return not bool(self._parse_not())
+        return self._parse_comparison()
+
+    def _parse_comparison(self) -> Any:
         left = self.parse_add_sub()
-        token = self._advance()
-        if token.kind != "op" or token.value not in _COMPARATORS:
-            raise TickEvalError(
-                f"Expected comparison operator, got {token.value!r}"
-            )
-        op = token.value
-        right = self.parse_add_sub()
-        return _compare(left, op, right)
+        token = self._peek()
+        if token is None:
+            return left  # truthy single-value
 
-    def _eval_contains(self) -> bool:
-        """Evaluate ``player.status_effects contains fighting`` style."""
-        left_path = self._advance().value  # e.g. "player.status_effects"
-        self._advance()  # consume "contains" token
-        right_name = self._advance().value  # e.g. "fighting"
-        # NOTE: comma after condition is consumed by parse_if, not here
-        # Look up left side in context
-        left_val = _resolve_path(left_path, self.context)
-        # Check containment
-        if isinstance(left_val, dict):
-            return right_name in left_val
-        if isinstance(left_val, (list, tuple, set)):
-            return any(str(v) == right_name or v == right_name for v in left_val)
-        if isinstance(left_val, str):
-            return right_name in left_val
-        raise TickEvalError(
-            f"Cannot check contains on {type(left_val).__name__}: {left_path!r}"
-        )
+        # Numeric/string comparison: < > = <= >= !=
+        if token.kind == "op" and token.value in _COMPARATORS:
+            op = self._advance().value
+            right = self.parse_add_sub()
+            if isinstance(left, str) or isinstance(right, str):
+                left_s = str(left)
+                right_s = str(right)
+                if op in ("=", "=="):
+                    return left_s == right_s
+                if op == "!=":
+                    return left_s != right_s
+                raise TickEvalError(f"String does not support {op!r} comparison")
+            return _compare(left, op, right)
 
-    # -- numeric expression parsing -----------------------------------------
+        # Set / collection / contains operations
+        if token.kind == "name":
+            if token.value == "in":
+                self._advance()
+                right = self.parse_add_sub()
+                if isinstance(right, str):
+                    return str(left) in right
+                if isinstance(right, (list, tuple, set)):
+                    return left in set(right)
+                raise TickEvalError(
+                    f"in right-hand side must be list or string, got {type(right).__name__}"
+                )
+            if token.value == "not":
+                if self._peek(1) and self._peek(1).kind == "name" and self._peek(1).value == "in":
+                    self._advance()
+                    self._advance()
+                    right = self.parse_add_sub()
+                    if isinstance(right, str):
+                        return str(left) not in right
+                    if isinstance(right, (list, tuple, set)):
+                        return left not in set(right)
+                    raise TickEvalError(
+                        f"not in right-hand side must be list or string, got {type(right).__name__}"
+                    )
+            if token.value == "contains":
+                self._advance()
+                right_name = self._consume_name()
+                if isinstance(left, dict):
+                    return right_name in left
+                if isinstance(left, (list, tuple, set)):
+                    return any(str(v) == right_name or v == right_name for v in left)
+                if isinstance(left, str):
+                    return right_name in left
+                raise TickEvalError(
+                    f"contains left-hand side must be dict, list, or string, got {type(left).__name__}"
+                )
+            if token.value in self._SET_KEYWORDS:
+                keyword = self._advance().value
+                right = self.parse_add_sub()
+                left_set = self._to_set(left, keyword)
+                right_set = self._to_set(right, keyword)
+                if keyword == "subset":
+                    return left_set.issubset(right_set)
+                if keyword == "superset":
+                    return left_set.issuperset(right_set)
+                if keyword == "intersects":
+                    return not left_set.isdisjoint(right_set)
+                if keyword == "disjoint":
+                    return left_set.isdisjoint(right_set)
 
-    def parse_add_sub(self) -> float:
+        return left  # truthy single-value
+
+    # -- numeric / scalar expression parsing --------------------------------
+
+    def parse_add_sub(self) -> Any:
         value = self.parse_mul_div()
         while True:
             if self._match_op("+"):
-                value += self.parse_mul_div()
+                value = value + self.parse_mul_div()
             elif self._match_op("-"):
-                value -= self.parse_mul_div()
+                value = value - self.parse_mul_div()
             else:
                 return value
 
-    def parse_mul_div(self) -> float:
+    def parse_mul_div(self) -> Any:
         value = self.parse_primary()
         while True:
             if self._match_op("*"):
-                value *= self.parse_primary()
+                value = value * self.parse_primary()
             elif self._match_op("/"):
                 divisor = self.parse_primary()
                 if divisor == 0:
                     raise TickEvalError("Division by zero")
-                value /= divisor
+                value = value / divisor
             else:
                 return value
 
-    def parse_primary(self) -> float:
+    def parse_primary(self) -> Any:
         if self._match_op("-"):
             return -self.parse_primary()
         if self._match_op("("):
+            if self._looks_like_condition():
+                value = self._parse_or()
+                self._consume_op(")")
+                return bool(value)
             value = self.parse_add_sub()
             self._consume_op(")")
             return value
@@ -194,15 +244,39 @@ class _Parser:
         token = self._advance()
         if token.kind == "number":
             return float(token.value)
+        if token.kind == "string":
+            return token.value
 
         if token.kind != "name":
             raise TickEvalError(f"Unexpected token: {token.value!r}")
 
         name = token.value
 
-        # Function calls: min(x, y) or min(list_name)
+        # Function calls
+        if name == "rand" and self._match_op("("):
+            if self._match_op(")"):
+                return _random.random()
+            lo = self.parse_add_sub()
+            self._consume_op(",")
+            hi = self.parse_add_sub()
+            self._consume_op(")")
+            return _random.uniform(lo, hi)
+        if name == "randint" and self._match_op("("):
+            lo = int(self.parse_add_sub())
+            self._consume_op(",")
+            hi = int(self.parse_add_sub())
+            self._consume_op(")")
+            return float(_random.randint(lo, hi))
         if name in ("min", "max", "avg") and self._match_op("("):
             return self._eval_aggregate(name)
+        if name == "len" and self._match_op("("):
+            arg = self.parse_add_sub()
+            self._consume_op(")")
+            if isinstance(arg, (list, tuple, set, str)):
+                return len(arg)
+            raise TickEvalError(
+                f"len() requires list or string, got {type(arg).__name__}"
+            )
 
         # Variable resolution
         return _resolve_value(name, self.context)
@@ -210,12 +284,11 @@ class _Parser:
     # -- aggregate function evaluation --------------------------------------
 
     def _eval_aggregate(self, func_name: str) -> float:
-        """Evaluate ``min(npc_time)``, ``max(npc_time)``, ``avg(npc_time)``,
-        or ``min(a, b)`` / ``max(a, b)`` (two-arg scalar)."""
+        """Evaluate min(npc_time), max(npc_time), avg(npc_time),
+        or min(a, b) / max(a, b) (two-arg scalar)."""
         first = self.parse_add_sub()
 
         if self._match_op(","):
-            # Two-argument form: min(a, b)
             second = self.parse_add_sub()
             self._consume_op(")")
             if func_name == "min":
@@ -225,21 +298,20 @@ class _Parser:
             raise TickEvalError(f"avg() requires a single list argument")
 
         self._consume_op(")")
-
-        # Single-argument form — 'first' was the list variable value
         return _aggregate_list(func_name, first)
 
-    # -- value parsing (the value after a condition comma) -------------------
+    # -- value parsing -------------------------------------------------------
 
     def parse_value(self) -> float:
-        """Parse the value portion of a tick-speed branch (a float expression)."""
+        """Parse the value portion of a tick-speed branch. Supports nested if()."""
+        token = self._peek()
+        if token and token.kind == "name" and token.value == "if":
+            return self.parse_if()
         return self.parse_add_sub()
 
     # -- helpers ------------------------------------------------------------
 
     def _looks_like_condition(self) -> bool:
-        """Heuristic: if there is a comparison operator or ``contains``
-        before a comma or semicolon at the current nesting, treat as condition."""
         depth = 0
         i = self.pos
         while i < len(self.tokens):
@@ -254,10 +326,13 @@ class _Parser:
                 elif depth == 0:
                     if t.value in _COMPARATORS:
                         return True
-                    if t.value in {",", ";"}:
+                    if t.value == ",":
+                        return True
+                    if t.value == ";":
                         return False
-            elif t.kind == "name" and t.value == "contains" and depth == 0:
-                return True
+            elif t.kind == "name" and depth == 0:
+                if t.value in self._CONDITION_KEYWORDS:
+                    return True
             i += 1
         return False
 
@@ -273,6 +348,14 @@ class _Parser:
                         return
                     depth -= 1
 
+    @staticmethod
+    def _to_set(value: Any, keyword: str) -> set:
+        if isinstance(value, (list, tuple, set)):
+            return set(value)
+        raise TickEvalError(
+            f"{keyword} requires list type, got {type(value).__name__}"
+        )
+
     def _peek(self, offset: int = 0) -> Token | None:
         idx = self.pos + offset
         return self.tokens[idx] if idx < len(self.tokens) else None
@@ -287,6 +370,13 @@ class _Parser:
     def _match_op(self, value: str) -> bool:
         t = self._peek()
         if t and t.kind == "op" and t.value == value:
+            self.pos += 1
+            return True
+        return False
+
+    def _match_name(self, value: str) -> bool:
+        t = self._peek()
+        if t and t.kind == "name" and t.value == value:
             self.pos += 1
             return True
         return False
@@ -324,8 +414,8 @@ def _resolve_path(path: str, context: dict[str, Any]) -> Any:
     return current
 
 
-def _resolve_value(name: str, context: dict[str, Any]) -> float:
-    """Resolve a name to a numeric value from the evaluation context.
+def _resolve_value(name: str, context: dict[str, Any]) -> Any:
+    """Resolve a name to a value from the evaluation context.
 
     Special context keys handled here:
       - ``npc_durations`` → list[float] (for use in aggregate functions)
@@ -338,7 +428,6 @@ def _resolve_value(name: str, context: dict[str, Any]) -> float:
         val = context.get("npc_durations", [])
         if not isinstance(val, (list, tuple)):
             raise TickEvalError("npc_durations is not a list")
-        # Return a sentinel-like proxy — the caller must handle it
         return _ListProxy(val)
 
     # Special scalars
@@ -349,14 +438,19 @@ def _resolve_value(name: str, context: dict[str, Any]) -> float:
 
     # Dotted path: player.xxx, player_action.xxx
     if "." in name:
-        val = _resolve_path(name, context)
-        if isinstance(val, str):
-            return val  # String values handled by _eval_condition
-        return _numeric(val, name)
+        return _resolve_path(name, context)
 
     # Fallback: direct context key
     if name in context:
-        return _numeric(context[name], name)
+        val = context[name]
+        if isinstance(val, (list, tuple)):
+            return _ListProxy(val)
+        return val
+
+    # Undotted bare name not in context → treat as string literal
+    # (e.g. "move" in `player_action.action_type = move`)
+    if "." not in name:
+        return name
 
     raise TickEvalError(f"Unknown variable {name!r}")
 

@@ -33,4 +33,13 @@
 {% endfor %}
 {% endif %}
 
+{% if previous_narratives %}
+## 前回合叙事（供上下文连贯参考）
+{% for prev in previous_narratives %}
+### 第 {{ loop.length - loop.index0 }} 回合前
+{{ prev }}
+
+{% endfor %}
+{% endif %}
+
 请将以上信息改写为小说化叙事。

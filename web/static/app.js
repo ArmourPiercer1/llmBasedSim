@@ -16,6 +16,7 @@ const commands = [
   { cmd: "/hear", label: "听觉信息" },
   { cmd: "/feel", label: "触觉/嗅觉" },
   { cmd: "/save ", label: "保存进度" },
+  { cmd: "/c", label: "继续长任务" },
   { cmd: "/stop", label: "终止长行动" },
 ];
 
@@ -27,6 +28,8 @@ const els = {
   worldTitle: $("#worldTitle"),
   timeDisplay: $("#timeDisplay"),
   mobileTimeDisplay: $("#mobileTimeDisplay"),
+  desktopLongTaskBadge: $("#desktopLongTaskBadge"),
+  mobileLongTaskBadge: $("#mobileLongTaskBadge"),
   weatherDisplay: $("#weatherDisplay"),
   tickDisplay: $("#tickDisplay"),
   startScreen: $("#startScreen"),
@@ -222,7 +225,9 @@ async function sendAction(text) {
     showModal("游戏尚未开始", ["请先从左侧菜单或启动页选择一个开局。"]);
     return;
   }
-  const shouldPollProgress = !text.startsWith("/");
+  const command = text.trim().toLowerCase();
+  const advancesSimulation = !text.startsWith("/") || command === "/c";
+  const shouldPollProgress = advancesSimulation;
   setBusy(true, { pollProgress: shouldPollProgress });
   hideSlashMenu();
   try {
@@ -232,7 +237,7 @@ async function sendAction(text) {
     });
     els.commandInput.value = "";
     autoGrow(els.commandInput);
-    renderState(data, { appendStory: !text.startsWith("/") });
+    renderState(data, { appendStory: advancesSimulation });
     if (data.modal) showModal(data.modal.title, data.modal.items);
     if (data.message) showToast(data.message);
   } catch (error) {
@@ -249,6 +254,9 @@ function renderState(data, { appendStory }) {
 
   els.worldTitle.textContent = data.world_name || "互动模拟游戏";
   els.tickDisplay.textContent = `${data.tick ?? 0} / ${data.max_ticks ?? "?"}`;
+  const hasLongTask = Boolean(data.has_long_task);
+  els.desktopLongTaskBadge?.classList.toggle("hidden", !hasLongTask);
+  els.mobileLongTaskBadge?.classList.toggle("hidden", !hasLongTask);
   els.timeDisplay.textContent = formatGameTime(data);
   syncMobileTime(data);
   els.weatherDisplay.textContent = [data.time_of_day, data.weather, formatTemperature(data.temperature_c)].filter(Boolean).join(" · ") || "环境未知";
