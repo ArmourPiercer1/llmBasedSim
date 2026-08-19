@@ -3,6 +3,8 @@
 检查项：
 1. ``src.engine_v2`` 及各子包可成功 import，且均为包；
 2. 各子包 ``__init__.py`` 仅含模块 docstring（占位纪律，无任何 import / 语句）；
+   P1 收尾豁免（设计文档 §0.4 预告）：仅 ``core/__init__.py`` 额外允许
+   re-export 语句（从同包 core 子模块导入契约类型）与 ``__all__`` 清单；
 3. engine_v2 全树不得 import LangGraph / OpenAI 系依赖
    （静态 AST 扫描 + import 前后 sys.modules 增量检查双保险）；
 4. v1 代码（``src/`` 下 engine_v2 之外的 .py）不得引用 ``engine_v2``；
@@ -96,21 +98,71 @@ def test_engine_v2_and_subpackages_import():
         assert hasattr(module, "__path__"), f"{name} 不是包（缺少 __path__）"
 
 
+def _is_docstring_node(node: ast.stmt) -> bool:
+    """模块体顶层的模块 docstring（str Constant 的 Expr 包装）。"""
+    return (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    )
+
+
+def _is_core_reexport_node(node: ast.stmt) -> bool:
+    """P1 收尾豁免（设计文档 §0.4）：仅 ``core/__init__.py`` 适用的放宽口径。
+
+    只放宽 **re-export 语句** 与 ``__all__`` 导出清单，其余纪律不放宽：
+
+    - re-export import：仅允许从同包 core 子模块拉取契约名称——绝对
+      ``src.engine_v2.core.<模块>`` 或 core 包内相对 import（``from .<模块>``，
+      level 恰为 1，不得相对穿出 core 包）；
+    - ``__all__ = [...]``：单个 Name 目标为 ``__all__``、值为字符串常量
+      列表/元组的单一赋值（导出清单）；
+    - 其余一切语句（函数/类定义、其他赋值、表达式、指向 core 之外的 import）
+      仍属违规。
+    """
+    if isinstance(node, ast.ImportFrom):
+        if node.level == 1 and node.module:
+            return True  # core 包内相对 import（from .<模块> import ...）
+        return node.level == 0 and node.module is not None and node.module.startswith(
+            "src.engine_v2.core"
+        )
+    if isinstance(node, ast.Import):
+        return all(alias.name.startswith("src.engine_v2.core") for alias in node.names)
+    if isinstance(node, ast.Assign):
+        return (
+            len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "__all__"
+            and isinstance(node.value, (ast.List, ast.Tuple))
+            and all(
+                isinstance(el, ast.Constant) and isinstance(el.value, str)
+                for el in node.value.elts
+            )
+        )
+    return False
+
+
 def test_engine_v2_init_files_are_docstring_only():
-    """骨架纪律：每个 __init__.py 仅含模块 docstring，无 import / 赋值 / 定义。"""
+    """骨架纪律：每个 __init__.py 仅含模块 docstring，无 import / 赋值 / 定义。
+
+    P1 收尾豁免（设计文档 §0.4，骨架纪律的自然收尾）：仅 ``core/__init__.py``
+    额外允许 re-export 语句（从同包 core 子模块导入契约类型）与 ``__all__``
+    清单语句；其余 13 个子包 + 根包保持"仅 docstring"纪律不变。
+    """
     init_files = sorted(ENGINE_DIR.rglob("__init__.py"))
     assert len(init_files) == len(SUBPACKAGES) + 1, "子包数量与任务包清单不符（应为 13 子包 + 根包）"
+    core_init = ENGINE_DIR / "core" / "__init__.py"
     for init_path in init_files:
         tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+        rel = init_path.relative_to(REPO_ROOT)
         for node in tree.body:
-            is_docstring = (
-                isinstance(node, ast.Expr)
-                and isinstance(node.value, ast.Constant)
-                and isinstance(node.value.value, str)
+            allowed = _is_docstring_node(node) or (
+                init_path == core_init and _is_core_reexport_node(node)
             )
-            rel = init_path.relative_to(REPO_ROOT)
-            assert is_docstring, (
-                f"{rel} 骨架 __init__.py 应仅含模块 docstring，发现非 docstring 语句"
+            assert allowed, (
+                f"{rel} 骨架 __init__.py 应仅含模块 docstring"
+                "（core/__init__.py 额外允许 re-export 语句与 __all__ 清单），"
+                f"发现违规语句：{ast.dump(node)[:120]}"
             )
 
 
