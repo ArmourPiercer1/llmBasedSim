@@ -129,3 +129,18 @@
 2. **条件项 2 (KBC 人工裁决)**: 8 项 KBC 记录为已知设计参考，供 Phase 2 (Kernel) 与 Phase 7 (Dynamics) 实现时参考，**不影响 Phase 1 数据层抽象**。
 
 综上，Phase 0 所有代码与文档交付完整，无边界越界与 Contract 漂移，测试全部通过，批准进入 **Phase 1 (Core Data Contracts)**。
+
+---
+
+## 10. Human Review Record（M0，2026-08-20）
+
+人工（架构负责人）已完成 M0 评审，裁定如下：
+
+1. **G0 门禁**：批准 **CONDITIONAL PASS**，准入 Phase 1。条件项维持：
+   - T04 transcript 实跑待 `DEEPSEEK_API_KEY`（人工确认当前尚无 key，继续挂起，不阻塞 P1）；
+   - G0 第 3 条"v1 实跑启动"随之继续挂起。
+2. **H1 行为基线 KBC 裁决**（采纳 Leader 建议）：
+   - **KBC-1、KBC-2、KBC-3、KBC-4、KBC-5、KBC-7、KBC-8 判定为 known bug**：v2 无兼容义务，v2 修复这些行为不构成对 v1 的回归；characterization 测试按现状锁定 v1 行为仅作迁移参照。
+   - **KBC-6（event_log 压缩名不副实）判定为设计取舍**：源于 append-only reducer 通道，v2 事件模型（DomainEvent + Trace）将天然重设计，不要求行为兼容。
+   - fan-out 超步合并语义记录为 v1 兼容契约，v2 以事件驱动调度有意取代。
+3. 上述裁决对 Phase 1（纯数据契约）无阻塞；供 Phase 2/7/9 实现与验收时引用。
