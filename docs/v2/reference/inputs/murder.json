@@ -1,0 +1,74 @@
+{
+  "scenario": "murder",
+  "title": "谋杀星——降落点清点与棘刺树调查（塔尔维茨视角）",
+  "init_file": "public_start/murder.yaml",
+  "player_name": "扫罗·塔尔维茨",
+  "starting_location": "drop_site（降落点残骸区）",
+  "design_notes": "开局位于降落点残骸区，身边 NPC 为卢修斯（2,0,2）、布勒（4,0,-1）、萨基安（3,0,1），可交互物体有爆破装药箱（1,0,-2）、第十三号空降舱残骸（0,0,0）。序列按“清点战力→纠正卢修斯的异形刀肢（纯洁/优越主线冲突）→清点爆破装药→查看状态→评估通讯修复→问布勒对艾多伦的评价→向第一棵棘刺树推进→检查尸体与基因种子”推进，贴合谋杀星军事科幻恐怖设定与塔尔维茨的线列军官人设；对卢修斯与布勒的对话分别牵引 corruption_risk / honor_integrity 与 squad_cohesion / grudging_respect_tarvitz 等属性。共 8 条输入：7 条行动 tick + 1 条命令（/status）。",
+  "coverage": {
+    "observe": [1, 8],
+    "talk": [2, 6],
+    "interact": [3, 5],
+    "move": [7],
+    "commands": [4],
+    "note": "移动/对话/交互/观察全覆盖，含 /status 一次。"
+  },
+  "entries": [
+    {
+      "step": 1,
+      "kind": "action",
+      "category": "observe",
+      "input": "环顾降落点残骸区，清点还有多少战士能够战斗，检查第十三号空降舱的破损情况。",
+      "intent": "开局环境观察 + 清点人数：建立感知基线并触发对 drop_pod_13 的注意。"
+    },
+    {
+      "step": 2,
+      "kind": "action",
+      "category": "talk",
+      "input": "对卢修斯说：把那件异形的东西放下。它不是武器，它是巨蛛族的手臂。你握着它的时候，手上沾的不是荣耀。",
+      "intent": "关键剧情对话（目标 lucius）：人设冲突（纯洁而非优越），检验 NPC 回应与 narcissism / loyalty_to_tarvitz / corruption_risk 属性链路。"
+    },
+    {
+      "step": 3,
+      "kind": "action",
+      "category": "interact",
+      "input": "让萨基安打开爆破装药箱，清点剩余的工兵爆破装药，并检查容器是否完好。",
+      "intent": "物体交互（目标 explosive_cache）：检验容器类物体 state（charges_remaining）读取与 NPC 协作行动。"
+    },
+    {
+      "step": 4,
+      "kind": "command",
+      "category": "status",
+      "input": "/status",
+      "intent": "CLI 命令：查看当前 tick、游戏时间、玩家属性与全部 NPC 位置/属性（v1 中不触发图 tick）。"
+    },
+    {
+      "step": 5,
+      "kind": "action",
+      "category": "interact",
+      "input": "检查第十三号空降舱残骸上烧毁的通讯设备，让萨基安评估能否修复通讯阵列、重新联系轨道舰队。",
+      "intent": "物体交互（目标 drop_pod_13）：长行动（评估/尝试修复），检验长任务 duration_minutes 与 action_continuation 机制。"
+    },
+    {
+      "step": 6,
+      "kind": "action",
+      "category": "talk",
+      "input": "低声问布勒：说说你的真实想法——艾多伦大人的空降命令到底错在哪里？风暴之前舰桥明明发过警告。",
+      "intent": "剧情对话（目标 bulle）：检验低好感/直率型 NPC 的回应，牵引 squad_cohesion 与 lord_eidolon 的 grudging_respect_tarvitz。"
+    },
+    {
+      "step": 7,
+      "kind": "action",
+      "category": "move",
+      "input": "下令全队向东推进，朝第一棵棘刺树前进；保持警戒，注意幼虫囊突然停止嘶嘶声的预警信号。",
+      "intent": "移动（目标 first_thorn_tree）：跨地点推进，检验移动解析、tick 耗时与世界规则 13（幼虫预警）在叙事中的体现。"
+    },
+    {
+      "step": 8,
+      "kind": "action",
+      "category": "observe",
+      "input": "仔细观察棘刺树上悬挂的尸体，辨认他们的军团标记，检查基因种子是否已被摘除。",
+      "intent": "目标观察（关联 thorn_tree_first）：检验恐怖场景的感官过滤与叙事风格，并铺垫 gene_seed_samples 属性。"
+    }
+  ]
+}

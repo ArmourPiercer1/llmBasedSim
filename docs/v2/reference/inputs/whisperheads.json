@@ -1,0 +1,74 @@
+{
+  "scenario": "whisperheads",
+  "title": "耳语山——石桥突击前的集结（洛肯视角）",
+  "init_file": "public_start/whisperheads.yaml",
+  "player_name": "加维尔·洛肯",
+  "starting_location": "plateau（着陆平台）",
+  "design_notes": "开局位于着陆平台，身边 NPC 为维普斯（3,0,2）、朱巴尔（5,0,5）、拉塞克（8,0,5），可交互物体为风暴鸟运输机（-10,0,5）。序列按“观察集结→询问士气→检查补给→查看状态→安抚朱巴尔（触发怨恨/附身主线）→侦听 Vox 低语→向石桥推进→保存”推进，贴合《耳语山》战锤 40K 哥特军事科幻设定与洛肯的理性指挥者人设；其中对朱巴尔的对话与 Vox 侦听用于牵引 corruption_level / vox_integrity 等隐藏属性演化，供 v1/v2 差异比较。共 8 条输入：6 条行动 tick + 2 条命令（/status、/save）。",
+  "coverage": {
+    "observe": [1, 6],
+    "talk": [2, 5],
+    "interact": [3],
+    "move": [7],
+    "commands": [4, 8],
+    "note": "移动/对话/交互/观察全覆盖，含 /status 与 /save 各一次。"
+  },
+  "entries": [
+    {
+      "step": 1,
+      "kind": "action",
+      "category": "observe",
+      "input": "环顾四周，评估着陆平台上第十连的集结状态，并观察前方天然石桥上的敌军火力点与桥面上的尸体。",
+      "intent": "开局环境观察：确认部队状态与石桥威胁，建立玩家对环境的首份感知基线。"
+    },
+    {
+      "step": 2,
+      "kind": "action",
+      "category": "talk",
+      "input": "对尼禄·维普斯说：Locasta小队的士气怎么样？让各小队军士长向我报到，确认每个小队都已做好突击准备。",
+      "intent": "与身边 NPC 对话（目标 nero_vipus）：检验 NPC 决策、对话事件记录与 loyalty/morale 属性链路。"
+    },
+    {
+      "step": 3,
+      "kind": "action",
+      "category": "interact",
+      "input": "检查风暴鸟运输机的货舱，确认备用弹药和医疗补给是否完好，评估能否为第十连补充装备。",
+      "intent": "物体交互（目标 stormbird_landed）：检验 interact 类行动解析、物体 state 读取与可行性判定。"
+    },
+    {
+      "step": 4,
+      "kind": "command",
+      "category": "status",
+      "input": "/status",
+      "intent": "CLI 命令：查看当前 tick、游戏时间、玩家属性与全部 NPC 位置/属性（v1 中不触发图 tick）。"
+    },
+    {
+      "step": 5,
+      "kind": "action",
+      "category": "talk",
+      "input": "走向泽维尔·朱巴尔，对他说：先锋突击的位置是你的，带上Hellebore小队打头阵。你最近状态不太对劲——有什么想说的就说出来。",
+      "intent": "关键剧情对话（目标 xavyer_jubal）：按剧本设定安抚朱巴尔，牵引其 resentment / sanity / corruption_level 演化，观察 v1 对该隐藏属性的处理。"
+    },
+    {
+      "step": 6,
+      "kind": "action",
+      "category": "observe",
+      "input": "切换头盔显像模式，专注聆听Vox通讯频道中的低语，分析Samus的声音是否带有方位信息或可辨识的规律。",
+      "intent": "针对性观察：检验特殊感官（阿斯塔特超人听觉）在感官过滤与叙事中的体现，并牵引 vox_integrity 变化。"
+    },
+    {
+      "step": 7,
+      "kind": "action",
+      "category": "move",
+      "input": "下达命令，率领第十连向北推进，开始跨越天然石桥；让拉塞克的Terminator突击队走在最前面开路，注意桥面冰层的承重。",
+      "intent": "移动（目标 rock_bridges）：长行动 + 指挥部队，检验移动坐标解析、tick 耗时计算与多人 NPC 联动。"
+    },
+    {
+      "step": 8,
+      "kind": "command",
+      "category": "save",
+      "input": "/save ref04_whisperheads_end",
+      "intent": "CLI 命令：验证 v1 存档路径（strip_transient_state 落盘）。本脚本将存档写至 docs/v2/reference/transcripts/saves/，不动仓库 saves/ 目录。"
+    }
+  ]
+}

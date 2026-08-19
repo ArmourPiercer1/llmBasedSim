@@ -3,7 +3,7 @@
 - **任务 ID**: P0-T01
 - **Phase**: Phase 0（冻结 v1 & 基线）
 - **分支**: `architecture-v2`
-- **生成日期**: 2025-05-18
+- **生成日期**: 2026-08-20（Leader 更正：原稿误写为 2025-05-18）
 - **环境**: Python 3.12.14 (`.venv/bin/python`)
 
 ---
@@ -385,3 +385,20 @@ agents:
 ---
 
 *报告编制完成，供下游任务包 P0-T03（Characterization Tests）、P0-T04（Reference Transcripts）和 P0-T06（文档整理）参考使用。*
+
+---
+
+## Leader 核对附注（2026-08-20）
+
+Leader 对报告关键事实做了源码交叉核对，下游任务包以本附注为准：
+
+1. **world_rules 键名更正**：§6.2 中 `world_rules.physics` 写的 `disable_rules` / `custom_rules` 有误。
+   源码实际键名为 `disable`（int 列表）与 `append`（str 列表），见 `src/prompts/loader.py:53-54`
+   （`build_rules_context` 只识别这两个键）。`deterministic` 子字段同样是 `disable` / `append`。
+2. **locked_attributes 规则类型确认**：`src/game/attributes.py:928-932` 的分发表共 **5 种**
+   规则类型：`timer`、`stage`、`snapshot`、`list_constraint`、`compute`（README 中"四种"的说法已过时，
+   `compute` 为最近提交 f0a1052 新增）。
+3. **已知 v1 缺陷（来自 P0-T02）**：`src/graph/game_graph.py:475` 存在 F821 未定义名称
+   `fallback`（physics_resolve 节点在 state 缺 `tick_duration_minutes` 时触发，被 try/except 掩盖）。
+   P0-T03 characterization 应覆盖该路径的当前行为（记录现状，不修复）。
+4. 报告其余节点拆解、状态分类与迁移分类经抽查与源码一致；下游使用时若发现与源码冲突，以源码为准。

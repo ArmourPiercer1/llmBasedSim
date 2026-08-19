@@ -1,0 +1,74 @@
+{
+  "scenario": "test_empty",
+  "title": "测试房间——最小场景核心循环验证（测试者视角）",
+  "init_file": "public_start/test_empty.yaml",
+  "player_name": "测试者",
+  "starting_location": "stone_room（石室）",
+  "design_notes": "最小场景（154 行 init，无 NPC，3 地点 / 4 物体，max_ticks=20，ticks_per_game_minute=1）。用于验证 v1 核心循环在空世界下的行为：观察、物体交互（发光水晶）、两次跨地点移动（石室→走廊→储藏室）、物体交互（旧羊皮纸卷），以及 /status 与 /save 两条 CLI 命令。本场景无 NPC，故不含对话类输入（对话覆盖由 whisperheads 与 murder 承担）——这是场景设定的固有限制，非序列设计疏漏。共 8 条输入：6 条行动 tick + 2 条命令（/status、/save）。",
+  "coverage": {
+    "observe": [1, 4],
+    "talk": [],
+    "interact": [2, 6],
+    "move": [3, 5],
+    "commands": [7, 8],
+    "note": "移动/交互/观察 + /status + /save 全覆盖；无 NPC 场景，对话类不适用。"
+  },
+  "entries": [
+    {
+      "step": 1,
+      "kind": "action",
+      "category": "observe",
+      "input": "环顾四周，观察这间石室的墙壁、地面和天花板。",
+      "intent": "开局环境观察：验证空世界下感官过滤与叙事的基本输出。"
+    },
+    {
+      "step": 2,
+      "kind": "action",
+      "category": "interact",
+      "input": "仰头看天花板上那颗发光的水晶，伸手碰一碰它，看看光芒会不会波动。",
+      "intent": "物体交互（目标 light_crystal）：验证 interact 解析、物体 state（glowing/temperature）读取。"
+    },
+    {
+      "step": 3,
+      "kind": "action",
+      "category": "move",
+      "input": "走向东墙，穿过那扇橡木门，走进走廊。",
+      "intent": "移动（目标 hallway，关联 oak_door）：验证跨地点移动与地点切换后感知刷新。"
+    },
+    {
+      "step": 4,
+      "kind": "action",
+      "category": "observe",
+      "input": "站在走廊里观察南北两端，看看壁灯的光能照多远，听有没有脚步声。",
+      "intent": "新地点观察：验证移动后感官范围（视距 50m / 听距 100m）与地点描述的渲染。"
+    },
+    {
+      "step": 5,
+      "kind": "action",
+      "category": "move",
+      "input": "继续向北走，进入储藏室，查看那半开的木箱。",
+      "intent": "移动（目标 storage_room，关联 wooden_crates）：第二次跨地点移动，验证连接关系（hallway.north=storage_room）。"
+    },
+    {
+      "step": 6,
+      "kind": "action",
+      "category": "interact",
+      "input": "从半开的木箱里取出旧羊皮纸卷，仔细辨认上面的文字。",
+      "intent": "物体交互（目标 old_parchments）：验证 document 类物体交互与长行动（辨认文字）的时长处理。"
+    },
+    {
+      "step": 7,
+      "kind": "command",
+      "category": "status",
+      "input": "/status",
+      "intent": "CLI 命令：查看当前 tick、游戏时间、玩家位置与属性（本场景验证 curiosity/fatigue 自然衰减是否按 ticks_per_game_minute=1 生效）。"
+    },
+    {
+      "step": 8,
+      "kind": "command",
+      "category": "save",
+      "input": "/save ref04_test_empty_end",
+      "intent": "CLI 命令：验证 v1 存档路径。本脚本将存档写至 docs/v2/reference/transcripts/saves/，不动仓库 saves/ 目录。"
+    }
+  ]
+}
