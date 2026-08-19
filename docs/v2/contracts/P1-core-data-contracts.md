@@ -3,6 +3,7 @@
 - **任务**: P1-DESIGN（Phase 1 Contract Owner 交付，计划 §36：QMax 任 P1 Contract owner）
 - **文档地位**: 等价于 Spec §50「Spec A — Core Data Contracts」的字段级实现规范。Q27 按本文档可"纯执行"实现 P1-T01/T03/T05/T06；QMax 实现 P1-T02/T04 时无需再做架构判断。
 - **分支**: `architecture-v2`
+- **Errata**: 2026-08-20 经 P1-T07 review 后勘误（条件 C1）——§5.7/§5.3 cascade 矛盾裁定（ProposedEffect 不携带 CascadeContext，级联由 cause_ids 承载）、§2.3 交叉引用笔误修正、§10 登记 P2 义务（C2/C3）；详见 `docs/v2/reports/P1-T07-contract-review.md`。
 - **权威输入**:
   - `docs/plans/llmBasedSim_Engine_Architecture_v2_Spec.md`（下称 **Spec**）§4、§7、§8、§9、§10、§11、§16、§17、§18、§19、§20、§21、§22、§23、§25、§30、§31.3、§43、§44、§46、§47、§50
   - `docs/plans/llmBasedSim_Architecture_v2_Refactor_Development_Plan.md`（下称 **Plan**）§8、§10、§22.2、§22.3、§24、§36
@@ -202,7 +203,7 @@ def is_stale(base: Revision, current: Revision,
 ```
 
 - `world_revision` **只**因 COMMITTED transaction 递增（Spec §9、§20.1"produce one world revision"）；调度簿记、trace 追加、view 派生**不**推进它（决策 D-5，见 §4.2）；
-- 一切异步结果必须能携带 `base_world_revision`（ActionProposal/ProposedEffect 均为必填字段，§6.1/§6.3），提交前 revalidation 是 P2 强制行为，数据契约保证字段在场。
+- 一切异步结果必须能携带 `base_world_revision`（ActionProposal/ProposedEffect 均为必填字段，§5.1/§5.3），提交前 revalidation 是 P2 强制行为，数据契约保证字段在场。
 
 ---
 
@@ -595,6 +596,8 @@ class ProposedEffect(ContractModel):
 
 与 Spec §16.1 逐字段一致；两处具体化均有依据：`target` 的 union 用 tagged union 落 JSON（§0.2）；`cause_ids` 用 `CauseRef` 落 K6 的类型可追踪性。
 
+> **Errata 指引（2026-08-20，条件 C1）**：§5.7 原句"每个 `DomainEvent`/`ProposedEffect`/`Transaction` 均可携带 `CascadeContext`"已裁定有误——`ProposedEffect` 不携带 `CascadeContext` 字段（与 Spec §16.1 字段清单一致，本字段清单为准）；级联串联由 `cause_ids` 承载（见 §5.7 errata）。
+
 ### 5.4 `CommittedEffect`
 
 ```python
@@ -659,6 +662,11 @@ class Transaction(ContractModel):
 ### 5.7 级联（Spec §21.3）的数据承载
 
 cascade 执行器属 Plan P2-T07；P1 数据契约保证：每个 `DomainEvent`/`ProposedEffect`/`Transaction` 均可携带 `CascadeContext`（§5.0），`cause_ids` 串联因果链；`max cascade depth` 与 cycle diagnostics 是执行器运行时配置与诊断输出（P2-T08），P1 仅在 TraceKind 中为其预留记录通道（`SYSTEM`/`CONFLICT_RESOLUTION`）。
+
+> **Errata（2026-08-20，P1-T07 review 条件 C1）**：上文"每个 `DomainEvent`/`ProposedEffect`/`Transaction` 均可携带 `CascadeContext`"一句有误，其中 `ProposedEffect` 部分**以本勘误为准**。裁定过程：P1-T04 实现按 Spec §16.1 字段清单机械落位（`ProposedEffect` 无 cascade 字段），P1-T07 独立 review 接受该裁定（见报告 §B.3），并于 2026-08-20 要求 G1 人工冻结前出此勘误。裁定结论：
+> - `ProposedEffect` **不携带** `CascadeContext` 字段——与 Spec §16.1 字段清单一致，§5.3 字段清单为准；
+> - 级联串联由 `cause_ids`（`CauseRef` 链，§5.0）承载：effect → cause_ids → 触发事件 → 事件携带 CascadeContext，级联链可完整重建，无数据丢失；
+> - `CascadeContext` 仅由 `DomainEvent`（§5.5）与 `Transaction`（§5.6）携带。
 
 ---
 
@@ -833,6 +841,14 @@ class Snapshot(ContractModel):
 | LLM Runtime 记录 | P6 | `TraceKind.LLM_CALL` payload 键名约定（§4.4） |
 | Persistence / replay / branch | P8 | `Snapshot` 信封、三层版本标记、自包含 CommittedEffect/Transaction/DomainEvent、BackendStateRef 三声明 |
 | 存档迁移 | P8 | `schema_version`/`contract_schema_version`/`snapshot_format_version` |
+
+### 10.1 P2 义务登记（errata，2026-08-20，P1-T07 review 条件 C2/C3 与报告 §D）
+
+以下义务由 P1-T07 独立 review（APPROVE_WITH_CONDITIONS）登记；P2 任务包定义时必须显式纳入，否则本表承诺悬空：
+
+1. **P2-T01（写屏障覆盖 pydantic 逃逸路径，条件 C3）**：reducer-only 写屏障必须显式覆盖 pydantic 的两条逃逸路径 `model_copy(update=...)` 与 `model_construct(...)`（reducer 外禁用/审计）。这两条路径绕过全部校验器与 frozen 语义（P1-T07 实测：ABORTED 事务可被 copy-update 出 `commit_revision`，违反 Transaction 原子不变量）；P1 数据层不变量为 advisory（§3.5/D-15 自认），若不覆盖，原子不变量与键一致性在公共 API 层可被绕过（见 P1-T07 报告 C.2/条件 C3）。
+2. **P2-T04（`check_transaction_references` 晋升 core，条件 C2）**：将 `tests/engine_v2/core/test_transaction_references.py` 中的 `check_transaction_references(state, txn)` 晋升为 core API——逐字迁移已测试实现入 core，签名与语义不变（纯函数，`(state, txn) -> tuple[str, ...]`，报告 `missing_entity`/`stale_revision`/`duplicated_effect_id` 三项，只报告不处置），并删除测试侧副本避免双源；依赖面仅 `WorldState`/`Transaction`/`is_stale`/`EntityTarget`。本义务兑现上表 P2-T04 行对 `check_transaction_references` 的依赖承诺（P1 侧因任务包写入白名单约束仅落于测试侧）。
+3. **P2 validation ID 种类校验（报告 §D.2，归属 P2-T04）**：P2 validation 需显式做 ID 种类/前缀校验——typed ID 的 pydantic 路径（AfterValidator 重建，§2.2）不校验前缀词法，跨种类 ID（如 `EffectId` 实例或错误前缀串落入 `EntityId` 字段）会被静默重建；D-1 承诺的是"可区分"而非"自动拒绝"，拒绝职责在 P2 validation；`parse_id` 已备，可复用于前缀词法校验。
 
 ---
 
