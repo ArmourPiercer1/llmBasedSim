@@ -86,21 +86,29 @@ from src.engine_v2.core import (
 )
 from src.engine_v2.core.snapshot import snapshot as take_snapshot
 
-#: 13 个契约模块（设计文档 §1.1 文件清单；re-export 的唯一来源集合）。
+#: 19 个 core 模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 + 6 个 P2
+#: 行为模块——authority / cascade / conflicts / reducer /
+#: transaction_executor / validation；re-export 的唯一来源集合）。
 _CORE_SUBMODULE_NAMES: tuple[str, ...] = (
     "actions",
+    "authority",
+    "cascade",
     "components",
+    "conflicts",
     "effects",
     "entity",
     "events",
     "ids",
     "provenance",
+    "reducer",
     "revision",
     "serialization",
     "snapshot",
     "state",
     "trace",
     "transaction",
+    "transaction_executor",
+    "validation",
 )
 
 #: 模块对象在**测试收集期**经 ``importlib``（直接读 sys.modules）捕获：
@@ -153,10 +161,13 @@ class TestCorePackageReexports:
     def test_package_all_no_private_no_duplicates(self) -> None:
         assert len(core_pkg.__all__) == len(set(core_pkg.__all__)), "__all__ 存在重复项"
         assert not any(name.startswith("_") for name in core_pkg.__all__), "__all__ 泄漏私有名称"
-        # 规模锚点：93 个唯一名称（13 模块 __all__ 共 95 项，CONTRACT_SCHEMA_VERSION
-        # 在 state/snapshot 双模块同名、同一对象，去重后 94；再减去同名遮蔽
-        # 豁免的 snapshot 函数 = 93）
-        assert len(core_pkg.__all__) == 93
+        # 规模锚点：138 个唯一名称（13 个契约模块 __all__ 共 95 项，
+        # CONTRACT_SCHEMA_VERSION 在 state/snapshot 双模块同名、同一对象，
+        # 去重后 94；再减去同名遮蔽豁免的 snapshot 函数 = 93；再加 P2 行为
+        # 模块导出——authority 8 项（P2-T02/T03）+ reducer 37 项（P2-T01）
+        # = 138；validation/conflicts/transaction_executor/cascade 四个占位
+        # 骨架模块（D-P2-19）尚无公开导出，随各自任务包落地时本锚点同步）
+        assert len(core_pkg.__all__) == 138
 
     def test_every_reexport_is_same_object_as_source_module(self) -> None:
         """每个包级 re-export 名称与定义来源模块的属性同一对象（无第二副本）。"""

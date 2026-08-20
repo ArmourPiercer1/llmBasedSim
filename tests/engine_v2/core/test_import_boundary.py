@@ -36,21 +36,30 @@ CORE_PKG = "src.engine_v2.core"
 CORE_DIR = REPO_ROOT / "src" / "engine_v2" / "core"
 TESTS_ENGINE_DIR = REPO_ROOT / "tests" / "engine_v2"
 
-#: core 包 13 个契约模块（设计文档 §1.1 文件清单，P1 已全数落盘）。
+#: core 包 19 个模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 +
+#: 6 个 P2 行为模块 authority / cascade / conflicts / reducer /
+#: transaction_executor / validation；P1 已全数落盘，P2 模块随各任务包
+#: 填充行为主体）。
 CORE_SUBMODULES: tuple[str, ...] = (
     "actions",
+    "authority",
+    "cascade",
     "components",
+    "conflicts",
     "effects",
     "entity",
     "events",
     "ids",
     "provenance",
+    "reducer",
     "revision",
     "serialization",
     "snapshot",
     "state",
     "trace",
     "transaction",
+    "transaction_executor",
+    "validation",
 )
 
 # —— §0.3 黑名单（骨架 FORBIDDEN_MODULE_PREFIXES 的扩展口径）——
