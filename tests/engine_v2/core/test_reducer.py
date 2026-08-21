@@ -1360,6 +1360,89 @@ class TestGuardFacade:
         with pytest.raises(TypeError):
             data["x"] = 99  # MappingProxyType 只读
 
+    def test_guard_container_views_deep_frozen(self) -> None:
+        """B2 修复：entities / world_variables / scenario_state 容器级深冻结。
+
+        顶层与嵌套的 ``__setitem__`` / ``__delitem__`` / ``clear`` / ``pop``
+        等原地修改一律 TypeError；tags 转 tuple；权威状态零变化。
+        """
+        state = _base_state(0)
+        snapshot = state.model_dump(mode="json")
+        g = guard(state)
+
+        with pytest.raises(TypeError):
+            g.world_variables["calendar"] = {"day": 99}
+        with pytest.raises(TypeError):
+            del g.world_variables["calendar"]
+        with pytest.raises(TypeError):
+            g.world_variables.pop("calendar")
+        with pytest.raises(TypeError):
+            g.world_variables.clear()
+        with pytest.raises(TypeError):
+            g.world_variables.setdefault("injected", 1)
+        with pytest.raises(TypeError):
+            g.world_variables.update({"injected": 1})
+        with pytest.raises(TypeError):
+            g.world_variables["calendar"]["day"] = 99
+        with pytest.raises(TypeError):
+            g.world_variables["deep"]["l1"]["l2"] = 999
+
+        with pytest.raises(TypeError):
+            g.entities[EntityId("ent_intruder")] = g.entities[EntityId("ent_alice")]
+        with pytest.raises(TypeError):
+            del g.entities[EntityId("ent_alice")]
+        with pytest.raises(TypeError):
+            g.entities.clear()
+        with pytest.raises(TypeError):
+            g.entities.pop(EntityId("ent_alice"))
+
+        alice = g.entities[EntityId("ent_alice")]
+        with pytest.raises(TypeError):
+            alice.components[ComponentTypeId("space.position")]["x"] = 55
+        with pytest.raises(TypeError):
+            alice.components[ComponentTypeId("intruder")] = {"x": 0}
+        with pytest.raises(TypeError):
+            del alice.components[ComponentTypeId("space.position")]
+        with pytest.raises(TypeError):
+            alice.components.clear()
+        with pytest.raises(TypeError):
+            alice.components.pop(ComponentTypeId("space.position"))
+        with pytest.raises(TypeError):
+            alice.tags[0] = "hacked"
+
+        with pytest.raises(TypeError):
+            g.scenario_state.data["goal"] = "篡改"
+        with pytest.raises(TypeError):
+            g.scenario_state.data.pop("goal")
+        with pytest.raises(TypeError):
+            g.scenario_state.data.clear()
+
+        # 门面属性赋值 / 私有缝隙 / 复制逃逸 → WriteBarrierError（层三语义）
+        with pytest.raises(WriteBarrierError):
+            alice.entity_id = EntityId("ent_intruder")
+        with pytest.raises(WriteBarrierError):
+            alice._with_components({})
+        with pytest.raises(WriteBarrierError):
+            g.scenario_state.scenario_id = "scn_hijack"
+        with pytest.raises(WriteBarrierError):
+            copy.copy(alice)
+        with pytest.raises(WriteBarrierError):
+            copy.deepcopy(g.scenario_state)
+
+        # 读路径与判等口径不变
+        assert g.entities == state.entities
+        assert g.world_variables == state.world_variables
+        assert g.scenario_state == state.scenario_state
+        assert alice.tags == ("shopkeeper",)
+        assert alice.created_revision == Revision(0)
+        # 复制出口：deepcopy 产出独立可变快照（合法工作副本模式，零别名）
+        wv_copy = copy.deepcopy(g.world_variables)
+        assert wv_copy == state.world_variables
+        wv_copy["calendar"]["day"] = 99
+        assert state.world_variables["calendar"]["day"] == 3, "快照突变不波及权威状态"
+        # 全部攻击后权威状态零变化
+        assert state.model_dump(mode="json") == snapshot
+
     def test_guard_repr_does_not_leak(self) -> None:
         g = guard(_base_state(3))
         text = repr(g)

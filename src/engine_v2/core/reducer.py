@@ -43,7 +43,13 @@
      不受阻；
   3. **guard() 只读门面**（层三，防绕过包装器）：``GuardedWorldState`` 交
      producer/trigger——即使全局拦截未武装，producer 侧也拿不到任何写路径
-     （K2 的运行时兜底，Spec §21.3 触发器求值入参）。
+     （K2 的运行时兜底，Spec §21.3 触发器求值入参）。``.entities`` /
+     ``.world_variables`` / ``.scenario_state`` 返回基于
+     ``MappingProxyType`` 的递归深冻结只读视图（``_FrozenMapping`` /
+     ``_freeze_deep``，P2-REMEDIATION B2 容器级泄漏闭合）：任何
+     ``__setitem__`` / ``__delitem__`` / ``clear()`` / ``pop()`` 等原地
+     修改抛 ``TypeError``，实体组件数据经 ``_GuardedEntityRecord`` /
+     ``_GuardedScenarioState`` 门面同为只读深冻结。
 
 **import 边界**（P1 设计 §0.3 继承）：本模块只 import 标准库、pydantic 与
 同包 ``src.engine_v2``——reducer 不调用 LLM（G2 静态确认之一）；无 IO、无
@@ -55,6 +61,7 @@ from __future__ import annotations
 
 import copy
 import threading
+import types
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any, Final
@@ -74,7 +81,12 @@ from src.engine_v2.core.effects import (
     ProposedEffect,
     StateDomainTarget,
 )
-from src.engine_v2.core.entity import ContractModel, EntityRecord, EntityView, _build_entities
+from src.engine_v2.core.entity import (
+    ContractModel,
+    EntityRecord,
+    EntityView,
+    _build_entities,
+)
 from src.engine_v2.core.ids import EntityId
 from src.engine_v2.core.revision import Revision
 from src.engine_v2.core.state import CONTRACT_SCHEMA_VERSION, ScenarioState, WorldState
@@ -1106,11 +1118,289 @@ def write_barrier_installed() -> bool:
 # —— 写屏障：层三 guard() 只读门面（§2.6.3，防绕过包装器）——
 
 
+class _FrozenMapping(Mapping):
+    """深冻结只读映射（P2-REMEDIATION B2：容器级泄漏闭合）。
+
+    基于 ``types.MappingProxyType`` 构造（内部持有代理，全部读路径委托之；
+    CPython 的 mappingproxy 不可被继承，故以组合承载）：
+
+    - **任何原地修改操作一律抛 ``TypeError``**——``__setitem__`` /
+      ``__delitem__`` / ``clear`` / ``pop`` / ``popitem`` / ``setdefault`` /
+      ``update``（MappingProxyType 本不承载可变方法，直接调用得
+      AttributeError；本类补齐并统一错误种类为 TypeError——"只读容器不
+      支持原地修改"，而非"方法不存在"）；
+    - 构造期经 ``dict(data)`` 浅拷贝切断与入参容器的外层别名（嵌套值已由
+      :func:`_freeze_deep` 递归冻结——视图是快照，权威侧任何变化不反射）；
+    - ``==`` 语义与 dict/MappingProxyType 互通（内容相等即相等）。
+    """
+
+    __slots__ = ("_proxy",)
+
+    def __init__(self, data: Mapping[Any, Any]) -> None:
+        self._proxy = types.MappingProxyType(dict(data))
+
+    # —— 只读读路径（委托内部 MappingProxyType）——
+
+    def __getitem__(self, key: Any) -> Any:
+        return self._proxy[key]
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self._proxy)
+
+    def __len__(self) -> int:
+        return len(self._proxy)
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._proxy
+
+    # —— 原地修改一律 TypeError（B2 错误种类契约）——
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        raise TypeError("只读深冻结映射不支持原地修改（__setitem__；P2-REMEDIATION B2）")
+
+    def __delitem__(self, key: Any) -> None:
+        raise TypeError("只读深冻结映射不支持原地修改（__delitem__；P2-REMEDIATION B2）")
+
+    def clear(self) -> None:
+        raise TypeError("只读深冻结映射不支持原地修改（clear；P2-REMEDIATION B2）")
+
+    def pop(self, *args: Any) -> Any:
+        raise TypeError("只读深冻结映射不支持原地修改（pop；P2-REMEDIATION B2）")
+
+    def popitem(self) -> tuple[Any, Any]:
+        raise TypeError("只读深冻结映射不支持原地修改（popitem；P2-REMEDIATION B2）")
+
+    def setdefault(self, *args: Any) -> Any:
+        raise TypeError("只读深冻结映射不支持原地修改（setdefault；P2-REMEDIATION B2）")
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("只读深冻结映射不支持原地修改（update；P2-REMEDIATION B2）")
+
+    # —— 值相等与表示 ——
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _FrozenMapping):
+            return self._proxy == other._proxy
+        return self._proxy == other
+
+    __hash__ = None  # 含可变语义容器的值对象不参与哈希（与契约模型同口径）
+
+    # —— 复制出口：产出独立可变快照（零别名，非泄漏面）——
+    #
+    # producer 侧对读出的 JSON 值做 ``copy``/``deepcopy`` 取工作副本是合法
+    # 模式；返回独立 dict 快照（映射代理本体不可 pickle，须显式承接）。
+
+    def __copy__(self) -> dict[Any, Any]:
+        return dict(self._proxy)
+
+    def __deepcopy__(self, memo: Any = None) -> dict[Any, Any]:
+        return copy.deepcopy(dict(self._proxy), memo)
+
+    def __repr__(self) -> str:
+        return f"_FrozenMapping({dict(self._proxy)!r})"
+
+
+def _freeze_deep(value: Any) -> Any:
+    """递归深冻结一个 JSON 值（复用 ``entity._freeze_value`` 模式，§2.6.3）。
+
+    ``dict`` → :class:`_FrozenMapping`（嵌套递归冻结），``list``/``tuple``
+    → ``tuple``，标量/None 原样返回。与 ``_freeze_value`` 的差异仅在映射
+    载体：_FrozenMapping 对全部原地修改操作统一抛 ``TypeError``
+    （P2-REMEDIATION B2 的容器级错误种类契约）。
+    """
+    if isinstance(value, dict):
+        return _FrozenMapping({k: _freeze_deep(v) for k, v in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_deep(v) for v in value)
+    return value
+
+
+class _GuardedEntityRecord:
+    """EntityRecord 的只读门面（§2.6.3 容器级泄漏防御；P2-REMEDIATION B2）。
+
+    :class:`GuardedWorldState` 的 ``entities`` 只读视图以本门面逐条承载：
+
+    - ``components`` 为 ``MappingProxyType`` 深冻结视图（复用
+      :func:`entity._freeze_value` 模式）——组件数据嵌套 dict 的任何
+      ``__setitem__`` / ``__delitem__`` / ``clear()`` / ``pop()`` 原地修改
+      抛 ``TypeError``；组件容器本身同为只读代理；
+    - ``tags`` 构造期转为 tuple（原 ``list[str]`` 可经 ``append`` 就地突变，
+      别名泄漏面一并封堵）；
+    - 属性赋值 / 删除 / 私有缝隙访问一律 :class:`WriteBarrierError`
+      （无条件拦截，与层三门面同语义）；不暴露被包装记录对象本身。
+
+    ``__eq__`` 委托被包装记录（与 ``EntityRecord`` 值相等互认，视图判等
+    口径不变）；不参与哈希（与 pydantic 契约模型同语义）。
+    """
+
+    __slots__ = (
+        "_GuardedEntityRecord__wrapped",
+        "_GuardedEntityRecord__components",
+        "_GuardedEntityRecord__tags",
+    )
+
+    def __init__(self, record: EntityRecord) -> None:
+        object.__setattr__(self, "_GuardedEntityRecord__wrapped", record)
+        object.__setattr__(
+            self,
+            "_GuardedEntityRecord__components",
+            _FrozenMapping(
+                {
+                    component_type: _freeze_deep(data)
+                    for component_type, data in record.components.items()
+                }
+            ),
+        )
+        object.__setattr__(self, "_GuardedEntityRecord__tags", tuple(record.tags))
+
+    # —— 只读属性 ——
+
+    @property
+    def entity_id(self) -> EntityId:
+        return self.__wrapped.entity_id
+
+    @property
+    def entity_class(self) -> str | None:
+        return self.__wrapped.entity_class
+
+    @property
+    def tags(self) -> tuple[str, ...]:
+        return self.__tags
+
+    @property
+    def created_revision(self) -> Revision:
+        return self.__wrapped.created_revision
+
+    @property
+    def components(self) -> Mapping[ComponentTypeId, Mapping[str, JsonValue]]:
+        """组件数据深冻结只读视图（MappingProxyType，嵌套递归冻结）。"""
+        return self.__components
+
+    def model_dump(self, **kwargs: Any) -> Any:
+        """序列化出口：委托被包装 EntityRecord 的 ``model_dump``。"""
+        return self.__wrapped.model_dump(**kwargs)
+
+    # —— 值相等（委托）与写路径拦截 ——
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _GuardedEntityRecord):
+            return self.__wrapped == other._GuardedEntityRecord__wrapped
+        return self.__wrapped == other
+
+    __hash__ = None  # 与 EntityRecord 同语义：含可变容器的值对象不参与哈希
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise WriteBarrierError(
+            f"写屏障拦截：只读门面 _GuardedEntityRecord 禁止属性赋值（{name!r}）"
+        )
+
+    def __delattr__(self, name: str) -> None:
+        raise WriteBarrierError(
+            f"写屏障拦截：只读门面 _GuardedEntityRecord 禁止属性删除（{name!r}）"
+        )
+
+    def __copy__(self) -> Any:
+        raise WriteBarrierError("写屏障拦截：只读门面 _GuardedEntityRecord 禁止 copy.copy")
+
+    def __deepcopy__(self, memo: Any = None) -> Any:
+        raise WriteBarrierError("写屏障拦截：只读门面 _GuardedEntityRecord 禁止 copy.deepcopy")
+
+    def __getattr__(self, name: str) -> Any:
+        """常规查找失败的兜底：私有缝隙一律拦截（同 GuardedWorldState）。"""
+        if name.startswith("_"):
+            raise WriteBarrierError(
+                f"写屏障拦截：只读门面 _GuardedEntityRecord 禁止私有缝隙访问（{name!r}）"
+            )
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __repr__(self) -> str:
+        return f"_GuardedEntityRecord(entity_id={self.__wrapped.entity_id})"
+
+
+class _GuardedScenarioState:
+    """ScenarioState 的只读门面（§2.6.3 容器级泄漏防御；P2-REMEDIATION B2）。
+
+    pydantic ``frozen=True`` 只阻断字段再赋值——``scenario_state.data`` 的
+    可变 dict 原可经 ``data['k'] = v`` 就地突变权威状态。本门面以
+    ``MappingProxyType`` 深冻结视图暴露 ``data``（复用
+    :func:`entity._freeze_value` 模式），任何 ``__setitem__`` /
+    ``__delitem__`` / ``clear()`` / ``pop()`` 抛 ``TypeError``；属性赋值 /
+    删除 / 私有缝隙访问一律 :class:`WriteBarrierError`。
+
+    ``__eq__`` 委托被包装模型（与 ``ScenarioState`` 值相等互认）。
+    """
+
+    __slots__ = ("_GuardedScenarioState__wrapped", "_GuardedScenarioState__data")
+
+    def __init__(self, scenario: ScenarioState) -> None:
+        object.__setattr__(self, "_GuardedScenarioState__wrapped", scenario)
+        object.__setattr__(self, "_GuardedScenarioState__data", _freeze_deep(scenario.data))
+
+    # —— 只读属性 ——
+
+    @property
+    def scenario_id(self) -> str | None:
+        return self.__wrapped.scenario_id
+
+    @property
+    def stage(self) -> str | None:
+        return self.__wrapped.stage
+
+    @property
+    def data(self) -> Mapping[str, JsonValue]:
+        """scenario 数据深冻结只读视图（MappingProxyType，嵌套递归冻结）。"""
+        return self.__data
+
+    def model_dump(self, **kwargs: Any) -> Any:
+        """序列化出口：委托被包装 ScenarioState 的 ``model_dump``。"""
+        return self.__wrapped.model_dump(**kwargs)
+
+    # —— 值相等（委托）与写路径拦截 ——
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _GuardedScenarioState):
+            return self.__wrapped == other._GuardedScenarioState__wrapped
+        return self.__wrapped == other
+
+    __hash__ = None  # 与 ScenarioState 同语义：含可变容器的值对象不参与哈希
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise WriteBarrierError(
+            f"写屏障拦截：只读门面 _GuardedScenarioState 禁止属性赋值（{name!r}）"
+        )
+
+    def __delattr__(self, name: str) -> None:
+        raise WriteBarrierError(
+            f"写屏障拦截：只读门面 _GuardedScenarioState 禁止属性删除（{name!r}）"
+        )
+
+    def __copy__(self) -> Any:
+        raise WriteBarrierError("写屏障拦截：只读门面 _GuardedScenarioState 禁止 copy.copy")
+
+    def __deepcopy__(self, memo: Any = None) -> Any:
+        raise WriteBarrierError("写屏障拦截：只读门面 _GuardedScenarioState 禁止 copy.deepcopy")
+
+    def __getattr__(self, name: str) -> Any:
+        """常规查找失败的兜底：私有缝隙一律拦截（同 GuardedWorldState）。"""
+        if name.startswith("_"):
+            raise WriteBarrierError(
+                f"写屏障拦截：只读门面 _GuardedScenarioState 禁止私有缝隙访问（{name!r}）"
+            )
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __repr__(self) -> str:
+        return f"_GuardedScenarioState(scenario_id={self.__wrapped.scenario_id})"
+
+
 def guard(state: WorldState) -> GuardedWorldState:
     """将 WorldState 包装为只读运行时门面（P2 设计规范 §2.6.3）。
 
     交 producer/trigger（级联触发器 §7.2 的求值入参即本类型）：即使全局
     拦截未武装，producer 侧也拿不到任何写路径（K2 的运行时兜底）。
+    容器级泄漏闭合（P2-REMEDIATION B2）：``entities`` /
+    ``world_variables`` / ``scenario_state`` 一律为递归深冻结只读视图，
+    任何容器原地修改抛 ``TypeError``、门面属性赋值抛
+    :class:`WriteBarrierError`。
 
     Raises:
         TypeError: 入参不是 ``WorldState``。
@@ -1133,23 +1423,66 @@ class GuardedWorldState:
       ``model_dump`` / ``model_dump_json``（序列化出口）；公共字段
       （``schema_version`` / ``world_revision`` / ``entities`` /
       ``world_variables`` / ``scenario_state``）只读；
+    - **容器级深冻结**（P2-REMEDIATION B2）：``entities`` /
+      ``world_variables`` / ``scenario_state`` 一律返回基于
+      ``MappingProxyType`` 的**递归深冻结只读视图**（复用
+      :func:`entity._freeze_value` 模式）——``entities`` 逐条经
+      :class:`_GuardedEntityRecord` 承载（组件数据深冻结、tags 转
+      tuple），``scenario_state`` 经 :class:`_GuardedScenarioState` 承载
+      （``data`` 深冻结）。任何 ``__setitem__`` / ``__delitem__`` /
+      ``clear()`` / ``pop()`` 等容器原地修改均抛 ``TypeError``，属性赋值
+      等写路径抛 :class:`WriteBarrierError`——被包装的权威状态在任何
+      访问面上零可变引用泄漏（K2 写屏障层三的容器级闭合）；
     - **一律抛 :class:`WriteBarrierError`**：``model_copy`` /
       ``model_construct`` / ``copy.copy`` / ``copy.deepcopy`` / 属性赋值 /
       属性删除 / 私有缝隙访问（``_with_*`` 等）——无条件拦截（与层二令牌
       无关）：即使全局拦截未武装，producer 侧也拿不到任何写路径；
     - 不继承 ``BaseModel``，不是契约模型，不参与 round-trip；被包装的
       WorldState 以名称改写私有槽持有，门面不提供任何取回原状态的公共路径。
+
+    深冻结视图构造于 ``__init__``（被包装状态为 frozen 契约，视图一次构造
+    恒有效）；判等口径不变——``entities`` / ``world_variables`` /
+    ``scenario_state`` 视图与被包装状态对应字段 ``==`` 相等（委托值相等）。
     """
 
     # 名称改写的私有槽（_GuardedWorldState__wrapped）：外部 ``g.__wrapped``
-    # 形态经 __getattr__ 落入私有缝隙拦截；门面零公共写路径
-    __slots__ = ("_GuardedWorldState__wrapped",)
+    # 形态经 __getattr__ 落入私有缝隙拦截；门面零公共写路径。其余三槽为
+    # 构造期深冻结视图缓存（P2-REMEDIATION B2）。
+    __slots__ = (
+        "_GuardedWorldState__wrapped",
+        "_GuardedWorldState__entities_view",
+        "_GuardedWorldState__world_variables_view",
+        "_GuardedWorldState__scenario_view",
+    )
 
     def __init__(self, state: WorldState) -> None:
         # 经 object.__setattr__ 绕过本类的 __setattr__ 拦截（构造期唯一一次
         # 实例状态写入；名称改写槽 _GuardedWorldState__wrapped 外部不可经
         # 常规 ``g.__wrapped`` 形态读取——落入 __getattr__ 缝隙拦截）
         object.__setattr__(self, "_GuardedWorldState__wrapped", state)
+        # 容器级深冻结只读视图（P2-REMEDIATION B2）：_FrozenMapping
+        # （基于 MappingProxyType）+ _freeze_deep 递归冻结，原地修改统一抛
+        # TypeError
+        object.__setattr__(
+            self,
+            "_GuardedWorldState__entities_view",
+            _FrozenMapping(
+                {
+                    entity_id: _GuardedEntityRecord(record)
+                    for entity_id, record in state.entities.items()
+                }
+            ),
+        )
+        object.__setattr__(
+            self,
+            "_GuardedWorldState__world_variables_view",
+            _freeze_deep(state.world_variables),
+        )
+        object.__setattr__(
+            self,
+            "_GuardedWorldState__scenario_view",
+            _GuardedScenarioState(state.scenario_state),
+        )
 
     # —— 只读门面委托（§2.6.3）——
 
@@ -1192,16 +1525,25 @@ class GuardedWorldState:
         return self.__wrapped.world_revision
 
     @property
-    def entities(self) -> dict[EntityId, EntityRecord]:
-        return self.__wrapped.entities
+    def entities(self) -> Mapping[EntityId, _GuardedEntityRecord]:
+        """只读深冻结视图（P2-REMEDIATION B2）：MappingProxyType 承载
+        :class:`_GuardedEntityRecord` 门面——容器 ``__setitem__`` /
+        ``__delitem__`` / ``clear()`` / ``pop()`` 与记录内组件数据的任何
+        原地修改均被拦截（TypeError / WriteBarrierError）。"""
+        return self.__entities_view
 
     @property
-    def world_variables(self) -> dict[str, JsonValue]:
-        return self.__wrapped.world_variables
+    def world_variables(self) -> Mapping[str, JsonValue]:
+        """只读深冻结视图（P2-REMEDIATION B2）：``_freeze_deep`` 递归冻结，
+        顶层与嵌套 dict 的 ``__setitem__`` / ``__delitem__`` / ``clear()`` /
+        ``pop()`` 等原地修改一律抛 TypeError。"""
+        return self.__world_variables_view
 
     @property
-    def scenario_state(self) -> ScenarioState:
-        return self.__wrapped.scenario_state
+    def scenario_state(self) -> _GuardedScenarioState:
+        """只读深冻结门面（P2-REMEDIATION B2）：``data`` 经 MappingProxyType
+        深冻结，字段属性只读——原地修改与属性赋值一律被拦截。"""
+        return self.__scenario_view
 
     # —— 写路径拦截（§2.6.3：一律 WriteBarrierError，无条件）——
 

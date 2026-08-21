@@ -12,7 +12,9 @@
   顶点、锁相交为边建冲突图，取**连通分量**（size ≥ 2 即
   :class:`ConflictGroup`）；BFS 按到达序遍历、组内按到达序、返回按组内
   最小到达序排序——确定性，O(n²) 锁比较（MVP 可接受，P1-T07 §D.6 同款
-  性能注记）；
+  性能注记）；**批内暂存依赖豁免**（P2-REMEDIATION B1）：先到达的
+  ``core.create_entity`` 与后到达的对同一实体的 ``core.set_component``
+  （初始化挂载）不建冲突边（顺序依赖而非互斥竞争）；
 - **策略协议与默认四策**（D-P2-11 后端；§5.3/§5.4）：:class:`ConflictStrategy`
   协议（``resolve`` 返回 None = 弃权，必须纯函数）+ :class:`ResolutionContext`
   （到达序为唯一权威序）+ :class:`ConflictResolution`；固定顺序
@@ -66,7 +68,11 @@ from src.engine_v2.core.effects import (
     StateDomainTarget,
 )
 from src.engine_v2.core.ids import EffectId, EntityId
-from src.engine_v2.core.reducer import EFFECT_CREATE_ENTITY, EFFECT_REMOVE_ENTITY
+from src.engine_v2.core.reducer import (
+    EFFECT_CREATE_ENTITY,
+    EFFECT_REMOVE_ENTITY,
+    EFFECT_SET_COMPONENT,
+)
 
 __all__ = [
     "AuthorityPriorityStrategy",
@@ -299,6 +305,32 @@ def conflicts_with(a: ConflictKey, b: ConflictKey) -> bool:
 # —— 冲突组与连通分量分组（§5.2；D-P2-11 中端）——
 
 
+def _is_staged_init_dependency(earlier: ProposedEffect, later: ProposedEffect) -> bool:
+    """同批次暂存依赖判定（P2-REMEDIATION B1 修复）。
+
+    同一批次内**先到达**的 ``core.create_entity`` 与**后到达**的对同一
+    实体的 ``core.set_component``（初始化挂载组件）是合法的暂存依赖，
+    不是互斥冲突——reducer 暂存（``_WorkingWorld``）按 sequence 顺序
+    应用：先创建实体，随后组件挂载方可成立。仅 ``create → set_component``
+    这一方向/组合豁免：倒序到达、双创建、``remove_entity`` / 其余动词
+    与同实体变更的组合仍按锁相交正常成组（保守裁决不放宽其余语义）。
+
+    纯函数；不读状态（冲突检测层对基线状态无感知——创建目标已存在的
+    病态批次由 validation/reducer 前置条件原子拒绝，冲突层无需重复判定）。
+    """
+    if earlier.effect_type != EFFECT_CREATE_ENTITY:
+        return False
+    if later.effect_type != EFFECT_SET_COMPONENT:
+        return False
+    earlier_target = earlier.target
+    later_target = later.target
+    return (
+        isinstance(earlier_target, EntityTarget)
+        and isinstance(later_target, EntityTarget)
+        and earlier_target.entity_id == later_target.entity_id
+    )
+
+
 @dataclass(frozen=True)
 class ConflictGroup:
     """冲突组（P2 设计规范 §5.2；连通分量的交付形态）。
@@ -341,6 +373,12 @@ def detect_conflicts(effects: Sequence[ProposedEffect]) -> list[ConflictGroup]:
     比较——MVP 可接受（P1-T07 §D.6 同款性能注记；P3+ 若有性能诉求可换
     索引，不改签名）。
 
+    **批内暂存依赖豁免**（P2-REMEDIATION B1）：先到达的
+    ``core.create_entity`` 与后到达的对同一实体的 ``core.set_component``
+    （初始化挂载）之间**不建冲突边**（:func:`_is_staged_init_dependency`）
+    ——锁相交虽成立（整实体锁 × 组件锁），语义上却是顺序依赖而非互斥
+    竞争；二者均存活、按到达序经 reducer 暂存顺序应用。
+
     Args:
         effects: round 内的拟议效果批次（输入序 = 到达序；
             ``effect_id`` 批内唯一由 validation L1 ``duplicated_effect_id``
@@ -359,6 +397,11 @@ def detect_conflicts(effects: Sequence[ProposedEffect]) -> list[ConflictGroup]:
     count = len(lock_sets)
 
     def _linked(i: int, j: int) -> bool:
+        lo, hi = (i, j) if i < j else (j, i)
+        if _is_staged_init_dependency(effects[lo], effects[hi]):
+            # 批内暂存依赖（先 create 后 set_component 初始化挂载）：
+            # 锁相交成立但语义为顺序依赖，不建冲突边（P2-REMEDIATION B1）
+            return False
         for key in lock_sets[i]:
             for other in lock_sets[j]:
                 if conflicts_with(key, other):

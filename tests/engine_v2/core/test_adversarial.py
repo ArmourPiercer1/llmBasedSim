@@ -53,6 +53,9 @@
        write_barrier_exempt() 内四者放行；
    (2) guard(state) 包装器：4 个只读门面 + model_dump 可用；
        model_copy / model_construct / 属性赋值 / _with_* 访问全部 WriteBarrierError；
+       **容器级原地修改攻击**（P2-REMEDIATION B2）：guard(state).world_variables /
+       entities / scenario_state.data / 嵌套组件 dict 的 __setitem__ / __delitem__ /
+       clear / pop / popitem / setdefault / update 全部 TypeError，权威状态零变化；
    (3) 静态审计自测：合成违规源码字符串全部被捕获；reducer.py 自身白名单放行；
    (4) 管道面：触发器收到的是 GuardedWorldState（isinstance 断言 + 写路径抛错）；
    (5) uninstall_write_barrier() 后 P1 语义复原。
@@ -67,8 +70,20 @@
    (5) future_base_revision (base > current) -> 拒绝；
    (6) 开发干预通道：origin=DEVELOPER 经 policy 显式授权后可提交，trace provenance 完整。
 
-8. **G2 静态代码扫描确认**：
-   - 静态扫描整个 src/engine_v2/，断言没有任何直接修改状态的 public API；
+8. **场景 8（core.create_entity 提交路径 / P2-REMEDIATION B1）**：
+   (1) 单独 create_entity 提交成功（revision 恰 +1、实体落地、事件 1:1）；
+   (2) 同事务先 create_entity 后 set_component 的暂存依赖：L2 终检零
+       missing_entity、conflicts 不判冲突、reducer 顺序应用落地；
+   (3) create 已存在实体 -> reducer 前置条件报错（非 missing_entity）；
+   (4) CascadeExecutor 级联端到端：create + component.set 同回合完整通过
+       且成功落地；create 事件触发后续回合对新实体的效果落地。
+
+9. **G2 静态代码扫描确认**：
+   - 静态扫描整个 src/engine_v2/，断言没有任何直接修改状态的 public API
+     （全类口径，reducer.py 白名单——唯一授权变更机制）；
+   - **直接下标写入扫描**（P2-REMEDIATION B3）：src/engine_v2/（白名单外）
+     不得出现对状态容器属性（entities / world_variables / scenario_state /
+     components / data / tags）的任何下标写入/删除；
    - 静态断言 Reducer 纯函数绝不调用 LLM（无 provider/llm import）、不做语义推断。
 """
 
@@ -132,6 +147,7 @@ from src.engine_v2.core.provenance import (
     Provenance,
 )
 from src.engine_v2.core.reducer import (
+    EFFECT_CREATE_ENTITY,
     EFFECT_REMOVE_ENTITY,
     EFFECT_SET_COMPONENT,
     EFFECT_SET_WORLD_VARIABLE,
@@ -158,6 +174,7 @@ from src.engine_v2.core.validation import (
     EffectValidator,
     ValidationContext,
     check_effect_id_kinds,
+    check_transaction_references,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -908,6 +925,117 @@ class TestScenario6WriteBarrierAdversarial:
         with pytest.raises(WriteBarrierError):
             g._with_world_revision(Revision(99))
 
+    def test_guard_container_level_mutation_attacks_blocked(self) -> None:
+        """B2 修复验证：guard 门面的容器级原地修改攻击全部拦截（TypeError），
+        权威状态零变化。
+
+        覆盖攻击面：guard(state).world_variables（顶层 + 嵌套 dict）、
+        guard(state).entities（容器 + 实体门面 + 组件容器 + 嵌套组件数据 +
+        tags）、guard(state).scenario_state.data——``__setitem__`` /
+        ``__delitem__`` / ``clear`` / ``pop`` / ``popitem`` / ``setdefault`` /
+        ``update`` 等一切原地修改形态。
+        """
+        base_entities = _make_base_state(0).entities
+        state = WorldState(
+            world_revision=Revision(0),
+            entities=base_entities,
+            world_variables={"calendar": {"day": 3}, "gold": 10},
+            scenario_state=ScenarioState(
+                scenario_id="scn_main", stage="opening", data={"goal": "find key"}
+            ),
+        )
+        snapshot = state.model_dump(mode="json")
+        g = guard(state)
+
+        def _expect_type_error(attack: Any) -> None:
+            """每个原地修改攻击形态都必须抛 TypeError（只读容器契约）。"""
+            with pytest.raises(TypeError):
+                attack()
+
+        # —— world_variables：顶层与嵌套 ——
+        _expect_type_error(lambda: exec('g.world_variables["gold"] = 999', {"g": g}))
+        _expect_type_error(lambda: exec('del g.world_variables["gold"]', {"g": g}))
+        _expect_type_error(lambda: g.world_variables.clear())
+        _expect_type_error(lambda: g.world_variables.pop("gold"))
+        _expect_type_error(lambda: g.world_variables.popitem())
+        _expect_type_error(lambda: g.world_variables.setdefault("injected", 1))
+        _expect_type_error(lambda: g.world_variables.update({"injected": 1}))
+        _expect_type_error(lambda: exec('g.world_variables["calendar"]["day"] = 99', {"g": g}))
+        _expect_type_error(lambda: g.world_variables["calendar"].clear())
+
+        # —— entities：容器级 ——
+        _expect_type_error(
+            lambda: exec(
+                'g.entities[EntityId("ent_intruder")] = g.entities[EntityId("ent_alice")]',
+                {"g": g, "EntityId": EntityId},
+            )
+        )
+        _expect_type_error(
+            lambda: exec('del g.entities[EntityId("ent_alice")]', {"g": g, "EntityId": EntityId})
+        )
+        _expect_type_error(lambda: g.entities.clear())
+        _expect_type_error(lambda: g.entities.pop(EntityId("ent_alice")))
+        _expect_type_error(lambda: g.entities.popitem())
+        _expect_type_error(lambda: g.entities.update({}))
+
+        # —— entities：实体门面内的组件容器与嵌套组件数据 ——
+        alice = g.entities[EntityId("ent_alice")]
+        _expect_type_error(
+            lambda: exec(
+                'alice.components[ComponentTypeId("attrs.hp")] = {"current": 0}',
+                {"alice": alice, "ComponentTypeId": ComponentTypeId},
+            )
+        )
+        _expect_type_error(
+            lambda: exec(
+                'del alice.components[ComponentTypeId("attrs.hp")]',
+                {"alice": alice, "ComponentTypeId": ComponentTypeId},
+            )
+        )
+        _expect_type_error(lambda: alice.components.clear())
+        _expect_type_error(lambda: alice.components.pop(ComponentTypeId("attrs.hp")))
+        _expect_type_error(
+            lambda: exec(
+                'alice.components[ComponentTypeId("attrs.hp")]["current"] = 0',
+                {"alice": alice, "ComponentTypeId": ComponentTypeId},
+            )
+        )
+        _expect_type_error(lambda: exec("alice.tags[0] = 'possessed'", {"alice": alice}))
+
+        # —— scenario_state.data ——
+        _expect_type_error(lambda: exec('g.scenario_state.data["goal"] = "hijacked"', {"g": g}))
+        _expect_type_error(lambda: g.scenario_state.data.clear())
+        _expect_type_error(lambda: g.scenario_state.data.pop("goal"))
+
+        # —— 门面属性赋值 / 删除 / 私有缝隙 / 复制逃逸 → WriteBarrierError ——
+        with pytest.raises(WriteBarrierError):
+            alice.entity_id = EntityId("ent_intruder")
+        with pytest.raises(WriteBarrierError):
+            del alice.entity_class
+        with pytest.raises(WriteBarrierError):
+            alice._with_components({})
+        with pytest.raises(WriteBarrierError):
+            g.scenario_state.scenario_id = "scn_hijack"
+        with pytest.raises(WriteBarrierError):
+            copy.copy(alice)
+        with pytest.raises(WriteBarrierError):
+            copy.deepcopy(g.scenario_state)
+
+        # —— 读路径仍可用：视图判等口径不变 ——
+        assert g.entities == state.entities
+        assert g.world_variables == state.world_variables
+        assert g.scenario_state == state.scenario_state
+        assert alice.components[ComponentTypeId("attrs.hp")]["current"] == 100
+        assert alice.tags == ("hero",)
+
+        # —— 全部攻击后权威状态零变化 ——
+        assert state.model_dump(mode="json") == snapshot
+        assert state.world_variables["gold"] == 10
+        assert state.entities[EntityId("ent_alice")].components[
+            ComponentTypeId("attrs.hp")
+        ] == {"current": 100, "max": 100}
+        assert state.scenario_state.data == {"goal": "find key"}
+
     def test_static_audit_scanner_self_test(self) -> None:
         """向扫描器喂入合成违规源码字符串全部被捕获；reducer.py 自身白名单放行。"""
         def scan_code_string(source: str) -> list[str]:
@@ -1167,19 +1295,325 @@ class TestScenario7ProvenanceAndK6Adversarial:
 
 
 # ==============================================================================
+# 场景 8: core.create_entity 提交路径 (P2-REMEDIATION B1)
+# ==============================================================================
+
+
+class TestScenario8CreateEntityEndToEnd:
+    """场景 8（core.create_entity 提交路径；P2-REMEDIATION B1 修复验证）：
+
+    - 单独 ``core.create_entity`` 提交成功（revision 恰 +1、实体落地、事件 1:1）；
+    - 同事务先 ``create_entity`` 后 ``set_component`` 的**暂存依赖**：
+      L2 终检零 ``missing_entity``、conflicts 不判冲突、reducer 按 sequence
+      顺序应用落地；
+    - create 已存在实体 → reducer 前置条件报错（非 missing_entity 语义）；
+    - CascadeExecutor 级联端到端：create + component.set 同回合完整通过；
+      create 事件触发后续回合对新实体的效果落地。
+    """
+
+    def test_create_entity_standalone_commit(self) -> None:
+        """单独 create_entity：L2 不再误报 missing_entity，COMMITTED 且实体落地。"""
+        state = _make_base_state(0)
+        eff = _make_proposed_effect(
+            "eff_create_solo",
+            EFFECT_CREATE_ENTITY,
+            EntityTarget(entity_id=EntityId("ent_summoned")),
+            {"entity_class": "item", "tags": ["treasure"], "components": {}},
+        )
+        producer = Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE)
+        new_state, txn, events = commit_transaction(
+            state, [eff], new_transaction_id(), producer
+        )
+
+        assert txn.status == TransactionStatus.COMMITTED
+        assert txn.abort_reason is None
+        assert txn.commit_revision == Revision(1)
+        assert new_state.world_revision == Revision(1)
+        rec = new_state.entities[EntityId("ent_summoned")]
+        assert rec.entity_class == "item"
+        assert rec.tags == ["treasure"]
+        assert rec.created_revision == Revision(1), "created_revision 恒为 commit_revision"
+        assert len(events) == 1, "事件 1:1 发射（D-P2-12）"
+        assert state.has_entity(EntityId("ent_summoned")) is False, "输入状态零触碰"
+
+    def test_create_existing_target_reports_precondition_not_missing_entity(self) -> None:
+        """create 已存在实体：由 reducer 前置条件报错，不报 missing_entity。"""
+        state = _make_base_state(0)
+        eff = _make_proposed_effect(
+            "eff_create_dup",
+            EFFECT_CREATE_ENTITY,
+            EntityTarget(entity_id=EntityId("ent_alice")),
+            {},
+        )
+        producer = Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE)
+        new_state, txn, events = commit_transaction(
+            state, [eff], new_transaction_id(), producer
+        )
+
+        assert txn.status == TransactionStatus.ABORTED
+        assert txn.commit_revision is None
+        assert "missing_entity" not in (txn.abort_reason or ""), (
+            "已存在目标不是 missing_entity 语义"
+        )
+        assert "reducer_failed" in txn.abort_reason
+        assert "已存在" in txn.abort_reason
+        assert len(events) == 0
+        assert new_state == state
+        assert new_state.world_revision == Revision(0)
+
+    def test_create_then_set_component_same_transaction(self) -> None:
+        """同事务先 create 后 set_component：暂存依赖全链路放行。"""
+        state = _make_base_state(0)
+        eff_create = _make_proposed_effect(
+            "eff_create_combo",
+            EFFECT_CREATE_ENTITY,
+            EntityTarget(entity_id=EntityId("ent_summoned")),
+            {},
+        )
+        eff_set = _make_proposed_effect(
+            "eff_init_component",
+            EFFECT_SET_COMPONENT,
+            EntityTarget(
+                entity_id=EntityId("ent_summoned"),
+                component_type=ComponentTypeId("space.position"),
+            ),
+            {"x": 5, "y": 7},
+        )
+
+        # L2 终检数据级口径：零问题（created_in_batch 语义）
+        txn_id = new_transaction_id()
+        producer = Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE)
+        new_state, txn, events = commit_transaction(
+            state, [eff_create, eff_set], txn_id, producer
+        )
+
+        assert txn.status == TransactionStatus.COMMITTED
+        assert txn.abort_reason is None
+        assert txn.commit_revision == Revision(1)
+        rec = new_state.entities[EntityId("ent_summoned")]
+        assert rec.components == {ComponentTypeId("space.position"): {"x": 5, "y": 7}}
+        assert len(events) == 2
+        assert state.has_entity(EntityId("ent_summoned")) is False
+
+    def test_create_then_set_component_l2_reference_check_clean(self) -> None:
+        """check_transaction_references 直检：create + 同批引用 → 空报告。"""
+        state = _make_base_state(0)
+        eff_create = _make_proposed_effect(
+            "eff_l2_create",
+            EFFECT_CREATE_ENTITY,
+            EntityTarget(entity_id=EntityId("ent_l2_new")),
+            {},
+        )
+        eff_set = _make_proposed_effect(
+            "eff_l2_set",
+            EFFECT_SET_COMPONENT,
+            EntityTarget(
+                entity_id=EntityId("ent_l2_new"),
+                component_type=ComponentTypeId("space.position"),
+            ),
+            {"x": 1, "y": 1},
+        )
+        txn_id = new_transaction_id()
+        commit_revision = Revision(1)
+        committed = [
+            CommittedEffect(
+                effect=effect,
+                transaction_id=txn_id,
+                commit_revision=commit_revision,
+                sequence=sequence,
+            )
+            for sequence, effect in enumerate([eff_create, eff_set])
+        ]
+        txn = Transaction(
+            transaction_id=txn_id,
+            base_revision=Revision(0),
+            commit_revision=commit_revision,
+            status=TransactionStatus.COMMITTED,
+            effects=committed,
+            event_ids=[EventId("evt_l2_1"), EventId("evt_l2_2")],
+        )
+        assert check_transaction_references(state, txn) == ()
+
+        # 对照：无 create 前导的悬空引用仍报 missing_entity（语义未放宽过度）
+        dangling_txn_id = new_transaction_id()
+        txn_dangling = Transaction(
+            transaction_id=dangling_txn_id,
+            base_revision=Revision(0),
+            commit_revision=commit_revision,
+            status=TransactionStatus.COMMITTED,
+            effects=[
+                CommittedEffect(
+                    effect=eff_set,
+                    transaction_id=dangling_txn_id,
+                    commit_revision=commit_revision,
+                    sequence=0,
+                )
+            ],
+            event_ids=[EventId("evt_l2_3")],
+        )
+        issues = check_transaction_references(state, txn_dangling)
+        assert issues == ("missing_entity:eff_l2_set:target=ent_l2_new",)
+
+    def test_create_then_set_component_via_cascade_executor(self) -> None:
+        """CascadeExecutor 端到端：create + component.set 同回合不被 conflicts
+        判冲突、通过 L1/L2 与 reducer，成功落地且 revision 恰 +1。"""
+        state = _make_base_state(0)
+        eff_create = _make_proposed_effect(
+            "eff_cas_create",
+            EFFECT_CREATE_ENTITY,
+            EntityTarget(entity_id=EntityId("ent_summoned")),
+            {"entity_class": "item"},
+            source="rule.system",
+        )
+        eff_set = _make_proposed_effect(
+            "eff_cas_set",
+            EFFECT_SET_COMPONENT,
+            EntityTarget(
+                entity_id=EntityId("ent_summoned"),
+                component_type=ComponentTypeId("space.position"),
+            ),
+            {"x": 1, "y": 2},
+            source="rule.system",
+        )
+        policy = AuthorityPolicy(
+            rules=[
+                AuthorityRule(
+                    selector=AuthoritySelector(),
+                    allowed_writers=[ProducerId("rule.system")],
+                )
+            ]
+        )
+        executor = CascadeExecutor(policy=policy)
+        producer = Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE)
+
+        result = executor.run(
+            [eff_create, eff_set], state, causal_root_id="act_summon", origin=producer
+        )
+
+        assert len(result.transactions) == 1
+        txn = result.transactions[0]
+        assert txn.status == TransactionStatus.COMMITTED
+        assert txn.commit_revision == Revision(1)
+        assert result.final_state.world_revision == Revision(1)
+        rec = result.final_state.entities[EntityId("ent_summoned")]
+        assert rec.entity_class == "item"
+        assert rec.components == {ComponentTypeId("space.position"): {"x": 1, "y": 2}}
+        assert len(result.events) == 2
+        # 暂存依赖不判冲突：无 CONFLICT_RESOLUTION trace
+        assert all(
+            t.kind != TraceKind.CONFLICT_RESOLUTION for t in result.trace_records
+        ), "create + 初始化 component.set 不应触发冲突仲裁"
+        # L1 未过滤暂存依赖的 set_component
+        validation_traces = [
+            t for t in result.trace_records if t.kind == TraceKind.VALIDATION_DECISION
+        ]
+        assert all(t.payload["decision"] == "pass" for t in validation_traces)
+
+    def test_cascade_trigger_followup_on_created_entity(self) -> None:
+        """级联链：create_entity 事件触发第二回合对新实体的效果，完整落地。"""
+        state = _make_base_state(0)
+
+        def on_create(
+            events: list[DomainEvent], s: GuardedWorldState, depth: int
+        ) -> list[ProposedEffect]:
+            res: list[ProposedEffect] = []
+            if depth != 0:
+                return []
+            for event in events:
+                if event.event_type != EFFECT_CREATE_ENTITY:
+                    continue
+                target = event.payload.get("target", {})
+                entity_id = target.get("entity_id")
+                if entity_id is None:
+                    continue
+                res.append(
+                    _make_proposed_effect(
+                        "eff_followup_init",
+                        EFFECT_SET_COMPONENT,
+                        EntityTarget(
+                            entity_id=EntityId(entity_id),
+                            component_type=ComponentTypeId("attrs.hp"),
+                        ),
+                        {"current": 10, "max": 10},
+                        source="rule.responder",
+                        base_revision=int(s.world_revision),
+                        cause_ids=[
+                            CauseRef(kind=CauseKind.EVENT, ref_id=str(event.event_id))
+                        ],
+                    )
+                )
+            return res
+
+        policy = AuthorityPolicy(
+            rules=[
+                AuthorityRule(
+                    selector=AuthoritySelector(),
+                    allowed_writers=[ProducerId("rule.system"), ProducerId("rule.responder")],
+                )
+            ]
+        )
+        trig_reg = CascadeTriggerRegistry()
+        trig_reg.register(SyncTrigger("on_create", on_create))
+        executor = CascadeExecutor(policy=policy, triggers=trig_reg)
+
+        eff_create = _make_proposed_effect(
+            "eff_root_create",
+            EFFECT_CREATE_ENTITY,
+            EntityTarget(entity_id=EntityId("ent_summoned")),
+            {},
+            source="rule.system",
+            base_revision=0,
+        )
+        producer = Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE)
+        result = executor.run(
+            [eff_create], state, causal_root_id="act_summon_chain", origin=producer
+        )
+
+        # 两回合两事务：depth0 create，depth1 对新实体的组件初始化
+        assert len(result.transactions) == 2
+        assert all(
+            txn.status == TransactionStatus.COMMITTED for txn in result.transactions
+        )
+        assert result.final_state.world_revision == Revision(2)
+        rec = result.final_state.entities[EntityId("ent_summoned")]
+        assert rec.components == {ComponentTypeId("attrs.hp"): {"current": 10, "max": 10}}
+        for i, txn in enumerate(result.transactions):
+            assert txn.base_revision == Revision(i)
+            assert txn.commit_revision == Revision(i + 1)
+            assert txn.cascade is not None
+            assert txn.cascade.depth == i
+
+
+# ==============================================================================
 # G2 门禁静态代码扫描确认 (Plan §11 G2 / P2 §12)
 # ==============================================================================
 
 
 class TestG2StaticScanConfirmation:
     """G2 门禁静态扫描确认：
-    1. 静态扫描整个 src/engine_v2/，断言没有任何直接修改状态的 public API；
-    2. 静态断言 Reducer 纯函数绝不调用 LLM、不做语义推断。
+    1. 静态扫描整个 src/engine_v2/，断言没有任何直接修改状态的 public API
+       （契约状态类口径 + P2-REMEDIATION B3 补强的全类口径）；
+    2. 静态扫描整个 src/engine_v2/，断言没有任何对状态容器属性的直接
+       下标写入（``__setitem__`` / ``__delitem__`` / 增量赋值形态，
+       P2-REMEDIATION B3）；
+    3. 静态断言 Reducer 纯函数绝不调用 LLM、不做语义推断。
+
+    白名单纪律（P2 设计规范 §2.6.1 静态审计口径）：``reducer.py`` 是唯一
+    授权的 authoritative state 变更机制（其 ``_WorkingWorld`` 私有暂存的
+    就地应用与 ``state_*`` 纯函数为合法变更面），全类口径扫描中豁免。
     """
 
-    def test_no_direct_authoritative_state_mutation_public_api(self) -> None:
-        """扫描 src/engine_v2/ 内部所有 Python 文件，确认不存在直接修改 WorldState 实例属性的 Public 方法。"""
-        forbidden_public_methods = {
+    #: 静态扫描白名单：reducer.py 为唯一授权变更机制（§2.6.1 口径）。
+    _SCAN_WHITELIST: frozenset[str] = frozenset({"reducer.py"})
+
+    #: 状态容器属性名词表：对这些属性的下标写入即"直接修改权威状态"。
+    _STATE_CONTAINER_ATTRS: frozenset[str] = frozenset(
+        {"entities", "world_variables", "scenario_state", "components", "data", "tags"}
+    )
+
+    #: 直接状态修改类 public 方法禁用词表。
+    _FORBIDDEN_PUBLIC_METHODS: frozenset[str] = frozenset(
+        {
             "set_entity",
             "remove_entity",
             "set_component",
@@ -1189,6 +1623,11 @@ class TestG2StaticScanConfirmation:
             "mutate",
             "update_state",
         }
+    )
+
+    def test_no_direct_authoritative_state_mutation_public_api(self) -> None:
+        """扫描 src/engine_v2/ 内部所有 Python 文件，确认不存在直接修改 WorldState 实例属性的 Public 方法。"""
+        forbidden_public_methods = set(self._FORBIDDEN_PUBLIC_METHODS)
 
         violations: list[str] = []
         for py_file in ENGINE_V2_DIR.rglob("*.py"):
@@ -1203,6 +1642,130 @@ class TestG2StaticScanConfirmation:
                                     violations.append(f"{py_file.name}:{node.name}.{item.name}")
 
         assert not violations, f"发现违反 K2 的直接状态修改 Public API: {violations}"
+
+    def test_no_public_mutator_api_on_any_class(self) -> None:
+        """补强（P2-REMEDIATION B3）：禁用词表扩展到 src/engine_v2/ 的
+        **全部类**（不限契约状态类），白名单外不得出现任何直接修改状态的
+        public 方法名。"""
+        violations: list[str] = []
+        for py_file in ENGINE_V2_DIR.rglob("*.py"):
+            if py_file.name in self._SCAN_WHITELIST:
+                continue
+            violations.extend(
+                self._scan_public_mutator_api(
+                    py_file.read_text(encoding="utf-8"), py_file.name
+                )
+            )
+
+        assert not violations, (
+            f"发现违反 K2 的直接状态修改 Public API（全类口径）: {violations}"
+        )
+
+    def test_no_direct_subscript_writes_to_state_containers(self) -> None:
+        """补强（P2-REMEDIATION B3）：真实扫描 src/engine_v2/，断言白名单外
+        无任何对状态容器属性的直接下标写入/删除/增量赋值。
+
+        检测形态（ast.Subscript 作为赋值/删除目标，且被下标对象为状态容器
+        属性访问）：``x.entities[k] = v`` / ``del x.world_variables[k]`` /
+        ``record.components[ct] = d`` / ``scenario.data[k] += 1`` 等。局部
+        变量名字下标（如 ``payload["entities"] = ...`` 的重建装配）不被误报
+        ——只针对"属性访问 + 下标"的权威状态就地修改形态。
+        """
+        violations: list[str] = []
+        for py_file in ENGINE_V2_DIR.rglob("*.py"):
+            if py_file.name in self._SCAN_WHITELIST:
+                continue
+            violations.extend(
+                self._scan_state_container_subscript_writes(
+                    py_file.read_text(encoding="utf-8"), py_file.name
+                )
+            )
+
+        assert not violations, (
+            f"发现违反 K2 的状态容器直接下标写入: {violations}"
+        )
+
+    def test_strengthened_scanners_self_test_on_synthetic_source(self) -> None:
+        """自测（与场景 6 静态审计同款纪律）：合成违规源码必须被两个补强
+        扫描器捕获——证明扫描逻辑非空转；合法形态不误报。"""
+        bad_source = (
+            "class Evil:\n"
+            "    def mutate_state(self, state, rec, ct):\n"
+            '        state.entities["ent_x"] = None\n'
+            '        del state.world_variables["gold"]\n'
+            '        state.scenario_state.data["k"] = 1\n'
+            "        rec.components[ct] += 1\n"
+            "    def set_component(self, x):\n"
+            "        pass\n"
+        )
+        sub_violations = self._scan_state_container_subscript_writes(bad_source)
+        assert len(sub_violations) == 4
+        assert any(".entities[...]" in v for v in sub_violations)
+        assert any(".world_variables[...]" in v for v in sub_violations)
+        assert any(".data[...]" in v for v in sub_violations)
+        assert any(".components[...]" in v for v in sub_violations)
+
+        api_violations = self._scan_public_mutator_api(bad_source)
+        assert api_violations == ["<synthetic>:Evil.set_component"]
+
+        # 合法形态不误报：局部名字下标的重建装配 / 私有方法 / 只读访问
+        good_source = (
+            "def rebuild(state):\n"
+            '    payload = {"entities": {}}\n'
+            '    payload["entities"] = {k: v for k, v in state.entities.items()}\n'
+            "    return payload\n"
+            "class Ok:\n"
+            "    def _private_set_component(self):\n"
+            "        pass\n"
+        )
+        assert self._scan_state_container_subscript_writes(good_source) == []
+        assert self._scan_public_mutator_api(good_source) == []
+
+    @classmethod
+    def _scan_public_mutator_api(cls, source: str, filename: str = "<synthetic>") -> list[str]:
+        """全类口径 public 状态修改方法扫描器（白名单由调用方应用）。"""
+        violations: list[str] = []
+        tree = ast.parse(source, filename=filename)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for item in node.body:
+                if (
+                    isinstance(item, ast.FunctionDef)
+                    and item.name in cls._FORBIDDEN_PUBLIC_METHODS
+                ):
+                    violations.append(f"{filename}:{node.name}.{item.name}")
+        return violations
+
+    @classmethod
+    def _scan_state_container_subscript_writes(
+        cls, source: str, filename: str = "<synthetic>"
+    ) -> list[str]:
+        """状态容器属性下标写入扫描器（Assign / AugAssign / Delete 三形态）。"""
+        violations: list[str] = []
+        tree = ast.parse(source, filename=filename)
+        for node in ast.walk(tree):
+            targets: list[ast.expr] = []
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            elif isinstance(node, ast.AugAssign):
+                targets = [node.target]
+            elif isinstance(node, ast.Delete):
+                targets = list(node.targets)
+            else:
+                continue
+            for target in targets:
+                for sub in ast.walk(target):
+                    if (
+                        isinstance(sub, ast.Subscript)
+                        and isinstance(sub.value, ast.Attribute)
+                        and sub.value.attr in cls._STATE_CONTAINER_ATTRS
+                    ):
+                        violations.append(
+                            f"{filename}:{sub.lineno}: 直接下标写入 "
+                            f".{sub.value.attr}[...]（K2：状态只能经 reducer 变更）"
+                        )
+        return violations
 
     def test_reducer_pure_function_no_llm_imports_or_calls(self) -> None:
         """静态断言 reducer.py 纯函数绝不调用 LLM（无 provider/llm/network import），无语义推断。"""

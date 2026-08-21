@@ -52,6 +52,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -1697,6 +1698,119 @@ class TestEndToEndPipeline:
         conflicts = _traces_of(TraceKind.CONFLICT_RESOLUTION, result.trace_records)
         assert conflicts[0]["decision"] == "winner"
         assert "stub_winner" in conflicts[0]["reason"]
+
+    # —— core.create_entity 管道路径（P2-REMEDIATION B1）——
+
+    def test_create_entity_with_init_component_single_round(
+        self, f: _EffectFactory
+    ) -> None:
+        """P2-REMEDIATION B1：同回合 create + 初始化 component.set 是暂存
+        依赖——conflicts 不判冲突、L1/L2 放行、reducer 顺序应用落地。"""
+        create = f.proposed(
+            "core.create_entity",
+            EntityTarget(entity_id=EntityId("ent_summoned")),
+            {"entity_class": "item", "tags": ["treasure"], "components": {}},
+        )
+        init_pos = f.proposed(
+            "core.set_component",
+            EntityTarget(
+                entity_id=EntityId("ent_summoned"),
+                component_type=ComponentTypeId("space.position"),
+            ),
+            {"x": 3, "y": 4},
+        )
+        init_hp = f.proposed(
+            "core.set_component",
+            EntityTarget(
+                entity_id=EntityId("ent_summoned"),
+                component_type=ComponentTypeId("attrs"),
+            ),
+            {"hp": 5},
+        )
+        executor = CascadeExecutor(policy=_permissive_policy())
+        result = executor.run(
+            [create, init_pos, init_hp],
+            _base_state(),
+            causal_root_id="act_root_create",
+            origin=_origin(),
+        )
+
+        assert len(result.transactions) == 1
+        txn = result.transactions[0]
+        assert txn.status is TransactionStatus.COMMITTED
+        assert txn.commit_revision == Revision(1)
+        assert result.final_state.world_revision == Revision(1)
+        rec = result.final_state.entities[EntityId("ent_summoned")]
+        assert rec.entity_class == "item"
+        assert rec.tags == ["treasure"]
+        assert rec.components == {
+            ComponentTypeId("space.position"): {"x": 3, "y": 4},
+            ComponentTypeId("attrs"): {"hp": 5},
+        }
+        assert len(result.events) == 3, "事件 1:1 发射（D-P2-12）"
+        # 暂存依赖不判冲突：无 CONFLICT_RESOLUTION trace；L1 全通过
+        assert _traces_of(TraceKind.CONFLICT_RESOLUTION, result.trace_records) == []
+        validation = _traces_of(TraceKind.VALIDATION_DECISION, result.trace_records)
+        assert len(validation) == 3
+        assert all(v["decision"] == "pass" for v in validation)
+
+    def test_cascade_trigger_followup_on_created_entity(self, f: _EffectFactory) -> None:
+        """级联链：create_entity 事件触发第二回合对新实体的效果，完整落地
+        （depth 0 create → depth 1 组件初始化，revision 恰 +2）。"""
+        created_entity_id = EntityId("ent_summoned")
+
+        def on_create(
+            events: Sequence[DomainEvent], state: Any, depth: int
+        ) -> list[ProposedEffect]:
+            if depth != 0:
+                return []
+            out: list[ProposedEffect] = []
+            for event in events:
+                if str(event.event_type) != "core.create_entity":
+                    continue
+                entity_id = event.payload.get("target", {}).get("entity_id")
+                if entity_id != str(created_entity_id):
+                    continue
+                out.append(
+                    f.proposed(
+                        "core.set_component",
+                        EntityTarget(
+                            entity_id=EntityId(entity_id),
+                            component_type=ComponentTypeId("attrs"),
+                        ),
+                        {"hp": 12},
+                        base_revision=int(state.world_revision),
+                        cause_ids=[
+                            CauseRef(
+                                kind=CauseKind.EVENT, ref_id=str(event.event_id)
+                            )
+                        ],
+                    )
+                )
+            return out
+
+        registry = CascadeTriggerRegistry()
+        registry.register(SyncTrigger("rule.on_create", on_create))
+        policy = _permissive_policy()
+        executor = CascadeExecutor(policy=policy, triggers=registry)
+
+        create = f.proposed(
+            "core.create_entity",
+            EntityTarget(entity_id=created_entity_id),
+            {"entity_class": "npc"},
+        )
+        result = executor.run(
+            [create], _base_state(), causal_root_id="act_root_followup", origin=_origin()
+        )
+
+        assert [t.status for t in result.transactions] == [
+            TransactionStatus.COMMITTED,
+            TransactionStatus.COMMITTED,
+        ]
+        assert result.final_state.world_revision == Revision(2)
+        rec = result.final_state.entities[created_entity_id]
+        assert rec.components == {ComponentTypeId("attrs"): {"hp": 12}}
+        assert [t.cascade.depth for t in result.transactions if t.cascade] == [0, 1]
 
 
 # —— 导出面（D-P2-19 / §10.3）——

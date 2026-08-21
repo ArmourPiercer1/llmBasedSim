@@ -20,7 +20,10 @@
      分量口径）；星形拓扑；
    - 多不相交组按组内最小到达序升序；交错到达同序断言；
    - 同组件不同 field_path **不成组**（P2 设计规范 §11 类别 2b）；整组件
-     vs 字段成组（2c）；结构动词与同实体任何变更成组；
+     vs 字段成组（2c）；结构动词升级锁级别（create/remove_entity 恒整
+     实体锁）；**批内暂存依赖豁免**（P2-REMEDIATION B1）：先到达的
+     ``core.create_entity`` 与后到达的同实体 ``core.set_component``（初
+     始化挂载）不成组（双创建 / 倒序到达 / remove_entity 组合仍成组）；
    - ``ConflictGroup.keys`` = 成员锁去重并（成员到达序 + 成员内 render
      序）；确定性（同输入同输出）。
 3. **默认四策**（目标 2a；§5.4 固定顺序）——逐策略判定与弃权条件：
@@ -551,17 +554,95 @@ class TestDetectConflicts:
         e1 = _entity_effect(effect_id="eff_c23", field_path="hp")
         assert len(detect_conflicts([e0, e1])) == 1
 
-    def test_structural_verb_vs_any_change_groups(self):
-        # 结构动词升级：create（新实体）与同实体 set_component 成组
+    def test_create_then_set_component_is_staged_dependency_not_conflict(self):
+        # P2-REMEDIATION B1：同批次先 create 后对同一实体 set_component
+        #（初始化挂载）是合法暂存依赖，不建冲突边——锁相交成立（整实体锁
+        # × 组件锁）但语义为顺序依赖而非互斥竞争
         e0 = _entity_effect(
             effect_id="eff_c24", effect_type="core.create_entity", entity_id="ent_c24"
         )
         e1 = _entity_effect(
             effect_id="eff_c25", entity_id="ent_c24", component_type="space.position"
         )
+        assert detect_conflicts([e0, e1]) == []
+
+    def test_staged_dependency_multiple_init_components(self):
+        # 创建 + 多组件初始化挂载（不同组件互不相交，且均与 create 豁免）
+        e0 = _entity_effect(
+            effect_id="eff_c24a", effect_type="core.create_entity", entity_id="ent_c24a"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_c24b", entity_id="ent_c24a", component_type="space.position"
+        )
+        e2 = _entity_effect(
+            effect_id="eff_c24c", entity_id="ent_c24a", component_type="attrs.hp"
+        )
+        assert detect_conflicts([e0, e1, e2]) == []
+
+    def test_staged_dependency_with_field_level_init(self):
+        # 字段级初始化挂载同样豁免（create 整实体锁 × 字段锁相交但为暂存依赖）
+        e0 = _entity_effect(
+            effect_id="eff_c24d", effect_type="core.create_entity", entity_id="ent_c24d"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_c24e",
+            entity_id="ent_c24d",
+            component_type="attrs.hp",
+            field_path="current",
+        )
+        assert detect_conflicts([e0, e1]) == []
+
+    def test_double_create_same_entity_still_conflicts(self):
+        # 双创建同一实体：结构动词 × 结构动词，不在豁免组合内 → 成组
+        e0 = _entity_effect(
+            effect_id="eff_c24f", effect_type="core.create_entity", entity_id="ent_c24f"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_c24g", effect_type="core.create_entity", entity_id="ent_c24f"
+        )
         groups = detect_conflicts([e0, e1])
         assert len(groups) == 1
         assert groups[0].effects == (e0, e1)
+
+    def test_reversed_set_before_create_still_conflicts(self):
+        # 倒序到达（set_component 先、create 后）不构成暂存依赖 → 保守成组
+        e0 = _entity_effect(
+            effect_id="eff_c24h", entity_id="ent_c24h", component_type="space.position"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_c24i", effect_type="core.create_entity", entity_id="ent_c24h"
+        )
+        groups = detect_conflicts([e0, e1])
+        assert len(groups) == 1
+        assert groups[0].effects == (e0, e1)
+
+    def test_remove_entity_vs_set_component_still_conflicts(self):
+        # 豁免仅限 create → set_component；remove_entity 与同实体变更仍成组
+        e0 = _entity_effect(
+            effect_id="eff_c24j", effect_type="core.remove_entity", entity_id="ent_c24j"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_c24k", entity_id="ent_c24j", component_type="space.position"
+        )
+        groups = detect_conflicts([e0, e1])
+        assert len(groups) == 1
+        assert groups[0].effects == (e0, e1)
+
+    def test_staged_dependency_does_not_shield_competing_sets(self):
+        # create 豁免不遮蔽同组件竞争写：两个 set_component 仍互相成组，
+        # create 直通（豁免只去边，不改变连通分量的其余结构）
+        e0 = _entity_effect(
+            effect_id="eff_c24l", effect_type="core.create_entity", entity_id="ent_c24l"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_c24m", entity_id="ent_c24l", component_type="space.position"
+        )
+        e2 = _entity_effect(
+            effect_id="eff_c24n", entity_id="ent_c24l", component_type="space.position"
+        )
+        groups = detect_conflicts([e0, e1, e2])
+        assert len(groups) == 1
+        assert groups[0].effects == (e1, e2), "create 不进组；竞争写照常仲裁"
 
     def test_entity_vs_domain_never_group(self):
         e0 = _entity_effect(effect_id="eff_c26")
@@ -1133,6 +1214,29 @@ class TestConflictResolutionReport:
         assert report.resolutions == ()
         assert not report.has_conflicts
         assert report.accepted == (EffectId("eff_n0"), EffectId("eff_n1"))
+        assert report.dropped == ()
+
+    def test_staged_create_plus_init_component_both_accepted(self):
+        # P2-REMEDIATION B1 批级口径：create + 初始化 set_component 全部
+        # 直通（无 resolution、零 dropped），交由 reducer 暂存顺序应用
+        e0 = _entity_effect(
+            effect_id="eff_sd0", effect_type="core.create_entity", entity_id="ent_sd"
+        )
+        e1 = _entity_effect(
+            effect_id="eff_sd1", entity_id="ent_sd", component_type="space.position"
+        )
+        e2 = _entity_effect(
+            effect_id="eff_sd2", entity_id="ent_sd", component_type="attrs.hp"
+        )
+        ctx = _ctx([e0, e1, e2])
+        report = DefaultConflictResolver().resolve_all([e0, e1, e2], ctx)
+        assert report.resolutions == ()
+        assert not report.has_conflicts
+        assert report.accepted == (
+            EffectId("eff_sd0"),
+            EffectId("eff_sd1"),
+            EffectId("eff_sd2"),
+        )
         assert report.dropped == ()
 
     def test_resolution_for_membership(self):

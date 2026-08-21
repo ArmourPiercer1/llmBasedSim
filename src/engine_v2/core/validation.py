@@ -6,7 +6,7 @@
   :class:`EffectValidator` 的**七阶段固定管道**——(1) ID 种类与前缀
   （D-P2-15，:func:`check_effect_id_kinds`）；(2) 类型标识符词法；
   (3) domain 词表与 payload schema（含 ComponentRegistry 校验）；
-  (4) 实体存在性（``core.create_entity`` 豁免）；(5) field_path 合法性
+  (4) 实体存在性（``core.create_entity`` 与批内已创建实体豁免）；(5) field_path 合法性
   （§4.6）；(6) 陈旧性（``is_stale`` 单向语义 + 未来版本拒绝）；
   (7) 结构前置条件 + handler 存在性（D-P2-05）。阶段固定顺序、前序不
   短路后续——一次性收齐全部问题（trace 可解释性最大化）。失败 effect
@@ -40,6 +40,16 @@
 目标已存在、world variable 键缺失、目标种类/domain/component_type
 不匹配等）。同一 effect 被过滤是两层语义的共同结果，报告不重叠。
 
+**P2-REMEDIATION（B1 修复）**：``core.create_entity`` 的目标实体按
+定义不在基线状态中——两层校验均引入**批内已创建实体集合**
+``created_in_batch`` 语义：L1 :meth:`EffectValidator.validate_batch`
+按到达序累积已被接受的创建效果（经 ``ValidationContext.
+created_in_batch`` 派生逐 effect 上下文），L2
+:func:`check_transaction_references` 按 ``sequence`` 序登记创建效果
+目标——同批次后续效果引用批内创建的实体视为合法暂存依赖，不报
+``missing_entity``（先创建后 ``core.set_component`` 初始化挂载由此
+全链路放行；顺序语义与 reducer 暂存按 sequence 应用一致）。
+
 Import 边界（P1 设计 §0.3 继承）：只允许 stdlib + pydantic + 同包
 ``src.engine_v2``（依赖单向指向 reducer/authority 契约与行为件，§1.3
 依赖图无环）。
@@ -49,7 +59,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final
 
 from pydantic import ValidationError as PydanticValidationError
@@ -64,7 +74,7 @@ from src.engine_v2.core.effects import (
     parse_state_domain_id,
 )
 from src.engine_v2.core.entity import ContractModel
-from src.engine_v2.core.ids import parse_id
+from src.engine_v2.core.ids import EntityId, parse_id
 from src.engine_v2.core.provenance import CauseKind
 from src.engine_v2.core.reducer import (
     EFFECT_CREATE_ENTITY,
@@ -172,11 +182,18 @@ class ValidationContext:
       （field_path 合法性不可判定 → 保守拒绝，§4.6）；
     - ``handlers``：handler 注册表；None → 跳过 no_handler 阶段
       （纯数据校验场景）。
+    - ``created_in_batch``：同批次**前序**已被接受的
+      ``core.create_entity`` 效果创建的实体 ID 集合（P2-REMEDIATION B1
+      修复：批内暂存依赖）——引用这些实体的后续效果不报
+      ``missing_entity``。缺省空集 = 仅对照基线状态；
+      :meth:`EffectValidator.validate_batch` 按到达序自动累积并以
+      ``replace`` 派生逐 effect 上下文，单 effect 调用方无需感知。
     """
 
     state: WorldState
     component_registry: ComponentRegistry | None = None
     handlers: EffectHandlerRegistry | None = None
+    created_in_batch: frozenset[EntityId] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -450,6 +467,11 @@ def _stage_entity_existence(
     - ``EntityTarget.entity_id`` 存在（``ctx.state.has_entity``）；
       ``core.create_entity`` **豁免**（其 target 是新 ID，前置条件
       "尚不存在"归阶段 7 的 ``precondition_failed``）；
+    - **批内暂存依赖豁免**（P2-REMEDIATION B1）：实体不在基线状态但属于
+      ``ctx.created_in_batch``（同批次前序已被接受的
+      ``core.create_entity`` 创建）→ 合法引用，不报 ``missing_entity``
+      （与 L2 :func:`check_transaction_references` 的 ``created_in_batch``
+      语义、reducer 暂存按 sequence 应用的顺序语义一致）；
     - ``core.remove_component`` 额外要求组件已挂载（显式拒绝空操作歧
       义，§2.1 前置条件表）。
     """
@@ -459,7 +481,9 @@ def _stage_entity_existence(
         return ()
     effect_id = str(effect.effect_id)
     if not ctx.state.has_entity(target.entity_id):
-        if effect.effect_type != EFFECT_CREATE_ENTITY:
+        if effect.effect_type != EFFECT_CREATE_ENTITY and (
+            target.entity_id not in ctx.created_in_batch
+        ):
             issues.append(
                 ValidationIssue(
                     "missing_entity",
@@ -683,7 +707,7 @@ class EffectValidator:
     | 1 | ID 种类与前缀（§4.4，:func:`check_effect_id_kinds` 同源） | ``bad_id_kind`` |
     | 2 | 类型标识符词法 | ``bad_type_id`` |
     | 3 | domain 词表与 payload schema | ``unknown_domain`` / ``bad_payload`` |
-    | 4 | 实体存在性（``core.create_entity`` 豁免） | ``missing_entity`` / ``missing_component`` |
+    | 4 | 实体存在性（``core.create_entity`` 与批内创建豁免） | ``missing_entity`` / ``missing_component`` |
     | 5 | field_path 合法性（§4.6） | ``bad_field_path`` |
     | 6 | 陈旧性（单向 stale + 未来版本拒绝） | ``stale_revision`` / ``future_base_revision`` |
     | 7 | 结构前置条件 + handler 存在性 | ``precondition_failed`` / ``no_handler`` |
@@ -724,15 +748,31 @@ class EffectValidator:
         同批同 ``effect_id`` 的**全部副本**被拒（KBC-2 防线；计数对全批
         生效，含已被其他阶段拒绝的副本）；问题串与 C7 检查器同构
         （``duplicated_effect_id:<id>:count=<k>``）。
+
+        **批内暂存依赖**（P2-REMEDIATION B1）：按到达序累积"已被接受的
+        ``core.create_entity`` 创建的实体 ID 集合"（``created_in_batch``），
+        经 ``dataclasses.replace`` 派生逐 effect 上下文——后续效果引用
+        批内创建的实体不报 ``missing_entity``（顺序敏感：引用先于创建
+        到达时创建尚未登记，仍报缺失；被拒的创建不登记）。
         """
         accepted: list[ProposedEffect] = []
         issues: list[ValidationIssue] = []
+        created_in_batch: set[EntityId] = set()
         for effect in effects:
-            effect_issues = self.validate(effect, ctx)
+            effect_ctx = ctx
+            if created_in_batch:
+                effect_ctx = replace(ctx, created_in_batch=frozenset(created_in_batch))
+            effect_issues = self.validate(effect, effect_ctx)
             if effect_issues:
                 issues.extend(effect_issues)
             else:
                 accepted.append(effect)
+                target = effect.target
+                if (
+                    effect.effect_type == EFFECT_CREATE_ENTITY
+                    and isinstance(target, EntityTarget)
+                ):
+                    created_in_batch.add(target.entity_id)
         counts: dict[str, int] = {}
         first_seen: dict[str, int] = {}
         for index, effect in enumerate(effects):
@@ -832,17 +872,44 @@ def check_transaction_references(state: WorldState, txn: Transaction) -> tuple[s
     - ``duplicated_effect_id:<effect_id>:count=<k>``——事务内同一
       effect_id 出现 k 次（KBC-2 防线，构造期之外的数据级复检）。
 
+    **``core.create_entity`` 与批内暂存依赖**（P2-REMEDIATION B1 修复）：
+
+    - 效果为 ``core.create_entity`` 时，其目标实体按定义在基线状态中
+      **尚不存在**——不报 ``missing_entity``（目标已存在时由 reducer
+      结构前置条件报错"entity 已存在"，亦非 missing_entity 语义）；
+      同时将该 ``entity_id`` 登记入本批次已创建实体集合
+      ``created_in_batch``；
+    - 检查按 ``sequence`` 序（与 reducer 暂存应用序一致）进行：同批次
+      **后续**效果引用的实体若不在基线状态但属于
+      ``created_in_batch``，视为合法暂存依赖引用，不报
+      ``missing_entity``（先 ``core.create_entity`` 后
+      ``core.set_component`` 的初始化挂载即此形态）。
+
     不检查（明确边界）：state_domain 分支的 domain 词表（P2 authority
     配置声明，L1 阶段 3 判定）；``event_ids`` / ``cascade`` 引用。
     """
     issues: list[str] = []
     seen: dict[str, int] = {}
-    for committed in txn.effects:
+    # 本批次已创建实体集合（P2-REMEDIATION B1）：按 sequence 序登记，
+    # 后续效果引用批内创建的实体为合法暂存依赖
+    created_in_batch: set[EntityId] = set()
+    ordered = sorted(txn.effects, key=lambda committed: committed.sequence)
+    for committed in ordered:
         effect = committed.effect
         effect_id = str(effect.effect_id)
         target = effect.target
-        if isinstance(target, EntityTarget) and not state.has_entity(target.entity_id):
-            issues.append(f"missing_entity:{effect_id}:target={str(target.entity_id)}")
+        if isinstance(target, EntityTarget):
+            if effect.effect_type == EFFECT_CREATE_ENTITY:
+                # 创建效果的目标实体在基线中不应存在：尚不存在 → 登记
+                # created_in_batch；已存在 → 由 reducer 前置条件报错，
+                # 不报 missing_entity
+                if not state.has_entity(target.entity_id):
+                    created_in_batch.add(target.entity_id)
+            elif (
+                not state.has_entity(target.entity_id)
+                and target.entity_id not in created_in_batch
+            ):
+                issues.append(f"missing_entity:{effect_id}:target={str(target.entity_id)}")
         if is_stale(effect.base_revision, state.world_revision):
             issues.append(
                 f"stale_revision:{effect_id}:base={int(effect.base_revision)}"

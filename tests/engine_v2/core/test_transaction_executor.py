@@ -30,6 +30,10 @@
 - **导出面**（D-P2-19 / §10.3）：``from src.engine_v2.core import
   commit_transaction / abort_transaction`` 直接可用且与模块定义为同一
   对象；模块 ``__all__`` 恰为两个公开函数。
+- **core.create_entity 提交路径**（P2-REMEDIATION B1）：单独 create 提交
+  成功（L2 终检不再误报 missing_entity）；同事务先 create 后
+  set_component 的暂存依赖全链路放行；create 已存在实体由 reducer 前置
+  条件报错（非 missing_entity 语义）。
 
 全部用例无网络、无 LLM、无 API key。
 """
@@ -299,6 +303,73 @@ class TestCommitTransactionHappyPath:
         assert not new_state.has_entity(EntityId("ent_bob")), "顺序应用后实体应已删除"
         assert new_state.has_entity(EntityId("ent_alice"))
         assert len(events) == 2
+
+    def test_create_entity_standalone_commits(self, f: _EffectFactory) -> None:
+        """P2-REMEDIATION B1：单独 core.create_entity 提交成功（L2 终检不再
+        误报 missing_entity），revision 恰 +1、实体落地、事件 1:1。"""
+        state = _base_state(0)
+        effect = f.proposed(
+            "core.create_entity",
+            _entity_target("ent_summoned"),
+            {"entity_class": "item", "tags": ["treasure"], "components": {}},
+        )
+        new_state, txn, events = commit_transaction(
+            state, [effect], TransactionId("txn_cr1"), _producer()
+        )
+        assert txn.status is TransactionStatus.COMMITTED
+        assert txn.abort_reason is None
+        assert txn.commit_revision == Revision(1)
+        assert new_state.world_revision == Revision(1)
+        rec = new_state.entities[EntityId("ent_summoned")]
+        assert rec.entity_class == "item"
+        assert rec.tags == ["treasure"]
+        assert rec.created_revision == Revision(1)
+        assert len(events) == 1
+        assert events[0].event_type == effect.effect_type
+        assert state.has_entity(EntityId("ent_summoned")) is False, "输入状态零触碰"
+
+    def test_create_then_set_component_staged_dependency_commits(
+        self, f: _EffectFactory
+    ) -> None:
+        """P2-REMEDIATION B1：同事务先 create_entity 后 set_component 的暂存
+        依赖——L2 终检通过（created_in_batch）、reducer 按 sequence 应用落地。"""
+        state = _base_state(0)
+        create = f.proposed(
+            "core.create_entity", _entity_target("ent_summoned"), {"entity_class": "npc"}
+        )
+        init_component = f.proposed(
+            "core.set_component",
+            _entity_target("ent_summoned", "space.position"),
+            {"x": 5, "y": 7},
+        )
+        new_state, txn, events = commit_transaction(
+            state, [create, init_component], TransactionId("txn_cr2"), _producer()
+        )
+        assert txn.status is TransactionStatus.COMMITTED
+        assert txn.abort_reason is None
+        assert txn.commit_revision == Revision(1)
+        rec = new_state.entities[EntityId("ent_summoned")]
+        assert rec.components == {ComponentTypeId("space.position"): {"x": 5, "y": 7}}
+        assert len(events) == 2
+        assert state.has_entity(EntityId("ent_summoned")) is False
+
+    def test_create_existing_entity_aborts_on_precondition_not_missing(
+        self, f: _EffectFactory
+    ) -> None:
+        """create 已存在实体：reducer 前置条件报错（非 missing_entity 语义），
+        整事务原子 ABORTED。"""
+        state = _base_state(0)
+        effect = f.proposed("core.create_entity", _entity_target("ent_alice"), {})
+        new_state, txn, events = commit_transaction(
+            state, [effect], TransactionId("txn_cr3"), _producer()
+        )
+        assert new_state is state
+        assert txn.status is TransactionStatus.ABORTED
+        assert txn.commit_revision is None and txn.effects == []
+        assert events == []
+        assert "missing_entity" not in (txn.abort_reason or "")
+        assert txn.abort_reason.startswith("reducer_failed[seq=0]: ")
+        assert "已存在" in txn.abort_reason
 
     def test_repeated_commits_deterministic_state(self, f: _EffectFactory) -> None:
         """同一输入两次提交 → 世界状态确定性一致（事件 ID 为身份不参与相等）。"""

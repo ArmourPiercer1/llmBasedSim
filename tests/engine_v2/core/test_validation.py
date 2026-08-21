@@ -707,6 +707,82 @@ class TestEffectValidatorBatch:
         assert report.accepted == ()
         assert report.issues == ()
 
+    # —— 批内暂存依赖（P2-REMEDIATION B1）：create 后续引用合法 ——
+
+    def test_set_component_on_same_batch_created_entity_accepted(self) -> None:
+        """先 create_entity 后 set_component（初始化挂载）：批内暂存依赖，
+        set_component 不报 missing_entity，全批接受。"""
+        state = _make_state(world_revision=0)
+        create = _make_effect(
+            "eff_b1_create", "core.create_entity", _entity_target("ent_b1_new"), {}
+        )
+        set_comp = _make_effect(
+            "eff_b1_set",
+            "core.set_component",
+            _entity_target("ent_b1_new", "space.position"),
+            {"x": 1, "y": 2},
+        )
+        report = EffectValidator().validate_batch(
+            [create, set_comp], ValidationContext(state=state)
+        )
+        assert report.ok is True
+        assert report.accepted == (create, set_comp)
+
+    def test_set_component_without_create_still_rejected(self) -> None:
+        """对照：批内无 create 前导的悬空引用仍报 missing_entity（语义未放宽过度）。"""
+        state = _make_state(world_revision=0)
+        set_comp = _make_effect(
+            "eff_b1_lone",
+            "core.set_component",
+            _entity_target("ent_b1_ghost", "space.position"),
+            {"x": 1},
+        )
+        report = EffectValidator().validate_batch([set_comp], ValidationContext(state=state))
+        assert report.accepted == ()
+        assert [issue.kind for issue in report.issues] == ["missing_entity"]
+
+    def test_set_component_before_create_in_batch_still_rejected(self) -> None:
+        """顺序敏感：引用先于创建到达 → 创建尚未登记，仍报 missing_entity。"""
+        state = _make_state(world_revision=0)
+        create = _make_effect(
+            "eff_b1_create2", "core.create_entity", _entity_target("ent_b1_rev"), {}
+        )
+        set_comp = _make_effect(
+            "eff_b1_set2",
+            "core.set_component",
+            _entity_target("ent_b1_rev", "space.position"),
+            {"x": 1},
+        )
+        report = EffectValidator().validate_batch(
+            [set_comp, create], ValidationContext(state=state)
+        )
+        assert report.accepted == (create,)
+        assert [issue.kind for issue in report.issues] == ["missing_entity"]
+        assert report.issues[0].effect_id == "eff_b1_set2"
+
+    def test_rejected_create_does_not_legalize_later_reference(self) -> None:
+        """被拒的 create 不登记：其后续引用仍报 missing_entity。"""
+        state = _make_state(world_revision=0)
+        bad_create = _make_effect(
+            "eff_b1_badcreate",
+            "core.create_entity",
+            _entity_target("ent_b1_bad"),
+            {"components": {"Bad_Type": {}}},  # 组件类型词法非法 → bad_payload
+        )
+        set_comp = _make_effect(
+            "eff_b1_set3",
+            "core.set_component",
+            _entity_target("ent_b1_bad", "space.position"),
+            {"x": 1},
+        )
+        report = EffectValidator().validate_batch(
+            [bad_create, set_comp], ValidationContext(state=state)
+        )
+        assert report.accepted == ()
+        kinds = [issue.kind for issue in report.issues]
+        assert "bad_payload" in kinds, "前置自检：create 应因 payload 被拒"
+        assert "missing_entity" in kinds, "被拒 create 不得合法化后续引用"
+
 
 # —— L2 事务终检 C2 晋升接线（§4.5）——
 
@@ -758,6 +834,75 @@ class TestCheckTransactionReferencesPromoted:
         assert issues  # 脏场景确有报告
         assert state.model_dump(mode="json") == state_before
         assert txn.model_dump(mode="json") == txn_before
+
+    # —— L2 批内暂存依赖（P2-REMEDIATION B1）：created_in_batch 语义 ——
+
+    def test_l2_create_entity_target_exempt_from_missing_entity(self) -> None:
+        """create_entity 的目标按定义不在基线状态：不报 missing_entity。"""
+        state = _make_state(world_revision=5)
+        create = _make_effect(
+            "eff_l2_c1", "core.create_entity", _entity_target("ent_l2_new"), {},
+            base_revision=5,
+        )
+        assert check_transaction_references(state, _make_committed_txn(5, [create])) == ()
+
+    def test_l2_create_then_reference_same_batch_clean(self) -> None:
+        """先 create 后 set_component（初始化挂载）：批内引用合法，空报告。"""
+        state = _make_state(world_revision=5)
+        create = _make_effect(
+            "eff_l2_c2", "core.create_entity", _entity_target("ent_l2_new"), {},
+            base_revision=5,
+        )
+        set_comp = _make_effect(
+            "eff_l2_c3",
+            "core.set_component",
+            _entity_target("ent_l2_new", "space.position"),
+            {"x": 1},
+            base_revision=5,
+        )
+        txn = _make_committed_txn(5, [create, set_comp])
+        assert check_transaction_references(state, txn) == ()
+
+    def test_l2_reference_before_create_still_missing(self) -> None:
+        """顺序敏感：引用先于创建（sequence 序）→ 仍报 missing_entity。"""
+        state = _make_state(world_revision=5)
+        create = _make_effect(
+            "eff_l2_c4", "core.create_entity", _entity_target("ent_l2_rev"), {},
+            base_revision=5,
+        )
+        set_comp = _make_effect(
+            "eff_l2_c5",
+            "core.set_component",
+            _entity_target("ent_l2_rev", "space.position"),
+            {"x": 1},
+            base_revision=5,
+        )
+        issues = check_transaction_references(state, _make_committed_txn(5, [set_comp, create]))
+        assert issues == ("missing_entity:eff_l2_c5:target=ent_l2_rev",)
+
+    def test_l2_create_existing_target_not_missing_entity(self) -> None:
+        """create 已存在实体：由 reducer 前置条件报错，L2 不报 missing_entity。"""
+        state = _make_state(world_revision=5, entity_ids=("ent_l2_exists",))
+        create = _make_effect(
+            "eff_l2_c6", "core.create_entity", _entity_target("ent_l2_exists"), {},
+            base_revision=5,
+        )
+        assert check_transaction_references(state, _make_committed_txn(5, [create])) == ()
+
+    def test_l2_double_create_same_entity_no_missing_entity(self) -> None:
+        """双创建同一新实体：不是 missing_entity 语义（重复创建由
+        conflicts 仲裁 / reducer 前置条件处置），L2 空报告。"""
+        state = _make_state(world_revision=5)
+        create_a = _make_effect(
+            "eff_l2_c7", "core.create_entity", _entity_target("ent_l2_dup"), {},
+            base_revision=5,
+        )
+        create_b = _make_effect(
+            "eff_l2_c8", "core.create_entity", _entity_target("ent_l2_dup"), {},
+            base_revision=5,
+        )
+        txn = _make_committed_txn(5, [create_a, create_b])
+        assert check_transaction_references(state, txn) == ()
 
 
 # —— 任务包组合面：ValidationPipeline / ValidationError ——
