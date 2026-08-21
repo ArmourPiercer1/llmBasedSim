@@ -1,4 +1,4 @@
-"""P2-T02 验收：authority.py 选择器层与模型结构（P2 设计规范 §3）。
+"""P2-T02/T03 验收：authority.py 选择器层、模型结构与求值层（P2 设计规范 §3）。
 
 覆盖（任务包口径）：
 
@@ -20,15 +20,30 @@
 2. **AuthorityPolicy 模型校验与 default DENY 特性**——pydantic 契约
    （frozen / extra=forbid / ``model_validate`` 配置入口 / typed ID 类型
    重建 / JSON round-trip / JSON 序列化干净；``allowed_writers`` ≥1 强制；
-   ``default_decision`` 缺省 DENY——closed-by-default）。
-3. **AuthorityDecision 序列化与判断**——str-Enum 词表（``"permit"`` /
-   ``"deny"``）、值重建、JSON 序列化落字符串、比较判断。
-
-另覆盖 ``KERNEL_STATE_DOMAINS`` 常量、selector ``specificity()`` 计数，以及
-**预留求值接口** ``check_authority`` 的首段实现基础口径（首条命中拍板 /
-不 fall-through / default 回落 / priority → specificity → 注册序 /
-``authority_scope`` 声明不提升权限 / 输入契约守卫）——求值器的完整口径
-（reason code、trace 协同）属 P2-T03。
+   ``rule_id`` 可选且非空；``default_decision`` 缺省 DENY——closed-by-default）。
+3. **AuthorityDecision 序列化与判断**——str-Enum 词表（``"allow"`` /
+   ``"deny"``，对齐 P1 trace decision 词表——T03 废止 T02 首段
+   ``"permit"`` 字面量）、值重建、JSON 序列化落字符串、比较判断。
+4. **check_authority 求值器（P2-T03）**——
+   - 规则排序：priority 降序 → specificity 降序 → 规则声明序（稳定排序）；
+   - 首条匹配规则拍板（First-match-wins），不 fall-through；
+   - 无匹配 → 严格回落 ``policy.default_decision``（Closed-by-default，
+     缺省 DENY）；
+   - ``authority_scope`` 仅 advisory 咨询与日志标记，严禁经 prompt
+     override 提权（K4 不变量，D-P2-17）；
+   - 输入契约守卫（``AuthorityError``）。
+5. **AuthorityEvaluationResult 输出结构（P2-T03）**——decision /
+   matched_rule_id / matched_rule_description / reason_code /
+   evaluated_rules_count + 拍板规则下标/priority/selector + advisory 字段；
+   frozen dataclass 纪律；reason_code 冻结词表 ``AUTHORITY_REASON_CODES``。
+6. **Trace 协同（P2-T03）**——``to_trace_payload`` 恰为 P1 冻结约定键
+   ``DECISION_PAYLOAD_KEYS`` 三键（``effect_id`` / ``decision`` /
+   ``reason``）；``decision`` ∈ {allow, deny} 直接落值无映射层；
+   ``reason`` = reason_code（规则拍板时附拍板规则下标，P2 设计规范 §9）。
+7. **ProducerRegistry（P2 设计规范 §3.4，T03 交付物）**——注册时词法校验
+   （``PRODUCER_ID_PATTERN``）/ 同 info 幂等 / 冲突 → ``ProducerConflictError``
+   （``ValueError`` 族）/ ``get`` 未注册 None / ``origin_of`` /
+   ``priority_of`` 缺省纪律。
 
 全部用例无网络、无 LLM、无 API key（Spec §47 Phase 1 验收）。
 """
@@ -36,17 +51,23 @@
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError, is_dataclass
 
 import pytest
 from pydantic import ValidationError
 
 from src.engine_v2.core.authority import (
+    AUTHORITY_REASON_CODES,
     KERNEL_STATE_DOMAINS,
     AuthorityDecision,
+    AuthorityEvaluationResult,
     AuthorityError,
     AuthorityPolicy,
     AuthorityRule,
     AuthoritySelector,
+    ProducerConflictError,
+    ProducerInfo,
+    ProducerRegistry,
     check_authority,
     match_selector,
 )
@@ -64,9 +85,11 @@ from src.engine_v2.core.effects import (
 )
 from src.engine_v2.core.entity import EntityRecord
 from src.engine_v2.core.ids import EffectId, EntityId, ProducerId
+from src.engine_v2.core.provenance import OriginKind
 from src.engine_v2.core.revision import Revision
 from src.engine_v2.core.serialization import assert_json_clean
 from src.engine_v2.core.state import WorldState
+from src.engine_v2.core.trace import DECISION_PAYLOAD_KEYS
 
 
 # —— 样本工厂（自包含、确定性构造）——
@@ -146,6 +169,24 @@ def _registry_with_domain(component_type: str, domain: str | None) -> ComponentR
         )
     )
     return registry
+
+
+def _rule(
+    selector: AuthoritySelector,
+    writers: list[str],
+    *,
+    priority: int = 0,
+    description: str = "",
+    rule_id: str | None = None,
+) -> AuthorityRule:
+    """构造 authority 规则的确定性工厂（writers 取字符串名单）。"""
+    return AuthorityRule(
+        selector=selector,
+        allowed_writers=[ProducerId(w) for w in writers],
+        priority=priority,
+        description=description,
+        rule_id=rule_id,
+    )
 
 
 # —— 0. 内置状态域常量（P2 设计规范 §3.6）——
@@ -361,37 +402,39 @@ class TestSelectorSpecificity:
         assert full.specificity() == 5
 
 
-# —— 2. AuthorityDecision：序列化与判断 ——
+# —— 2. AuthorityDecision：序列化与判断（allow/deny 词表，P1 trace 对齐）——
 
 
 class TestAuthorityDecision:
     def test_values_are_string_literals(self):
-        assert AuthorityDecision.PERMIT.value == "permit"
+        assert AuthorityDecision.ALLOW.value == "allow"
         assert AuthorityDecision.DENY.value == "deny"
-        assert set(AuthorityDecision) == {AuthorityDecision.PERMIT, AuthorityDecision.DENY}
+        assert set(AuthorityDecision) == {AuthorityDecision.ALLOW, AuthorityDecision.DENY}
 
     def test_is_str_enum(self):
-        assert isinstance(AuthorityDecision.PERMIT, str)
+        assert isinstance(AuthorityDecision.ALLOW, str)
         assert isinstance(AuthorityDecision.DENY, str)
 
     def test_value_reconstruction(self):
-        assert AuthorityDecision("permit") is AuthorityDecision.PERMIT
+        assert AuthorityDecision("allow") is AuthorityDecision.ALLOW
         assert AuthorityDecision("deny") is AuthorityDecision.DENY
         with pytest.raises(ValueError):
-            AuthorityDecision("allow")
+            AuthorityDecision("permit")  # T02 首段词表已废止（T03 对齐 P1 allow/deny）
+        with pytest.raises(ValueError):
+            AuthorityDecision("maybe")
 
     def test_serialization_as_json_string(self):
         # 作为契约字段序列化：mode="json" 落字符串字面量，JSON 可编码
-        policy = AuthorityPolicy(default_decision=AuthorityDecision.PERMIT)
+        policy = AuthorityPolicy(default_decision=AuthorityDecision.ALLOW)
         dump = policy.model_dump(mode="json")
-        assert dump["default_decision"] == "permit"
-        assert json.loads(json.dumps(dump))["default_decision"] == "permit"
+        assert dump["default_decision"] == "allow"
+        assert json.loads(json.dumps(dump))["default_decision"] == "allow"
 
     def test_judgment_comparisons(self):
-        decision = check_authority(_entity_effect(), AuthorityPolicy())
-        assert decision is AuthorityDecision.DENY
-        assert decision == "deny"  # str-Enum 与裸字符串值比较相等
-        assert decision in (AuthorityDecision.PERMIT, AuthorityDecision.DENY)
+        result = check_authority(_entity_effect(), AuthorityPolicy())
+        assert result.decision is AuthorityDecision.DENY
+        assert result.decision == "deny"  # str-Enum 与裸字符串值比较相等
+        assert result.decision in (AuthorityDecision.ALLOW, AuthorityDecision.DENY)
 
 
 # —— 3. AuthorityRule / AuthorityPolicy：模型校验与 default DENY ——
@@ -404,6 +447,7 @@ class TestAuthorityRuleModel:
         )
         assert rule.priority == 0
         assert rule.description == ""
+        assert rule.rule_id is None
 
     def test_empty_allowed_writers_rejected(self):
         # closed-by-default：无 writer 的规则无意义（model_validator 强制 ≥1）
@@ -432,6 +476,33 @@ class TestAuthorityRuleModel:
         assert type(rule.selector.effect_type) is EffectTypeId
         assert rule.selector.field is None
         assert rule.selector.entity_tag is None
+
+    def test_rule_id_optional(self):
+        rule = _rule(
+            AuthoritySelector(), ["rule.lock_system"], rule_id="door.lock.write"
+        )
+        assert rule.rule_id == "door.lock.write"
+
+    def test_rule_id_empty_string_rejected(self):
+        with pytest.raises(ValidationError):
+            _rule(AuthoritySelector(), ["rule.lock_system"], rule_id="")
+
+    def test_rule_id_json_roundtrip(self):
+        policy = AuthorityPolicy.model_validate(
+            {
+                "rules": [
+                    {
+                        "selector": {},
+                        "allowed_writers": ["rule.lock_system"],
+                        "rule_id": "r1",
+                        "description": "门闩写入",
+                    }
+                ]
+            }
+        )
+        clone = AuthorityPolicy.model_validate(policy.model_dump(mode="json"))
+        assert clone == policy
+        assert clone.rules[0].rule_id == "r1"
 
     def test_frozen(self):
         rule = AuthorityRule(
@@ -490,12 +561,12 @@ class TestAuthorityPolicyModel:
                         "allowed_writers": ["rule.lock_system"],
                     }
                 ],
-                "default_decision": "permit",
+                "default_decision": "allow",
             }
         )
         clone = AuthorityPolicy.model_validate(policy.model_dump(mode="json"))
         assert clone == policy
-        assert clone.default_decision is AuthorityDecision.PERMIT
+        assert clone.default_decision is AuthorityDecision.ALLOW
         assert type(clone.rules[0].selector.component_type) is ComponentTypeId
 
     def test_json_dump_is_clean(self):
@@ -513,6 +584,7 @@ class TestAuthorityPolicyModel:
         assert_json_clean(dump)
         assert dump["default_decision"] == "deny"
         assert dump["rules"][0]["allowed_writers"] == ["dynamics.rigid_body"]
+        assert dump["rules"][0]["rule_id"] is None
 
     def test_extra_field_rejected(self):
         with pytest.raises(ValidationError):
@@ -522,129 +594,221 @@ class TestAuthorityPolicyModel:
         with pytest.raises(ValidationError):
             AuthorityPolicy.model_validate({"default_decision": "maybe"})
 
+    def test_legacy_permit_default_rejected(self):
+        # T02 首段词表 "permit" 已废止：词表对齐 P1 trace 的 allow/deny（P2-T03）
+        with pytest.raises(ValidationError):
+            AuthorityPolicy.model_validate({"default_decision": "permit"})
 
-# —— 4. check_authority 预留求值接口：首段实现基础口径（T03 完善）——
+
+# —— 4. reason_code 冻结词表（P2 设计规范 §3.5）——
 
 
-class TestCheckAuthorityFirstStage:
+class TestAuthorityReasonCodes:
+    def test_frozen_vocabulary(self):
+        assert AUTHORITY_REASON_CODES == ("rule_allow", "rule_deny", "no_matching_rule")
+        assert len(AUTHORITY_REASON_CODES) == len(set(AUTHORITY_REASON_CODES))
+
+
+# —— 5. check_authority 求值器（P2-T03：首条拍板 / 不 fall-through / 默认回落）——
+
+
+class TestCheckAuthorityEvaluator:
+    """求值层核心口径：确定性求值序 + First-match-wins + closed-by-default 回落。"""
+
     def test_no_matching_rule_falls_back_to_default_deny(self):
-        assert check_authority(_entity_effect(), AuthorityPolicy()) is AuthorityDecision.DENY
+        result = check_authority(_entity_effect(), AuthorityPolicy())
+        assert result.decision is AuthorityDecision.DENY
+        assert result.reason_code == "no_matching_rule"
+        # 无拍板规则：全部解释字段为 None
+        assert result.matched_rule_id is None
+        assert result.matched_rule_description is None
+        assert result.matched_rule_index is None
+        assert result.rule_priority is None
+        assert result.selector is None
+        # 空策略：遍历 0 条规则
+        assert result.evaluated_rules_count == 0
 
     def test_no_matching_rule_uses_configured_default(self):
-        policy = AuthorityPolicy(default_decision=AuthorityDecision.PERMIT)
-        assert check_authority(_domain_effect(), policy) is AuthorityDecision.PERMIT
+        # 显式配置的 default_decision=ALLOW 生效（policy 侧显式声明，非 K4 提权）
+        policy = AuthorityPolicy(
+            default_decision=AuthorityDecision.ALLOW,
+            rules=[_rule(AuthoritySelector(effect_type=EffectTypeId("core.remove_component")), ["rule.x"])],
+        )
+        result = check_authority(_domain_effect(), policy)
+        assert result.decision is AuthorityDecision.ALLOW
+        assert result.reason_code == "no_matching_rule"
+        # 无匹配：全部规则被遍历（1 条）
+        assert result.evaluated_rules_count == 1
+        assert result.matched_rule_index is None
 
     def test_matched_rule_grants_to_allowed_writer(self):
         policy = AuthorityPolicy(
             rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
-                    allowed_writers=[ProducerId("rule.lock_system")],
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    priority=3,
+                    description="门闩状态写入",
+                    rule_id="door.lock.write",
                 )
             ]
         )
-        assert check_authority(_entity_effect(), policy) is AuthorityDecision.PERMIT
+        effect = _entity_effect()
+        result = check_authority(effect, policy)
+        assert result.decision is AuthorityDecision.ALLOW
+        assert result.reason_code == "rule_allow"
+        assert result.effect_id == effect.effect_id
+        assert result.producer == effect.source
+        assert result.matched_rule_id == "door.lock.write"
+        assert result.matched_rule_description == "门闩状态写入"
+        assert result.matched_rule_index == 0
+        assert result.rule_priority == 3
+        assert result.selector == AuthoritySelector(
+            effect_type=EffectTypeId("core.set_component")
+        )
+        # 首条命中即拍板：只遍历了 1 条规则
+        assert result.evaluated_rules_count == 1
+        # effect 未携带 authority_scope → advisory 字段为 None
+        assert result.authority_scope is None
 
     def test_matched_rule_denies_unlisted_writer_no_fallthrough(self):
         # 首条命中规则拍板 deny → 后续更宽泛的允许规则不被参考（不 fall-through）
         policy = AuthorityPolicy(
             rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
-                    allowed_writers=[ProducerId("rule.lock_system")],
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    rule_id="r-specific",
                 ),
-                AuthorityRule(
-                    selector=AuthoritySelector(),
-                    allowed_writers=[ProducerId("policy.alice")],
-                ),
+                _rule(AuthoritySelector(), ["policy.alice"], rule_id="r-wildcard"),
             ]
         )
-        assert check_authority(_entity_effect(source="policy.alice"), policy) is (
-            AuthorityDecision.DENY
-        )
+        result = check_authority(_entity_effect(source="policy.alice"), policy)
+        assert result.decision is AuthorityDecision.DENY
+        assert result.reason_code == "rule_deny"
+        # 拍板者是第一条命中规则（具体规则），通配规则未被求值
+        assert result.matched_rule_id == "r-specific"
+        assert result.evaluated_rules_count == 1
 
     def test_higher_priority_rule_evaluated_first(self):
         policy = AuthorityPolicy(
             rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(),
-                    allowed_writers=[ProducerId("policy.alice")],
-                ),
-                AuthorityRule(
-                    selector=AuthoritySelector(),
-                    allowed_writers=[ProducerId("rule.lock_system")],
-                    priority=10,
-                ),
+                _rule(AuthoritySelector(), ["policy.alice"], rule_id="r-low"),
+                _rule(AuthoritySelector(), ["rule.lock_system"], priority=10, rule_id="r-high"),
             ]
         )
-        # 高 priority 规则先求值：producer 在其 writers 内 → PERMIT
-        assert check_authority(_entity_effect(source="rule.lock_system"), policy) is (
-            AuthorityDecision.PERMIT
-        )
+        # 高 priority 规则先求值：producer 在其 writers 内 → ALLOW
+        result = check_authority(_entity_effect(source="rule.lock_system"), policy)
+        assert result.decision is AuthorityDecision.ALLOW
+        assert result.reason_code == "rule_allow"
+        # 排序后高 priority 规则占据求值序第 0 位
+        assert result.matched_rule_id == "r-high"
+        assert result.matched_rule_index == 0
+        assert result.rule_priority == 10
 
     def test_specificity_breaks_priority_tie(self):
         policy = AuthorityPolicy(
             rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(),
-                    allowed_writers=[ProducerId("policy.alice")],
-                ),
-                AuthorityRule(
-                    selector=AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
-                    allowed_writers=[ProducerId("rule.lock_system")],
+                _rule(AuthoritySelector(), ["policy.alice"], rule_id="r-broad"),
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    rule_id="r-specific",
                 ),
             ]
         )
         # priority 同分：更具体的规则先求值 → alice 不在其 writers → DENY（不回落）
-        assert check_authority(_entity_effect(source="policy.alice"), policy) is (
-            AuthorityDecision.DENY
-        )
+        result = check_authority(_entity_effect(source="policy.alice"), policy)
+        assert result.decision is AuthorityDecision.DENY
+        assert result.reason_code == "rule_deny"
+        assert result.matched_rule_id == "r-specific"
 
     def test_registration_order_breaks_full_tie(self):
         policy = AuthorityPolicy(
             rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
-                    allowed_writers=[ProducerId("policy.alice")],
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["policy.alice"],
+                    rule_id="r-first",
                 ),
-                AuthorityRule(
-                    selector=AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
-                    allowed_writers=[ProducerId("rule.lock_system")],
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    rule_id="r-second",
                 ),
             ]
         )
         # priority 与 specificity 全同 → 注册序在先者拍板
-        assert check_authority(_entity_effect(source="rule.lock_system"), policy) is (
-            AuthorityDecision.DENY
+        result = check_authority(_entity_effect(source="rule.lock_system"), policy)
+        assert result.decision is AuthorityDecision.DENY
+        assert result.reason_code == "rule_deny"
+        assert result.matched_rule_id == "r-first"
+        assert result.matched_rule_index == 0
+
+    def test_evaluated_rules_count_counts_rules_before_decision(self):
+        # 前三条规则均不命中，第四条拍板 → 实际遍历 4 条
+        policy = AuthorityPolicy(
+            rules=[
+                _rule(AuthoritySelector(effect_type=EffectTypeId("core.remove_entity")), ["a.b"], rule_id="r1"),
+                _rule(AuthoritySelector(component_type=ComponentTypeId("knowledge.belief")), ["c.d"], rule_id="r2"),
+                _rule(AuthoritySelector(domain_tag=StateDomainId("location")), ["e.f"], rule_id="r3"),
+                _rule(AuthoritySelector(effect_type=EffectTypeId("core.set_component")), ["rule.lock_system"], rule_id="r4"),
+            ]
         )
+        result = check_authority(_entity_effect(), policy)
+        assert result.matched_rule_id == "r4"
+        assert result.matched_rule_index == 3
+        assert result.evaluated_rules_count == 4
 
     def test_state_and_registry_flow_into_matching(self):
         policy = AuthorityPolicy(
-            rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(entity_tag="merchant"),
-                    allowed_writers=[ProducerId("policy.alice")],
-                )
-            ]
+            rules=[_rule(AuthoritySelector(entity_tag="merchant"), ["policy.alice"])]
         )
         state = _state_with(["ent_auth_a"], tags_by_id={"ent_auth_a": ["merchant"]})
         effect = _entity_effect(source="policy.alice")
-        assert check_authority(effect, policy, state=state) is AuthorityDecision.PERMIT
+        assert check_authority(effect, policy, state=state).decision is AuthorityDecision.ALLOW
         # 无 state → entity_tag 维不可判定 → 无匹配 → default DENY
-        assert check_authority(effect, policy, state=None) is AuthorityDecision.DENY
+        result = check_authority(effect, policy, state=None)
+        assert result.decision is AuthorityDecision.DENY
+        assert result.reason_code == "no_matching_rule"
+        assert result.evaluated_rules_count == 1
 
     def test_authority_scope_declaration_does_not_grant(self):
-        # D-P2-17：authority_scope 声明不提升权限
+        # D-P2-17 / K4：authority_scope 声明不提升权限（prompt override 无效）
         policy = AuthorityPolicy(
             rules=[
-                AuthorityRule(
-                    selector=AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
-                    allowed_writers=[ProducerId("rule.lock_system")],
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
                 )
             ]
         )
         effect = _entity_effect(source="llm.narrator", authority_scope="space.position")
-        assert check_authority(effect, policy) is AuthorityDecision.DENY
+        result = check_authority(effect, policy)
+        assert result.decision is AuthorityDecision.DENY
+        assert result.reason_code == "rule_deny"
+        # advisory 字段仅原样透传供审计/日志标记——不影响判定
+        assert result.authority_scope == "space.position"
+        # 无匹配规则路径同样不受伪造声明影响
+        blank = check_authority(effect, AuthorityPolicy())
+        assert blank.decision is AuthorityDecision.DENY
+        assert blank.reason_code == "no_matching_rule"
+        assert blank.authority_scope == "space.position"
+
+    def test_result_is_deterministic(self):
+        policy = AuthorityPolicy(
+            rules=[
+                _rule(AuthoritySelector(), ["policy.alice"], rule_id="r1"),
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    rule_id="r2",
+                ),
+            ]
+        )
+        assert check_authority(_entity_effect(), policy) == check_authority(
+            _entity_effect(), policy
+        )
 
     def test_non_policy_input_raises_authority_error(self):
         with pytest.raises(AuthorityError):
@@ -656,3 +820,241 @@ class TestCheckAuthorityFirstStage:
 
     def test_authority_error_is_value_error(self):
         assert issubclass(AuthorityError, ValueError)
+
+
+# —— 6. AuthorityEvaluationResult：输出结构与 frozen 纪律 ——
+
+
+class TestAuthorityEvaluationResult:
+    def test_is_frozen_dataclass(self):
+        result = check_authority(_entity_effect(), AuthorityPolicy())
+        assert isinstance(result, AuthorityEvaluationResult)
+        assert is_dataclass(result)
+        with pytest.raises(FrozenInstanceError):
+            result.decision = AuthorityDecision.ALLOW  # type: ignore[misc]
+        with pytest.raises(FrozenInstanceError):
+            result.evaluated_rules_count = 99  # type: ignore[misc]
+
+    def test_unmatched_fields_default_to_none(self):
+        result = check_authority(_entity_effect(), AuthorityPolicy())
+        assert result.matched_rule_id is None
+        assert result.matched_rule_description is None
+        assert result.matched_rule_index is None
+        assert result.rule_priority is None
+        assert result.selector is None
+        assert result.authority_scope is None
+
+    def test_empty_description_normalized_to_none(self):
+        policy = AuthorityPolicy(
+            rules=[_rule(AuthoritySelector(), ["rule.lock_system"], description="")]
+        )
+        result = check_authority(_entity_effect(), policy)
+        assert result.decision is AuthorityDecision.ALLOW
+        assert result.matched_rule_description is None
+        # rule_id 缺省 → None（以 matched_rule_index 定位拍板规则）
+        assert result.matched_rule_id is None
+        assert result.matched_rule_index == 0
+
+
+# —— 7. Trace 协同：to_trace_payload（P2 设计规范 §9 / P1 DECISION_PAYLOAD_KEYS）——
+
+
+class TestAuthorityTracePayload:
+    """to_trace_payload 恰为 authority_decision 的 P1 冻结约定键形态。"""
+
+    def test_payload_keys_exactly_decision_payload_keys(self):
+        policy = AuthorityPolicy(rules=[_rule(AuthoritySelector(), ["rule.lock_system"])])
+        result = check_authority(_entity_effect(), policy)
+        payload = result.to_trace_payload()
+        assert set(payload) == set(DECISION_PAYLOAD_KEYS)
+        assert set(payload) == {"effect_id", "decision", "reason"}
+
+    def test_allow_payload_values(self):
+        policy = AuthorityPolicy(
+            rules=[
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    rule_id="door.lock.write",
+                )
+            ]
+        )
+        payload = check_authority(_entity_effect(), policy).to_trace_payload()
+        assert payload["effect_id"] == "eff_auth_1"
+        assert payload["decision"] == "allow"
+        # reason = reason_code[+rule index]（P2 设计规范 §9）
+        assert payload["reason"] == "rule_allow[rule#0]"
+
+    def test_deny_payload_reason_carries_rule_index(self):
+        policy = AuthorityPolicy(
+            rules=[
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.remove_component")),
+                    ["rule.lock_system"],
+                    rule_id="r0",
+                ),
+                _rule(
+                    AuthoritySelector(effect_type=EffectTypeId("core.set_component")),
+                    ["rule.lock_system"],
+                    rule_id="r1",
+                ),
+            ]
+        )
+        # 同 priority/specificity → 注册序：r0 先求值（effect_type 不命中），
+        # r1 在求值序下标 1 拍板 deny → reason 附 [rule#1]
+        result = check_authority(_entity_effect(source="policy.alice"), policy)
+        assert result.matched_rule_id == "r1"
+        assert result.matched_rule_index == 1
+        assert result.evaluated_rules_count == 2
+        payload = result.to_trace_payload()
+        assert payload["effect_id"] == "eff_auth_1"
+        assert payload["decision"] == "deny"
+        assert payload["reason"] == "rule_deny[rule#1]"
+
+    def test_no_matching_rule_reason_bare(self):
+        # 无规则拍板：reason 不带下标后缀
+        result = check_authority(_entity_effect(), AuthorityPolicy())
+        payload = result.to_trace_payload()
+        assert payload["effect_id"] == "eff_auth_1"
+        assert payload["decision"] == "deny"
+        assert payload["reason"] == "no_matching_rule"
+        assert "[rule#" not in payload["reason"]
+
+    def test_payload_is_json_serializable_and_values_plain_strings(self):
+        policy = AuthorityPolicy(
+            rules=[_rule(AuthoritySelector(), ["rule.lock_system"]), _rule(
+                AuthoritySelector(effect_type=EffectTypeId("core.set_world_variable")),
+                ["rule.clock"],
+            )]
+        )
+        for effect in (_entity_effect(), _domain_effect()):
+            payload = check_authority(effect, policy).to_trace_payload()
+            assert all(type(v) is str for v in payload.values())
+            json.loads(json.dumps(payload))  # JSON 可编码（P1 §0.2 铁律 2 口径）
+
+    def test_decision_vocabulary_matches_trace_decision_vocabulary(self):
+        # decision 值 ∈ P1 trace 词表 {allow, deny}——直接落值、无映射层
+        policy = AuthorityPolicy(
+            rules=[_rule(AuthoritySelector(), ["rule.lock_system"]), _rule(
+                AuthoritySelector(effect_type=EffectTypeId("core.remove_entity")),
+                ["nobody.here"],
+            )]
+        )
+        decisions = {
+            check_authority(effect, policy).to_trace_payload()["decision"]
+            for effect in (_entity_effect(), _domain_effect())
+        }
+        assert decisions == {"allow", "deny"}
+
+    def test_authority_scope_not_in_trace_payload(self):
+        # D-P2-17：advisory 字段仅随 proposed_effect 记录入档，不入 decision payload
+        effect = _entity_effect(authority_scope="space.position")
+        payload = check_authority(effect, AuthorityPolicy()).to_trace_payload()
+        assert "authority_scope" not in payload
+        assert set(payload) == set(DECISION_PAYLOAD_KEYS)
+
+
+# —— 8. ProducerRegistry（P2 设计规范 §3.4；T03 交付物）——
+
+
+class TestProducerInfo:
+    def test_defaults(self):
+        info = ProducerInfo(
+            producer_id=ProducerId("policy.alice"), origin=OriginKind.BEHAVIOR_POLICY
+        )
+        assert info.priority == 0
+        assert info.description == ""
+
+    def test_is_frozen_dataclass(self):
+        info = ProducerInfo(producer_id=ProducerId("policy.alice"), origin=OriginKind.RULE)
+        assert is_dataclass(info)
+        with pytest.raises(FrozenInstanceError):
+            info.priority = 5  # type: ignore[misc]
+
+
+class TestProducerRegistry:
+    def test_register_and_get(self):
+        registry = ProducerRegistry()
+        info = ProducerInfo(
+            producer_id=ProducerId("rule.lock_system"),
+            origin=OriginKind.RULE,
+            priority=3,
+            description="门锁规则",
+        )
+        registry.register(info)
+        assert registry.get(ProducerId("rule.lock_system")) is info
+        # 未注册 ≠ 错误：返回 None
+        assert registry.get(ProducerId("policy.alice")) is None
+
+    def test_idempotent_duplicate_registration(self):
+        registry = ProducerRegistry()
+        info = ProducerInfo(producer_id=ProducerId("rule.lock_system"), origin=OriginKind.RULE)
+        registry.register(info)
+        registry.register(
+            ProducerInfo(producer_id=ProducerId("rule.lock_system"), origin=OriginKind.RULE)
+        )
+        assert registry.get(ProducerId("rule.lock_system")) is info
+
+    def test_conflicting_reregistration_raises(self):
+        registry = ProducerRegistry()
+        registry.register(
+            ProducerInfo(producer_id=ProducerId("rule.lock_system"), origin=OriginKind.RULE)
+        )
+        with pytest.raises(ProducerConflictError):
+            registry.register(
+                ProducerInfo(
+                    producer_id=ProducerId("rule.lock_system"),
+                    origin=OriginKind.DEVELOPER,
+                    priority=5,
+                )
+            )
+        # 冲突不影响原注册
+        assert registry.get(ProducerId("rule.lock_system")).origin is OriginKind.RULE
+
+    def test_producer_conflict_error_hierarchy(self):
+        assert issubclass(ProducerConflictError, AuthorityError)
+        assert issubclass(ProducerConflictError, ValueError)
+
+    def test_bad_producer_id_lexicon_rejected(self):
+        # _TypedId 构造不校验词法 → 注册侧复检（P2 设计规范 §3.4 / 纵深防御）
+        registry = ProducerRegistry()
+        with pytest.raises(AuthorityError):
+            registry.register(
+                ProducerInfo(producer_id=ProducerId("BAD-UPPER"), origin=OriginKind.SYSTEM)
+            )
+        with pytest.raises(AuthorityError):
+            registry.register(
+                ProducerInfo(producer_id=ProducerId("a..b"), origin=OriginKind.SYSTEM)
+            )
+        # 词法非法的 producer 未进入注册表
+        assert registry.get(ProducerId("BAD-UPPER")) is None
+
+    def test_register_non_info_raises(self):
+        registry = ProducerRegistry()
+        with pytest.raises(AuthorityError):
+            registry.register("not-a-producer-info")  # type: ignore[arg-type]
+
+    def test_origin_of_registered_and_default(self):
+        registry = ProducerRegistry()
+        registry.register(
+            ProducerInfo(producer_id=ProducerId("dev.console"), origin=OriginKind.DEVELOPER)
+        )
+        assert registry.origin_of(ProducerId("dev.console")) is OriginKind.DEVELOPER
+        # 未注册 → 缺省 SYSTEM（设计文档 §3.4 签名口径）
+        assert registry.origin_of(ProducerId("unknown.prod")) is OriginKind.SYSTEM
+        assert registry.origin_of(ProducerId("unknown.prod"), default=OriginKind.RULE) is (
+            OriginKind.RULE
+        )
+
+    def test_priority_of_registered_and_default(self):
+        registry = ProducerRegistry()
+        registry.register(
+            ProducerInfo(
+                producer_id=ProducerId("dynamics.rigid_body"),
+                origin=OriginKind.DYNAMICS_BACKEND,
+                priority=7,
+            )
+        )
+        assert registry.priority_of(ProducerId("dynamics.rigid_body")) == 7
+        assert registry.priority_of(ProducerId("unknown.prod")) == 0
+        assert registry.priority_of(ProducerId("unknown.prod"), default=9) == 9

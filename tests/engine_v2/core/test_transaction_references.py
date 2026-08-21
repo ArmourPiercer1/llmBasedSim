@@ -1,25 +1,16 @@
-"""P1-T06 收尾验收：§7.4 C7 adversarial 数据级检查器 ``check_transaction_references``。
+"""C7 数据级检查器 ``check_transaction_references`` 的回归验收（P1-T06 口径）。
 
-**落位决定（exit report deviations 披露项）**：设计文档将
-``check_transaction_references(state, txn)`` 定位为 **P1 提供的纯函数
-检查器**——§7.4 C7"P1 提供纯函数检查器……返回结构化错误列表（判定与拒绝
-行为属 P2，P1 只给数据级检查）"、§8 非目标 5"P1 只提供其数据底座（……
-``check_transaction_references`` 纯函数）"、§10 预留接口表"Effect
-validation / stale 判定（P2-T04）依赖 ``check_transaction_references``"。
-即其设计定位是 core 数据底座（core API），而非测试辅助。
-
-然而本任务包（P1-T06）写入白名单仅含：``tests/engine_v2/**``（新增
-测试）、``core/__init__.py``（仅 re-export）、骨架纪律测试一项最小修订；
-已落盘的 core 契约模块（含 ``transaction.py`` / ``state.py``）禁止改动，
-且不得新增 core 模块。按任务包"文档矛盾做最小机械落位并在 deviations
-披露"口径，本纯函数的**最小机械落位为测试侧**：签名
-``check_transaction_references(state, txn) -> tuple[str, ...]``、返回
-结构化错误列表（``kind:effect_id:详情`` 字符串元组，与 T05
-``check_snapshot_versions`` 的报告形态同构）、纯函数无副作用语义，均按
-设计文档实现并在此固化测试；晋升为 core API（预计落位 P2-T04 effect
-validation，依赖面不变：仅 ``WorldState`` / ``Transaction`` /
-``is_stale`` / ``EntityTarget``）留待 P2 Gate 决定，届时本文件实现可
-逐字移入 core 并删除此处副本。
+**落位沿革（C2 义务闭环）**：P1-T06 时期本纯函数按任务包写入白名单
+最小机械落位于**测试侧**（当时 core 契约模块冻结、不得新增）；本文件
+模块 docstring 原"落位决定"段已随 **P2-T04 按 P1 设计 §10.1 义务 C2
+晋升**而失效——实现体已**逐字移入** ``src/engine_v2/core/validation.py``
+（签名 ``(state, txn) -> tuple[str, ...]`` 与全部语义零变化），测试侧
+副本删除，本文件改为从 ``src.engine_v2.core.validation`` 导入
+``check_transaction_references`` 与 ``TRANSACTION_REFERENCE_ISSUE_KINDS``
+（原 ``ISSUE_KINDS`` 升格）。15 例测试断言**逐条保留**（验收口径不
+变，只换被测对象来源）；``model_construct`` 用例按 P2 设计规范 §2.6.4
+包入 ``write_barrier_exempt()``——无论写屏障是否武装、无论测试执行
+顺序，全仓保持绿。
 
 检查项（设计文档 §7.4 C7 三项，P1 只做数据级检查）：
 
@@ -60,50 +51,14 @@ from src.engine_v2.core.ids import (
     new_transaction_id,
 )
 from src.engine_v2.core.provenance import OriginKind, Provenance
+from src.engine_v2.core.reducer import write_barrier_exempt
 from src.engine_v2.core.revision import Revision, is_stale
 from src.engine_v2.core.state import WorldState
 from src.engine_v2.core.transaction import Transaction, TransactionStatus
-
-#: 结构化错误类别（设计文档 §7.4 C7 三项场景的机械标签）。
-ISSUE_KINDS: tuple[str, ...] = ("missing_entity", "stale_revision", "duplicated_effect_id")
-
-
-# —— 待验收的纯函数检查器（设计文档 §7.4 C7；落位说明见模块 docstring）——
-
-
-def check_transaction_references(state: WorldState, txn: Transaction) -> tuple[str, ...]:
-    """数据级引用检查器（设计文档 §7.4 C7）：纯函数，返回结构化错误列表。
-
-    空元组 = 无数据级问题。**判定与拒绝行为属 P2 validation**（Plan
-    P2-T04），本函数只报告，不修改 ``state`` / ``txn``，不抛异常。
-
-    检查项与问题串格式（``kind:effect_id:详情``）：
-
-    - ``missing_entity:<effect_id>:target=<entity_id>``——entity 分支
-      target 指向 state 中不存在的 entity；
-    - ``stale_revision:<effect_id>:base=<n> current=<m>``——
-      ``is_stale(base_revision, state.world_revision)`` 成立；
-    - ``duplicated_effect_id:<effect_id>:count=<k>``——事务内同一
-      effect_id 出现 k 次（KBC-2 防线，构造期之外的数据级复检）。
-    """
-    issues: list[str] = []
-    seen: dict[str, int] = {}
-    for committed in txn.effects:
-        effect = committed.effect
-        effect_id = str(effect.effect_id)
-        target = effect.target
-        if isinstance(target, EntityTarget) and not state.has_entity(target.entity_id):
-            issues.append(f"missing_entity:{effect_id}:target={str(target.entity_id)}")
-        if is_stale(effect.base_revision, state.world_revision):
-            issues.append(
-                f"stale_revision:{effect_id}:base={int(effect.base_revision)}"
-                f" current={int(state.world_revision)}"
-            )
-        seen[effect_id] = seen.get(effect_id, 0) + 1
-    for effect_id, count in seen.items():
-        if count > 1:
-            issues.append(f"duplicated_effect_id:{effect_id}:count={count}")
-    return tuple(issues)
+from src.engine_v2.core.validation import (
+    TRANSACTION_REFERENCE_ISSUE_KINDS,
+    check_transaction_references,
+)
 
 
 # —— 测试样本工厂（自包含；值确定性构造，不依赖工厂随机性）——
@@ -314,19 +269,22 @@ class TestDuplicatedEffectId:
         effect = _make_effect(EffectId("eff_ref_dup"), 5, _make_entity_target(_ENT_A))
         txn_id = new_transaction_id()
         effects = _make_committed(txn_id, 5, [effect, effect])
-        # 绕过 Transaction 构造期校验器（该不变量本身已由 T04 固化）
-        txn = Transaction.model_construct(
-            transaction_id=txn_id,
-            status=TransactionStatus.COMMITTED,
-            base_revision=Revision(5),
-            commit_revision=Revision(6),
-            effects=effects,
-            event_ids=[],
-            cascade=None,
-            provenance=None,
-            abort_reason=None,
-            logical_tick=None,
-        )
+        # 绕过 Transaction 构造期校验器（该不变量本身已由 T04 固化）；
+        # 按 P2 设计规范 §2.6.4 包入 write_barrier_exempt()——无论写屏障
+        # 是否武装、无论测试执行顺序，本用例恒绿。
+        with write_barrier_exempt():
+            txn = Transaction.model_construct(
+                transaction_id=txn_id,
+                status=TransactionStatus.COMMITTED,
+                base_revision=Revision(5),
+                commit_revision=Revision(6),
+                effects=effects,
+                event_ids=[],
+                cascade=None,
+                provenance=None,
+                abort_reason=None,
+                logical_tick=None,
+            )
         issues = check_transaction_references(state, txn)
         assert issues == ("duplicated_effect_id:eff_ref_dup:count=2",)
 
@@ -370,7 +328,7 @@ class TestCheckerDiscipline:
         for issue in issues:
             assert isinstance(issue, str)
             kind = issue.split(":", 1)[0]
-            assert kind in ISSUE_KINDS, f"未知错误类别：{kind}"
+            assert kind in TRANSACTION_REFERENCE_ISSUE_KINDS, f"未知错误类别：{kind}"
 
     def test_new_entities_do_not_couple_checker_to_state_identity(self) -> None:
         """同一 txn 对"目标在场"与"目标缺失"两个 state 给出不同报告——

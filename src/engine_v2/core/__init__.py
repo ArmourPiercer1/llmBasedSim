@@ -35,11 +35,11 @@ import snapshot``）；包属性 ``core.snapshot`` 保持为子模块。该规�
 
 P2 行为模块 re-export（D-P2-19 / P2 设计规范 §10.2/§10.3）：各 P2 任务包
 按 §10.2 顺序在本文件追加本模块 re-export 块与 ``__all__`` 条目（字母序
-插入，P1 同款纪律）。当前已含 ``authority``（P2-T02/T03）与 ``reducer``
-（P2-T01）两个导出块；``validation`` / ``conflicts`` /
-``transaction_executor`` / ``cascade`` 四个占位骨架模块（P2-T01 落位，
-行为主体归 P2-T04/T05/T06/T07）尚无公开导出，其 re-export 块随各自任务
-包补全。
+插入，P1 同款纪律）。当前已含 ``authority``（P2-T02/T03）、``reducer``
+（P2-T01）与 ``validation``（P2-T04）三个导出块；``conflicts`` /
+``transaction_executor`` / ``cascade`` 三个占位骨架模块（P2-T01 落位，
+行为主体归 P2-T05/T06/T07）尚无公开导出，其 re-export 块随各自任务包
+补全。
 """
 
 from src.engine_v2.core.actions import (
@@ -53,12 +53,17 @@ from src.engine_v2.core.actions import (
     parse_action_type_id,
 )
 from src.engine_v2.core.authority import (
+    AUTHORITY_REASON_CODES,
     AuthorityDecision,
     AuthorityError,
+    AuthorityEvaluationResult,
     AuthorityPolicy,
     AuthorityRule,
     AuthoritySelector,
     KERNEL_STATE_DOMAINS,
+    ProducerConflictError,
+    ProducerInfo,
+    ProducerRegistry,
     check_authority,
     match_selector,
 )
@@ -205,6 +210,19 @@ from src.engine_v2.core.trace import (
     TraceRecord,
 )
 from src.engine_v2.core.transaction import Transaction, TransactionStatus
+from src.engine_v2.core.validation import (
+    EffectValidator,
+    TRANSACTION_REFERENCE_ISSUE_KINDS,
+    VALIDATION_ISSUE_KINDS,
+    ValidationError,
+    ValidationContext,
+    ValidationIssue,
+    ValidationPipeline,
+    ValidationReport,
+    check_effect_id_kinds,
+    check_transaction_references,
+    validate_proposed_effect,
+)
 
 __all__ = [
     'ACTION_TYPE_ID_PATTERN',
@@ -215,8 +233,10 @@ __all__ = [
     'ActionTypeId',
     'ActiveAction',
     'ActorWakeup',
+    'AUTHORITY_REASON_CODES',
     'AuthorityDecision',
     'AuthorityError',
+    'AuthorityEvaluationResult',
     'AuthorityPolicy',
     'AuthorityRule',
     'AuthoritySelector',
@@ -252,6 +272,7 @@ __all__ = [
     'EffectId',
     'EffectTarget',
     'EffectTypeId',
+    'EffectValidator',
     'EmptyPayload',
     'EntityId',
     'EntityRecord',
@@ -273,7 +294,10 @@ __all__ = [
     'PREFIX_BODY_PATTERN',
     'PREFIX_TO_KIND',
     'PRODUCER_ID_PATTERN',
+    'ProducerConflictError',
     'ProducerId',
+    'ProducerInfo',
+    'ProducerRegistry',
     'ProposedEffect',
     'Provenance',
     'ReducerError',
@@ -286,6 +310,8 @@ __all__ = [
     'SNAPSHOT_FORMAT_VERSION',
     'STATE_DOMAIN_ID_PATTERN',
     'STRUCTURAL_EFFECT_TYPES',
+    'TRANSACTION_REFERENCE_ISSUE_KINDS',
+    'VALIDATION_ISSUE_KINDS',
     'ScenarioState',
     'ScheduledEntryId',
     'ScheduledEvent',
@@ -300,6 +326,11 @@ __all__ = [
     'Transaction',
     'TransactionId',
     'TransactionStatus',
+    'ValidationError',
+    'ValidationContext',
+    'ValidationIssue',
+    'ValidationPipeline',
+    'ValidationReport',
     'WorldState',
     'WriteBarrier',
     'WriteBarrierError',
@@ -307,7 +338,9 @@ __all__ = [
     'apply_transaction',
     'assert_json_clean',
     'check_authority',
+    'check_effect_id_kinds',
     'check_snapshot_versions',
+    'check_transaction_references',
     'deep_copy_via_roundtrip',
     'default_handler_registry',
     'dump_json',
@@ -343,6 +376,7 @@ __all__ = [
     'state_set_scenario_state',
     'state_set_world_variable',
     'uninstall_write_barrier',
+    'validate_proposed_effect',
     'write_barrier_exempt',
     'write_barrier_installed',
 ]
