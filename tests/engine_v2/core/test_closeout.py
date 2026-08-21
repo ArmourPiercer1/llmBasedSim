@@ -161,7 +161,7 @@ class TestCorePackageReexports:
     def test_package_all_no_private_no_duplicates(self) -> None:
         assert len(core_pkg.__all__) == len(set(core_pkg.__all__)), "__all__ 存在重复项"
         assert not any(name.startswith("_") for name in core_pkg.__all__), "__all__ 泄漏私有名称"
-        # 规模锚点：178 个唯一名称（13 个契约模块 __all__ 共 95 项，
+        # 规模锚点：196 个唯一名称（13 个契约模块 __all__ 共 95 项，
         # CONTRACT_SCHEMA_VERSION 在 state/snapshot 双模块同名、同一对象，
         # 去重后 94；再减去同名遮蔽豁免的 snapshot 函数 = 93；再加 P2 行为
         # 模块导出——authority 13 项（P2-T02/T03：T03 新增
@@ -172,9 +172,16 @@ class TestCorePackageReexports:
         # abort_transaction）+ conflicts 22 项（P2-T05：ConflictKey 锁推导
         # / detect_conflicts 连通分量分组 / 策略协议与默认四策 /
         # DefaultConflictResolver 策略链 / ConflictResolutionReport /
-        # TIMESTAMP_METADATA_KEY 等）= 178；cascade（P2-T07/T08）占位
-        # 骨架模块（D-P2-19）尚无公开导出，随其任务包落地时本锚点同步）
-        assert len(core_pkg.__all__) == 178
+        # TIMESTAMP_METADATA_KEY 等）+ cascade 18 项（P2-T07/T08：
+        # CascadeConfig / CascadeExecutor / CascadeResult（含任务包别名
+        # CascadeExecutionResult）/ CascadeStatistics / 触发器协议与注册表
+        # （CascadeTrigger / SyncTrigger / CascadeTriggerRegistry 含别名
+        # TriggerRegistry / TriggerConflictError）/ 深度与环路熔断
+        # （CycleDetector / CycleHit / CascadeDiagnostic /
+        # CASCADE_DIAGNOSTIC_KINDS / DEFAULT_MAX_CASCADE_DEPTH /
+        # CascadeError / CascadeDepthExceededError / CascadeCycleError））
+        # = 196
+        assert len(core_pkg.__all__) == 196
 
     def test_every_reexport_is_same_object_as_source_module(self) -> None:
         """每个包级 re-export 名称与定义来源模块的属性同一对象（无第二副本）。"""

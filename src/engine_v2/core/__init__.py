@@ -36,10 +36,9 @@ import snapshot``）；包属性 ``core.snapshot`` 保持为子模块。该规�
 P2 行为模块 re-export（D-P2-19 / P2 设计规范 §10.2/§10.3）：各 P2 任务包
 按 §10.2 顺序在本文件追加本模块 re-export 块与 ``__all__`` 条目（字母序
 插入，P1 同款纪律）。当前已含 ``authority``（P2-T02/T03）、``reducer``
-（P2-T01）、``transaction_executor``（P2-T06）、``validation``（P2-T04）
-与 ``conflicts``（P2-T05）五个导出块；``cascade``（P2-T07/T08）占位骨架
-模块（P2-T01 落位，行为主体归各自任务包）尚无公开导出，其 re-export
-块随各自任务包补全。
+（P2-T01）、``transaction_executor``（P2-T06）、``validation``（P2-T04）、
+``conflicts``（P2-T05）与 ``cascade``（P2-T07/T08：级联执行器 + 触发器 +
+深度/环路熔断）六个导出块。
 """
 
 from src.engine_v2.core.actions import (
@@ -75,6 +74,26 @@ from src.engine_v2.core.components import (
     ComponentSchema,
     ComponentTypeId,
     parse_component_type_id,
+)
+from src.engine_v2.core.cascade import (
+    CASCADE_DIAGNOSTIC_KINDS,
+    CascadeConfig,
+    CascadeCycleError,
+    CascadeDepthExceededError,
+    CascadeDiagnostic,
+    CascadeError,
+    CascadeExecutionResult,
+    CascadeExecutor,
+    CascadeResult,
+    CascadeStatistics,
+    CascadeTrigger,
+    CascadeTriggerRegistry,
+    CycleDetector,
+    CycleHit,
+    DEFAULT_MAX_CASCADE_DEPTH,
+    SyncTrigger,
+    TriggerConflictError,
+    TriggerRegistry,
 )
 from src.engine_v2.core.conflicts import (
     AuthorityPriorityStrategy,
@@ -267,10 +286,22 @@ __all__ = [
     'AuthorityRule',
     'AuthoritySelector',
     'BackendStateRef',
+    'CASCADE_DIAGNOSTIC_KINDS',
     'COMPONENT_TYPE_ID_PATTERN',
     'CONTRACT_SCHEMA_VERSION',
+    'CascadeConfig',
     'CascadeContext',
+    'CascadeCycleError',
+    'CascadeDepthExceededError',
+    'CascadeDiagnostic',
+    'CascadeError',
+    'CascadeExecutionResult',
+    'CascadeExecutor',
     'CascadeId',
+    'CascadeResult',
+    'CascadeStatistics',
+    'CascadeTrigger',
+    'CascadeTriggerRegistry',
     'CauseKind',
     'CauseRef',
     'CommittedEffect',
@@ -288,7 +319,10 @@ __all__ = [
     'ConflictStrategy',
     'ContractModel',
     'CreateEntityPayload',
+    'CycleDetector',
+    'CycleHit',
     'DECISION_PAYLOAD_KEYS',
+    'DEFAULT_MAX_CASCADE_DEPTH',
     'DEFAULT_STRATEGIES',
     'DefaultConflictResolver',
     'DomainEvent',
@@ -359,6 +393,7 @@ __all__ = [
     'SetScenarioDataPayload',
     'SetWorldVariablePayload',
     'Snapshot',
+    'SyncTrigger',
     'StateDomainId',
     'StateDomainTarget',
     'TraceKind',
@@ -367,6 +402,8 @@ __all__ = [
     'Transaction',
     'TransactionId',
     'TransactionStatus',
+    'TriggerConflictError',
+    'TriggerRegistry',
     'ValidationError',
     'ValidationContext',
     'ValidationIssue',
