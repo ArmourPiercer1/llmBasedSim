@@ -36,10 +36,10 @@ import snapshot``）；包属性 ``core.snapshot`` 保持为子模块。该规�
 P2 行为模块 re-export（D-P2-19 / P2 设计规范 §10.2/§10.3）：各 P2 任务包
 按 §10.2 顺序在本文件追加本模块 re-export 块与 ``__all__`` 条目（字母序
 插入，P1 同款纪律）。当前已含 ``authority``（P2-T02/T03）、``reducer``
-（P2-T01）与 ``validation``（P2-T04）三个导出块；``conflicts`` /
-``transaction_executor`` / ``cascade`` 三个占位骨架模块（P2-T01 落位，
-行为主体归 P2-T05/T06/T07）尚无公开导出，其 re-export 块随各自任务包
-补全。
+（P2-T01）、``transaction_executor``（P2-T06）、``validation``（P2-T04）
+与 ``conflicts``（P2-T05）五个导出块；``cascade``（P2-T07/T08）占位骨架
+模块（P2-T01 落位，行为主体归各自任务包）尚无公开导出，其 re-export
+块随各自任务包补全。
 """
 
 from src.engine_v2.core.actions import (
@@ -75,6 +75,30 @@ from src.engine_v2.core.components import (
     ComponentSchema,
     ComponentTypeId,
     parse_component_type_id,
+)
+from src.engine_v2.core.conflicts import (
+    AuthorityPriorityStrategy,
+    ConflictAction,
+    ConflictError,
+    ConflictGroup,
+    ConflictKey,
+    ConflictResolution,
+    ConflictResolutionReport,
+    ConflictStrategy,
+    DEFAULT_STRATEGIES,
+    DefaultConflictResolver,
+    DomainResolverFactory,
+    EntityFifoStrategy,
+    ProducerPriorityStrategy,
+    ResolutionContext,
+    TIMESTAMP_METADATA_KEY,
+    TimestampStrategy,
+    conflict_key,
+    conflicts_with,
+    detect_conflicts,
+    effect_locks,
+    extract_effect_locks,
+    resolve_conflicts,
 )
 from src.engine_v2.core.effects import (
     EFFECT_TYPE_ID_PATTERN,
@@ -210,6 +234,7 @@ from src.engine_v2.core.trace import (
     TraceRecord,
 )
 from src.engine_v2.core.transaction import Transaction, TransactionStatus
+from src.engine_v2.core.transaction_executor import abort_transaction, commit_transaction
 from src.engine_v2.core.validation import (
     EffectValidator,
     TRANSACTION_REFERENCE_ISSUE_KINDS,
@@ -238,6 +263,7 @@ __all__ = [
     'AuthorityError',
     'AuthorityEvaluationResult',
     'AuthorityPolicy',
+    'AuthorityPriorityStrategy',
     'AuthorityRule',
     'AuthoritySelector',
     'BackendStateRef',
@@ -253,10 +279,20 @@ __all__ = [
     'ComponentRegistry',
     'ComponentSchema',
     'ComponentTypeId',
+    'ConflictAction',
+    'ConflictError',
+    'ConflictGroup',
+    'ConflictKey',
+    'ConflictResolution',
+    'ConflictResolutionReport',
+    'ConflictStrategy',
     'ContractModel',
     'CreateEntityPayload',
     'DECISION_PAYLOAD_KEYS',
+    'DEFAULT_STRATEGIES',
+    'DefaultConflictResolver',
     'DomainEvent',
+    'DomainResolverFactory',
     'EFFECT_CREATE_ENTITY',
     'EFFECT_REMOVE_COMPONENT',
     'EFFECT_REMOVE_ENTITY',
@@ -274,6 +310,7 @@ __all__ = [
     'EffectTypeId',
     'EffectValidator',
     'EmptyPayload',
+    'EntityFifoStrategy',
     'EntityId',
     'EntityRecord',
     'EntityRef',
@@ -297,11 +334,13 @@ __all__ = [
     'ProducerConflictError',
     'ProducerId',
     'ProducerInfo',
+    'ProducerPriorityStrategy',
     'ProducerRegistry',
     'ProposedEffect',
     'Provenance',
     'ReducerError',
     'RemoveWorldVariablePayload',
+    'ResolutionContext',
     'RevalidationOutcome',
     'Revision',
     'RngState',
@@ -310,6 +349,8 @@ __all__ = [
     'SNAPSHOT_FORMAT_VERSION',
     'STATE_DOMAIN_ID_PATTERN',
     'STRUCTURAL_EFFECT_TYPES',
+    'TIMESTAMP_METADATA_KEY',
+    'TimestampStrategy',
     'TRANSACTION_REFERENCE_ISSUE_KINDS',
     'VALIDATION_ISSUE_KINDS',
     'ScenarioState',
@@ -334,6 +375,7 @@ __all__ = [
     'WorldState',
     'WriteBarrier',
     'WriteBarrierError',
+    'abort_transaction',
     'apply_committed_effects',
     'apply_transaction',
     'assert_json_clean',
@@ -341,9 +383,15 @@ __all__ = [
     'check_effect_id_kinds',
     'check_snapshot_versions',
     'check_transaction_references',
+    'commit_transaction',
+    'conflict_key',
+    'conflicts_with',
     'deep_copy_via_roundtrip',
     'default_handler_registry',
+    'detect_conflicts',
     'dump_json',
+    'effect_locks',
+    'extract_effect_locks',
     'freeze_view',
     'guard',
     'install_write_barrier',
@@ -368,6 +416,7 @@ __all__ = [
     'parse_id',
     'parse_state_domain_id',
     'restore_snapshot',
+    'resolve_conflicts',
     'state_create_entity',
     'state_remove_component',
     'state_remove_entity',
