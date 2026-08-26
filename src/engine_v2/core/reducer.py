@@ -42,14 +42,23 @@
      ``WriteBarrier()`` 上下文内运行——reducer 自身（及其 handler）合法使用
      不受阻；
   3. **guard() 只读门面**（层三，防绕过包装器）：``GuardedWorldState`` 交
-     producer/trigger——即使全局拦截未武装，producer 侧也拿不到任何写路径
-     （K2 的运行时兜底，Spec §21.3 触发器求值入参）。``.entities`` /
-     ``.world_variables`` / ``.scenario_state`` 返回基于
+     producer/trigger（K2 的运行时兜底，Spec §21.3 触发器求值入参）。
+     ``.entities`` / ``.world_variables`` / ``.scenario_state`` 返回基于
      ``MappingProxyType`` 的递归深冻结只读视图（``_FrozenMapping`` /
      ``_freeze_deep``，P2-REMEDIATION B2 容器级泄漏闭合）：任何
      ``__setitem__`` / ``__delitem__`` / ``clear()`` / ``pop()`` 等原地
      修改抛 ``TypeError``，实体组件数据经 ``_GuardedEntityRecord`` /
-     ``_GuardedScenarioState`` 门面同为只读深冻结。
+     ``_GuardedScenarioState`` 门面同为只读深冻结。**G2 补充轮 1**：门面对
+     权威状态的承载改为模块私有 token 注册表（``_GUARD_REGISTRY``）——
+     实例唯一槽只持 int token，任何实例属性（槽 / ``__dict__`` /
+     ``vars()`` / ``object.__getattribute__`` / name-mangling 惯例）不
+     承载、不可解析出 wrapped 权威 WorldState 引用（旧
+     ``_GuardedWorldState__wrapped`` 改名槽经描述符常规查找可达，已被
+     证伪并消除）。防护三层口径：guard 视图（本层，深冻结快照）+ 层二
+     写屏障（4 条 pydantic 构造逃逸路径，opt-in 武装）+ 管线层 reducer
+     重校验（commit_revision == base_revision + 1 与 L2 引用检查）；
+     raw WorldState 嵌套容器本身仍原地可变（P1 D-15 advisory），producer
+     只应获得 ``guard()`` 视图。
 
 **import 边界**（P1 设计 §0.3 继承）：本模块只 import 标准库、pydantic 与
 同包 ``src.engine_v2``——reducer 不调用 LLM（G2 静态确认之一）；无 IO、无
@@ -60,6 +69,7 @@
 from __future__ import annotations
 
 import copy
+import itertools
 import threading
 import types
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -1215,8 +1225,69 @@ def _freeze_deep(value: Any) -> Any:
     return value
 
 
+# —— GuardedWorldState token 注册表（P2-REMEDIATION G2 补充轮 1：缝隙闭合 v2）——
+#
+# G2 门禁盲审发现：旧 ``_GuardedWorldState__wrapped`` 名称改写槽在属性
+# **存在**时经描述符常规查找命中（``__getattr__`` 永不触发）——
+# ``getattr(g, "_GuardedWorldState__wrapped")`` /
+# ``object.__getattribute__(g, ...)`` 直接返回**活**的权威 WorldState，
+# 其嵌套容器（world_variables / 组件 dict / scenario data）可被原地修改，
+# revision 不变、无事件/trace——reducer 之外的权威状态写路径未闭合。
+#
+# 机制（G2 补充轮 1）：``guard()`` 每次发放单调递增 int token，权威状态
+# 与其深冻结视图快照（guard() 时一次性构造，快照语义不变）进入模块私有
+# 注册表 :data:`_GUARD_REGISTRY`；GuardedWorldState 实例只持 token——任何
+# 实例属性（槽 / ``__dict__`` / ``vars()`` / ``object.__getattribute__`` /
+# name-mangling 惯例访问）都不承载、也解析不出 wrapped 权威状态引用。
+#
+# 生命周期：注册表条目寿命 == guard 实例寿命。实例 ``__del__`` 释放
+# （CPython 引用计数下确定；guard 即便参与引用环，Python ≥3.4 的 gc 周期
+# 回收仍会触发 ``__del__`` 清出）。级联触发器求值上下文（cascade §7.2）
+# 仅在单轮求值期间持有 guard，求值结束 executor 释放引用 → 条目自动回收
+# ——cascade 侧无需额外清理点（最小改动方案）。
+_GUARD_REGISTRY: dict[int, "_GuardEntry"] = {}
+_GUARD_TOKEN_COUNTER = itertools.count(1)
+
+
+class _GuardEntry:
+    """单个 ``guard()`` 的注册表条目：权威状态 + guard() 时构造的深冻结视图快照。
+
+    视图快照语义不变：guard() 时一次构造、恒有效（被包装状态为 frozen
+    契约）；raw 状态嵌套容器若被原地突变，快照不反射（P1 D-15 advisory
+    边界，见 :func:`guard`）。
+    """
+
+    __slots__ = ("state", "entities_view", "world_variables_view", "scenario_view")
+
+    def __init__(
+        self,
+        state: WorldState,
+        entities_view: _FrozenMapping,
+        world_variables_view: Any,
+        scenario_view: "_GuardedScenarioState",
+    ) -> None:
+        self.state = state
+        self.entities_view = entities_view
+        self.world_variables_view = world_variables_view
+        self.scenario_view = scenario_view
+
+
+def _register_guard(
+    state: WorldState,
+    entities_view: _FrozenMapping,
+    world_variables_view: Any,
+    scenario_view: _GuardedScenarioState,
+) -> int:
+    """注册 state + 视图快照，返回 guard token（单调递增、不复用）。"""
+    token = next(_GUARD_TOKEN_COUNTER)
+    _GUARD_REGISTRY[token] = _GuardEntry(
+        state, entities_view, world_variables_view, scenario_view
+    )
+    return token
+
+
 class _GuardedEntityRecord:
-    """EntityRecord 的只读门面（§2.6.3 容器级泄漏防御；P2-REMEDIATION B2）。
+    """EntityRecord 的只读门面（§2.6.3 容器级泄漏防御；P2-REMEDIATION B2/G2 补充轮 1）。
 
     :class:`GuardedWorldState` 的 ``entities`` 只读视图以本门面逐条承载：
 
@@ -1226,21 +1297,35 @@ class _GuardedEntityRecord:
       抛 ``TypeError``；组件容器本身同为只读代理；
     - ``tags`` 构造期转为 tuple（原 ``list[str]`` 可经 ``append`` 就地突变，
       别名泄漏面一并封堵）；
+    - **G2 补充轮 1**：wrapped 活记录槽移除——实例只持构造期拷贝的
+      标量字段（``entity_id`` / ``entity_class`` / ``created_revision``）
+      + 深冻结视图，任何实例属性都解析不出活 :class:`EntityRecord`
+      引用（旧 ``_GuardedEntityRecord__wrapped`` 名称改写槽经描述符
+      常规查找可达，返回活记录、其 ``components`` dict 可被原地突变，
+      缝隙已闭合）；
     - 属性赋值 / 删除 / 私有缝隙访问一律 :class:`WriteBarrierError`
       （无条件拦截，与层三门面同语义）；不暴露被包装记录对象本身。
 
-    ``__eq__`` 委托被包装记录（与 ``EntityRecord`` 值相等互认，视图判等
+    ``__eq__`` 按字段值判定（与 ``EntityRecord`` 值相等互认，视图判等
     口径不变）；不参与哈希（与 pydantic 契约模型同语义）。
     """
 
     __slots__ = (
-        "_GuardedEntityRecord__wrapped",
+        "_GuardedEntityRecord__entity_id",
+        "_GuardedEntityRecord__entity_class",
+        "_GuardedEntityRecord__created_revision",
         "_GuardedEntityRecord__components",
         "_GuardedEntityRecord__tags",
     )
 
     def __init__(self, record: EntityRecord) -> None:
-        object.__setattr__(self, "_GuardedEntityRecord__wrapped", record)
+        # G2 补充轮 1：只持标量字段拷贝 + 深冻结视图（经 object.__setattr__
+        # 绕过本类的 __setattr__ 拦截——构造期唯一一次实例状态写入）
+        object.__setattr__(self, "_GuardedEntityRecord__entity_id", record.entity_id)
+        object.__setattr__(self, "_GuardedEntityRecord__entity_class", record.entity_class)
+        object.__setattr__(
+            self, "_GuardedEntityRecord__created_revision", record.created_revision
+        )
         object.__setattr__(
             self,
             "_GuardedEntityRecord__components",
@@ -1257,11 +1342,11 @@ class _GuardedEntityRecord:
 
     @property
     def entity_id(self) -> EntityId:
-        return self.__wrapped.entity_id
+        return self.__entity_id
 
     @property
     def entity_class(self) -> str | None:
-        return self.__wrapped.entity_class
+        return self.__entity_class
 
     @property
     def tags(self) -> tuple[str, ...]:
@@ -1269,7 +1354,7 @@ class _GuardedEntityRecord:
 
     @property
     def created_revision(self) -> Revision:
-        return self.__wrapped.created_revision
+        return self.__created_revision
 
     @property
     def components(self) -> Mapping[ComponentTypeId, Mapping[str, JsonValue]]:
@@ -1277,15 +1362,40 @@ class _GuardedEntityRecord:
         return self.__components
 
     def model_dump(self, **kwargs: Any) -> Any:
-        """序列化出口：委托被包装 EntityRecord 的 ``model_dump``。"""
-        return self.__wrapped.model_dump(**kwargs)
+        """序列化出口：以同字段值重建独立记录后委托 ``model_dump``。
 
-    # —— 值相等（委托）与写路径拦截 ——
+        G2 补充轮 1：实例不再持活记录，出口由拷贝的字段值重建——重建记录
+        与被包装记录值相等，dump 输出（含任意 kwargs 语义）与原记录一致。
+        """
+        return EntityRecord(
+            entity_id=self.__entity_id,
+            entity_class=self.__entity_class,
+            tags=list(self.__tags),
+            created_revision=self.__created_revision,
+            components={ct: dict(data) for ct, data in self.__components.items()},
+        ).model_dump(**kwargs)
+
+    # —— 值相等（按字段值判定）与写路径拦截 ——
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _GuardedEntityRecord):
-            return self.__wrapped == other._GuardedEntityRecord__wrapped
-        return self.__wrapped == other
+            return (
+                self.__entity_id == other._GuardedEntityRecord__entity_id
+                and self.__entity_class == other._GuardedEntityRecord__entity_class
+                and self.__tags == other._GuardedEntityRecord__tags
+                and self.__created_revision
+                == other._GuardedEntityRecord__created_revision
+                and self.__components == other._GuardedEntityRecord__components
+            )
+        if isinstance(other, EntityRecord):
+            return (
+                self.__entity_id == other.entity_id
+                and self.__entity_class == other.entity_class
+                and self.__tags == tuple(other.tags)
+                and self.__created_revision == other.created_revision
+                and self.__components == other.components
+            )
+        return NotImplemented
 
     __hash__ = None  # 与 EntityRecord 同语义：含可变容器的值对象不参与哈希
 
@@ -1314,11 +1424,11 @@ class _GuardedEntityRecord:
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def __repr__(self) -> str:
-        return f"_GuardedEntityRecord(entity_id={self.__wrapped.entity_id})"
+        return f"_GuardedEntityRecord(entity_id={self.__entity_id})"
 
 
 class _GuardedScenarioState:
-    """ScenarioState 的只读门面（§2.6.3 容器级泄漏防御；P2-REMEDIATION B2）。
+    """ScenarioState 的只读门面（§2.6.3 容器级泄漏防御；P2-REMEDIATION B2/G2 补充轮 1）。
 
     pydantic ``frozen=True`` 只阻断字段再赋值——``scenario_state.data`` 的
     可变 dict 原可经 ``data['k'] = v`` 就地突变权威状态。本门面以
@@ -1327,24 +1437,36 @@ class _GuardedScenarioState:
     ``__delitem__`` / ``clear()`` / ``pop()`` 抛 ``TypeError``；属性赋值 /
     删除 / 私有缝隙访问一律 :class:`WriteBarrierError`。
 
-    ``__eq__`` 委托被包装模型（与 ``ScenarioState`` 值相等互认）。
+    **G2 补充轮 1**：wrapped 活模型槽移除——实例只持构造期拷贝的标量
+    字段（``scenario_id`` / ``stage``）+ 深冻结 ``data`` 视图，任何实例
+    属性都解析不出活 :class:`ScenarioState` 引用（旧
+    ``_GuardedScenarioState__wrapped`` 名称改写槽经描述符常规查找可达，
+    返回活模型、其 ``data`` dict 可被原地突变，缝隙已闭合）。
+
+    ``__eq__`` 按字段值判定（与 ``ScenarioState`` 值相等互认）。
     """
 
-    __slots__ = ("_GuardedScenarioState__wrapped", "_GuardedScenarioState__data")
+    __slots__ = (
+        "_GuardedScenarioState__scenario_id",
+        "_GuardedScenarioState__stage",
+        "_GuardedScenarioState__data",
+    )
 
     def __init__(self, scenario: ScenarioState) -> None:
-        object.__setattr__(self, "_GuardedScenarioState__wrapped", scenario)
+        # G2 补充轮 1：只持标量字段拷贝 + 深冻结 data 视图
+        object.__setattr__(self, "_GuardedScenarioState__scenario_id", scenario.scenario_id)
+        object.__setattr__(self, "_GuardedScenarioState__stage", scenario.stage)
         object.__setattr__(self, "_GuardedScenarioState__data", _freeze_deep(scenario.data))
 
     # —— 只读属性 ——
 
     @property
     def scenario_id(self) -> str | None:
-        return self.__wrapped.scenario_id
+        return self.__scenario_id
 
     @property
     def stage(self) -> str | None:
-        return self.__wrapped.stage
+        return self.__stage
 
     @property
     def data(self) -> Mapping[str, JsonValue]:
@@ -1352,15 +1474,33 @@ class _GuardedScenarioState:
         return self.__data
 
     def model_dump(self, **kwargs: Any) -> Any:
-        """序列化出口：委托被包装 ScenarioState 的 ``model_dump``。"""
-        return self.__wrapped.model_dump(**kwargs)
+        """序列化出口：以同字段值重建独立模型后委托 ``model_dump``。
 
-    # —— 值相等（委托）与写路径拦截 ——
+        G2 补充轮 1：实例不再持活模型，出口由拷贝的字段值重建——重建模型
+        与被包装模型值相等，dump 输出（含任意 kwargs 语义）与原模型一致。
+        """
+        return ScenarioState(
+            scenario_id=self.__scenario_id,
+            stage=self.__stage,
+            data=dict(self.__data),
+        ).model_dump(**kwargs)
+
+    # —— 值相等（按字段值判定）与写路径拦截 ——
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _GuardedScenarioState):
-            return self.__wrapped == other._GuardedScenarioState__wrapped
-        return self.__wrapped == other
+            return (
+                self.__scenario_id == other._GuardedScenarioState__scenario_id
+                and self.__stage == other._GuardedScenarioState__stage
+                and self.__data == other._GuardedScenarioState__data
+            )
+        if isinstance(other, ScenarioState):
+            return (
+                self.__scenario_id == other.scenario_id
+                and self.__stage == other.stage
+                and self.__data == other.data
+            )
+        return NotImplemented
 
     __hash__ = None  # 与 ScenarioState 同语义：含可变容器的值对象不参与哈希
 
@@ -1389,18 +1529,39 @@ class _GuardedScenarioState:
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def __repr__(self) -> str:
-        return f"_GuardedScenarioState(scenario_id={self.__wrapped.scenario_id})"
+        return f"_GuardedScenarioState(scenario_id={self.__scenario_id})"
 
 
 def guard(state: WorldState) -> GuardedWorldState:
-    """将 WorldState 包装为只读运行时门面（P2 设计规范 §2.6.3）。
+    """将 WorldState 包装为只读运行时门面（P2 设计规范 §2.6.3；G2 补充轮 1）。
 
-    交 producer/trigger（级联触发器 §7.2 的求值入参即本类型）：即使全局
-    拦截未武装，producer 侧也拿不到任何写路径（K2 的运行时兜底）。
-    容器级泄漏闭合（P2-REMEDIATION B2）：``entities`` /
-    ``world_variables`` / ``scenario_state`` 一律为递归深冻结只读视图，
-    任何容器原地修改抛 ``TypeError``、门面属性赋值抛
-    :class:`WriteBarrierError`。
+    交 producer/trigger（级联触发器 §7.2 的求值入参即本类型）。门面对外
+    只暴露：容器深冻结只读视图（guard() 时一次构造的快照）+ 标量字段只读
+    委托 + 序列化出口；任何容器原地修改抛 ``TypeError``，门面属性赋值 /
+    copy 路径 / 私有缝隙访问抛 :class:`WriteBarrierError`。
+
+    **G2 补充轮 1（name-mangling 槽缝隙闭合）**：实例不再持有任何指向
+    wrapped 权威状态的槽——旧 ``_GuardedWorldState__wrapped`` 名称改写槽
+    在属性存在时经描述符常规查找命中（``__getattr__`` 永不触发），
+    ``getattr(g, ...)`` / ``object.__getattribute__(g, ...)`` 返回活
+    WorldState，其嵌套容器可被原地突变（revision 不变、无事件/trace）
+    ——reducer 之外的权威状态写路径。现 ``guard()`` 发放单调递增 int
+    token，权威状态与其深冻结视图快照进入模块私有注册表
+    :data:`_GUARD_REGISTRY`，实例只持 token（任何实例属性都不承载、也
+    解析不出权威状态引用）。
+
+    生命周期：注册表条目寿命 == guard 实例寿命，实例 ``__del__`` 释放
+    （CPython 引用计数下确定；引用环场景由 gc 周期回收触发
+    ``__del__``）。级联触发器求值上下文仅在单轮求值期间持有 guard，
+    求值结束 executor 释放引用 → 条目自动回收，cascade 侧无额外清理点。
+
+    如实边界（防护三层口径）：raw WorldState 嵌套容器本身仍原地可变
+    （P1 D-15 advisory）——若 producer 持有 raw WorldState 引用，仍可能
+    原地突变嵌套容器（revision 不反映）。防护来自三层：本层 guard 视图
+    （深冻结快照 + 零权威引用泄漏）、层二写屏障（包裹 4 条 pydantic
+    构造逃逸路径，opt-in 武装）、管线层 reducer 重校验
+    （commit_revision == base_revision + 1 与 L2 引用检查拦截 stale/伪造
+    revision）。producer 只应获得 ``guard()`` 视图。
 
     Raises:
         TypeError: 入参不是 ``WorldState``。
@@ -1416,7 +1577,7 @@ def is_guarded(obj: object) -> bool:
 
 
 class GuardedWorldState:
-    """交 producer/trigger 的只读运行时门面（P2 设计规范 §2.6.3）。
+    """交 producer/trigger 的只读运行时门面（P2 设计规范 §2.6.3；G2 补充轮 1）。
 
     - **委托** WorldState 的 4 个只读门面（``entity_view`` /
       ``component_view`` / ``entities_with_component`` / ``has_entity``）+
@@ -1431,98 +1592,120 @@ class GuardedWorldState:
       tuple），``scenario_state`` 经 :class:`_GuardedScenarioState` 承载
       （``data`` 深冻结）。任何 ``__setitem__`` / ``__delitem__`` /
       ``clear()`` / ``pop()`` 等容器原地修改均抛 ``TypeError``，属性赋值
-      等写路径抛 :class:`WriteBarrierError`——被包装的权威状态在任何
-      访问面上零可变引用泄漏（K2 写屏障层三的容器级闭合）；
+      等写路径抛 :class:`WriteBarrierError`；
+    - **G2 补充轮 1（name-mangling 槽缝隙闭合）**：实例不再持有指向
+      wrapped 权威状态的槽——唯一槽只持 ``guard()`` 发放的 int token，
+      权威状态与其深冻结视图快照存于模块私有注册表
+      :data:`_GUARD_REGISTRY`；任何实例属性（槽 / ``__dict__`` /
+      ``vars()`` / ``object.__getattribute__`` / name-mangling 惯例
+      访问）都不承载、也解析不出 wrapped 权威 WorldState 引用。旧
+      ``_GuardedWorldState__wrapped`` 名称改写槽在属性存在时经描述符
+      常规查找命中（``__getattr__`` 永不触发），``getattr(g, ...)``
+      返回活权威状态、其嵌套容器可被原地突变——该缝隙已消除；
     - **一律抛 :class:`WriteBarrierError`**：``model_copy`` /
-      ``model_construct`` / ``copy.copy`` / ``copy.deepcopy`` / 属性赋值 /
-      属性删除 / 私有缝隙访问（``_with_*`` 等）——无条件拦截（与层二令牌
-      无关）：即使全局拦截未武装，producer 侧也拿不到任何写路径；
-    - 不继承 ``BaseModel``，不是契约模型，不参与 round-trip；被包装的
-      WorldState 以名称改写私有槽持有，门面不提供任何取回原状态的公共路径。
+      ``model_construct`` / ``copy.copy`` / ``copy.deepcopy`` /
+      ``pickle``（不参与 round-trip）/ 属性赋值 / 属性删除 / 私有缝隙
+      访问（``_with_*`` 等）——无条件拦截（与层二令牌无关）：门面不
+      提供任何复制或序列化路径；
+    - 不继承 ``BaseModel``，不是契约模型，不参与 round-trip。
 
-    深冻结视图构造于 ``__init__``（被包装状态为 frozen 契约，视图一次构造
-    恒有效）；判等口径不变——``entities`` / ``world_variables`` /
-    ``scenario_state`` 视图与被包装状态对应字段 ``==`` 相等（委托值相等）。
+    深冻结视图快照构造于 guard() 时一次、恒有效（被包装状态为 frozen
+    契约；raw 状态嵌套容器若被原地突变，快照不反射——P1 D-15
+    advisory，见 :func:`guard`）；判等口径不变——``entities`` /
+    ``world_variables`` / ``scenario_state`` 视图与被包装状态对应字段
+    ``==`` 相等（委托值相等）。
     """
 
-    # 名称改写的私有槽（_GuardedWorldState__wrapped）：外部 ``g.__wrapped``
-    # 形态经 __getattr__ 落入私有缝隙拦截；门面零公共写路径。其余三槽为
-    # 构造期深冻结视图缓存（P2-REMEDIATION B2）。
-    __slots__ = (
-        "_GuardedWorldState__wrapped",
-        "_GuardedWorldState__entities_view",
-        "_GuardedWorldState__world_variables_view",
-        "_GuardedWorldState__scenario_view",
-    )
+    # 唯一实例槽：guard() 发放的 int token（P2-REMEDIATION G2 补充轮 1）。
+    # token 仅索引模块私有注册表 _GUARD_REGISTRY，本身不承载任何状态引用
+    # （name-mangling 惯例访问 ``g._GuardedWorldState__token`` 返回的是 int
+    # 令牌，无状态信息可泄漏）；其余私有名一律经 __getattr__ 缝隙拦截。
+    __slots__ = ("_GuardedWorldState__token",)
 
     def __init__(self, state: WorldState) -> None:
-        # 经 object.__setattr__ 绕过本类的 __setattr__ 拦截（构造期唯一一次
-        # 实例状态写入；名称改写槽 _GuardedWorldState__wrapped 外部不可经
-        # 常规 ``g.__wrapped`` 形态读取——落入 __getattr__ 缝隙拦截）
-        object.__setattr__(self, "_GuardedWorldState__wrapped", state)
         # 容器级深冻结只读视图（P2-REMEDIATION B2）：_FrozenMapping
         # （基于 MappingProxyType）+ _freeze_deep 递归冻结，原地修改统一抛
-        # TypeError
+        # TypeError——guard() 时一次构造、恒有效（快照语义）
+        entities_view = _FrozenMapping(
+            {
+                entity_id: _GuardedEntityRecord(record)
+                for entity_id, record in state.entities.items()
+            }
+        )
+        world_variables_view = _freeze_deep(state.world_variables)
+        scenario_view = _GuardedScenarioState(state.scenario_state)
+        # 实例只持 token（经 object.__setattr__ 绕过本类的 __setattr__
+        # 拦截——构造期唯一一次实例状态写入）；state + 视图快照入注册表条目
         object.__setattr__(
             self,
-            "_GuardedWorldState__entities_view",
-            _FrozenMapping(
-                {
-                    entity_id: _GuardedEntityRecord(record)
-                    for entity_id, record in state.entities.items()
-                }
-            ),
+            "_GuardedWorldState__token",
+            _register_guard(state, entities_view, world_variables_view, scenario_view),
         )
-        object.__setattr__(
-            self,
-            "_GuardedWorldState__world_variables_view",
-            _freeze_deep(state.world_variables),
-        )
-        object.__setattr__(
-            self,
-            "_GuardedWorldState__scenario_view",
-            _GuardedScenarioState(state.scenario_state),
-        )
+
+    def __del__(self) -> None:
+        """释放注册表条目（条目寿命 == 本实例寿命）。
+
+        CPython 引用计数下确定；guard 参与引用环时由 gc 周期回收触发本
+        钩子。防御式：解释器关停期模块 globals 可能已清空（此时条目随
+        模块消亡，无需清出）；构造早期失败时槽可能尚未写入。
+        """
+        registry = globals().get("_GUARD_REGISTRY")
+        if registry is None:
+            return
+        try:
+            token = self._GuardedWorldState__token
+        except Exception:
+            return
+        registry.pop(token, None)
+
+    def _entry(self) -> _GuardEntry:
+        """token → 注册表条目（常规查找命中；私有缝隙路径不经过此处）。"""
+        entry = _GUARD_REGISTRY.get(self._GuardedWorldState__token)
+        if entry is None:
+            raise WriteBarrierError(
+                f"写屏障拦截：GuardedWorldState token {self._GuardedWorldState__token} 已失效（条目已释放）"
+            )
+        return entry
 
     # —— 只读门面委托（§2.6.3）——
 
     def entity_view(self, eid: EntityId) -> EntityView | None:
         """只读门面委托：entity 深冻结视图（entity 不存在返回 None）。"""
-        return self.__wrapped.entity_view(eid)
+        return self._entry().state.entity_view(eid)
 
     def component_view(
         self, eid: EntityId, ct: ComponentTypeId
     ) -> Mapping[str, JsonValue] | None:
         """只读门面委托：组件数据深冻结视图（缺失返回 None）。"""
-        return self.__wrapped.component_view(eid, ct)
+        return self._entry().state.component_view(eid, ct)
 
     def entities_with_component(self, ct: ComponentTypeId) -> tuple[EntityId, ...]:
         """只读门面委托：挂载组件 ct 的 entity id 序列。"""
-        return self.__wrapped.entities_with_component(ct)
+        return self._entry().state.entities_with_component(ct)
 
     def has_entity(self, eid: EntityId) -> bool:
         """只读门面委托：entity 是否存在。"""
-        return self.__wrapped.has_entity(eid)
+        return self._entry().state.has_entity(eid)
 
     # —— 序列化出口 ——
 
     def model_dump(self, **kwargs: Any) -> Any:
         """序列化出口：委托被包装 WorldState 的 ``model_dump``。"""
-        return self.__wrapped.model_dump(**kwargs)
+        return self._entry().state.model_dump(**kwargs)
 
     def model_dump_json(self, **kwargs: Any) -> str:
         """序列化出口：委托被包装 WorldState 的 ``model_dump_json``。"""
-        return self.__wrapped.model_dump_json(**kwargs)
+        return self._entry().state.model_dump_json(**kwargs)
 
     # —— 公共字段只读访问 ——
 
     @property
     def schema_version(self) -> int:
-        return self.__wrapped.schema_version
+        return self._entry().state.schema_version
 
     @property
     def world_revision(self) -> Revision:
-        return self.__wrapped.world_revision
+        return self._entry().state.world_revision
 
     @property
     def entities(self) -> Mapping[EntityId, _GuardedEntityRecord]:
@@ -1530,20 +1713,20 @@ class GuardedWorldState:
         :class:`_GuardedEntityRecord` 门面——容器 ``__setitem__`` /
         ``__delitem__`` / ``clear()`` / ``pop()`` 与记录内组件数据的任何
         原地修改均被拦截（TypeError / WriteBarrierError）。"""
-        return self.__entities_view
+        return self._entry().entities_view
 
     @property
     def world_variables(self) -> Mapping[str, JsonValue]:
         """只读深冻结视图（P2-REMEDIATION B2）：``_freeze_deep`` 递归冻结，
         顶层与嵌套 dict 的 ``__setitem__`` / ``__delitem__`` / ``clear()`` /
         ``pop()`` 等原地修改一律抛 TypeError。"""
-        return self.__world_variables_view
+        return self._entry().world_variables_view
 
     @property
     def scenario_state(self) -> _GuardedScenarioState:
         """只读深冻结门面（P2-REMEDIATION B2）：``data`` 经 MappingProxyType
         深冻结，字段属性只读——原地修改与属性赋值一律被拦截。"""
-        return self.__scenario_view
+        return self._entry().scenario_view
 
     # —— 写路径拦截（§2.6.3：一律 WriteBarrierError，无条件）——
 
@@ -1570,13 +1753,24 @@ class GuardedWorldState:
     def __deepcopy__(self, memo: Any = None) -> GuardedWorldState:
         raise WriteBarrierError("写屏障拦截：只读门面 GuardedWorldState 禁止 copy.deepcopy")
 
+    def __reduce__(self):
+        # G2 补充轮 1：pickle 属"复制路径"族——若允许序列化，同进程
+        # round-trip 将产生共享同一 token 的第二实例，其一回收时
+        # __del__ 清出条目将致另一实例 token 失效（静默破坏）。门面本就
+        # 不参与 round-trip（非契约模型），与 copy/deepcopy 同口径拦截。
+        raise WriteBarrierError(
+            "写屏障拦截：只读门面 GuardedWorldState 不参与 pickle 序列化（无复制路径）"
+        )
+
     def __getattr__(self, name: str) -> Any:
         """实例/类常规查找失败后的兜底：私有缝隙访问一律拦截。
 
         常规命中（只读门面 / 序列化出口 / 公共字段 property / 拦截方法）不
         经本方法；落在此处的即门面不承载的属性——下划线前缀（``_with_*``
         等私有缝隙、``__wrapped`` 等）抛 :class:`WriteBarrierError`，其余
-        抛 ``AttributeError``。
+        抛 ``AttributeError``。G2 补充轮 1 后不存在任何承载权威状态的
+        实例属性——本拦截器只负责错误种类契约，不再承担"藏住槽"的职责
+        （槽本身已无状态引用）。
         """
         if name.startswith("_"):
             raise WriteBarrierError(
@@ -1585,7 +1779,7 @@ class GuardedWorldState:
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def __repr__(self) -> str:
-        state = self.__wrapped
+        state = self._entry().state
         return (
             f"GuardedWorldState(world_revision={int(state.world_revision)}, "
             f"entities={len(state.entities)})"

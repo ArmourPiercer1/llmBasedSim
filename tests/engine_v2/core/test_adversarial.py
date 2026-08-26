@@ -56,6 +56,13 @@
        **容器级原地修改攻击**（P2-REMEDIATION B2）：guard(state).world_variables /
        entities / scenario_state.data / 嵌套组件 dict 的 __setitem__ / __delitem__ /
        clear / pop / popitem / setdefault / update 全部 TypeError，权威状态零变化；
+       **私有槽 / mangled 名向量**（P2-REMEDIATION G2 补充轮 1）：
+       getattr(g, "_GuardedWorldState__wrapped") 与实体 / scenario 门面同类槽
+       确定性 WriteBarrierError、不返回活权威状态；object.__getattribute__ /
+       vars() / type.__dict__ 内省 / __slots__ 扫描均无活 WorldState 引用
+       （含闭包单元深度）；实例只持 int token（模块私有注册表承载状态）；
+       经任何可达路径对权威状态的原地容器写入全部拦截且 revision/内容不变；
+       视图 copy / deepcopy 仍返回独立可变快照（回归）；
    (3) 静态审计自测：合成违规源码字符串全部被捕获；reducer.py 自身白名单放行；
    (4) 管道面：触发器收到的是 GuardedWorldState（isinstance 断言 + 写路径抛错）；
    (5) uninstall_write_barrier() 后 P1 语义复原。
@@ -91,6 +98,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import pickle
 from pathlib import Path
 from typing import Any
 
@@ -850,6 +858,21 @@ class TestScenario5CycleDetectorAdversarial:
 class TestScenario6WriteBarrierAdversarial:
     """场景 6（写屏障拦截与零公共写入绕过）：验证试图通过 model_copy、
     model_construct、copy/deepcopy、反射赋值或直接修改绕过 Reducer 的行为被全部拦截。
+
+    G2 补充轮 1（必须测试 7 检查单补充——私有槽 / mangled 名向量）：旧
+    ``_GuardedWorldState__wrapped`` 名称改写槽（及 ``_GuardedEntityRecord__wrapped`` /
+    ``_GuardedScenarioState__wrapped`` 同类槽）在属性存在时经描述符常规
+    查找命中（``__getattr__`` 永不触发），返回活权威状态、其嵌套容器可被
+    原地突变（revision 不变、无事件/trace）——G2 门禁盲审发现的缝隙，
+    已由 token 注册表机制闭合。本组测试显式列入该向量：
+
+    (a) mangled 槽访问确定性抛 WriteBarrierError（私有缝隙错误种类契约），
+        任何变体不返回活 WorldState；
+    (b) ``object.__getattribute__`` / ``vars()`` / ``type(g).__dict__``
+        内省 / ``__slots__`` 扫描均无活 WorldState 引用（含闭包单元深度）；
+    (c) 经任何可达路径对权威状态的原地容器写入全部被拦截
+        （TypeError / WriteBarrierError）且 revision / 内容不变；
+    (d) 视图 copy / deepcopy 仍返回独立可变快照（改副本不波及权威，回归）。
     """
 
     def test_four_escape_paths_blocked_when_armed(self) -> None:
@@ -1035,6 +1058,246 @@ class TestScenario6WriteBarrierAdversarial:
             ComponentTypeId("attrs.hp")
         ] == {"current": 100, "max": 100}
         assert state.scenario_state.data == {"goal": "find key"}
+
+    def test_guard_private_slot_vectors_expose_no_live_state(self) -> None:
+        """G2 补充轮 1（必须测试 7 检查单补充）：私有槽 / mangled 名向量
+        不得解析出活权威状态。
+
+        向量清单（机制：GuardedWorldState 实例只持 int token，权威状态与
+        深冻结视图快照存于模块私有注册表 ``_GUARD_REGISTRY``）：
+
+        1. ``getattr(g, "_GuardedWorldState__wrapped")`` → 确定性
+           :class:`WriteBarrierError`（私有缝隙错误种类契约；旧机制下该
+           向量返回活 WorldState——G2 门禁盲审发现）；
+        2. mangled 名变体扫描（规范改名名 / 未改名私有形态 / 其他名称）：
+           一律不返回活 WorldState；
+        3. ``object.__getattribute__(g, <旧槽名>)`` →
+           ``AttributeError``（显式 ``object.__getattribute__`` 不经过
+           ``__getattr__`` 缝隙拦截器；槽不存在 → 确定性 AttributeError，
+           同样不返回活状态）；
+        4. ``vars(g)`` / ``__dict__`` 扫描：要么抛错，要么结果无状态引用；
+        5. ``type(g).__dict__`` 内省（含方法闭包单元）与 ``__slots__``
+           扫描：无活 WorldState 引用，槽名不含 ``wrapped``；
+        6. 唯一槽 ``_GuardedWorldState__token`` 仅为 int 令牌。
+        """
+        state = _make_base_state(0)
+        g = guard(state)
+
+        # (1) 规范 mangled 槽名：确定性 WriteBarrierError（不返回活状态）
+        with pytest.raises(WriteBarrierError):
+            getattr(g, "_GuardedWorldState__wrapped")
+
+        # (2) mangled 名变体扫描：任何变体不返回活 WorldState
+        for name in (
+            "_GuardedWorldState__wrapped",
+            "__wrapped",
+            "_wrapped",
+            "_state",
+            "wrapped",
+            "state",
+        ):
+            try:
+                value = getattr(g, name)
+            except (AttributeError, WriteBarrierError):
+                continue
+            assert not isinstance(value, WorldState), f"{name} 泄漏活权威状态"
+
+        # (3) object.__getattribute__ 旧槽名 → AttributeError（槽不存在；
+        # 显式 object.__getattribute__ 不经 __getattr__ 兜底，不返回活状态）
+        with pytest.raises(AttributeError):
+            object.__getattribute__(g, "_GuardedWorldState__wrapped")
+
+        # (4) vars(g) / __dict__ 扫描：无状态引用
+        for accessor in (lambda: vars(g), lambda: g.__dict__):
+            try:
+                inst_dict = accessor()
+            except (TypeError, WriteBarrierError):
+                continue
+            assert all(not isinstance(v, WorldState) for v in inst_dict.values())
+
+        # (5) 类内省：方法闭包单元无活状态；__slots__ 扫描无活状态引用
+        for value in vars(type(g)).values():
+            for candidate in (getattr(value, "__func__", value),):
+                for cell in getattr(candidate, "__closure__", None) or ():
+                    assert not isinstance(cell.cell_contents, WorldState)
+        for slot in getattr(type(g), "__slots__", ()):
+            assert "wrapped" not in slot.lower()
+            try:
+                value = object.__getattribute__(g, slot)
+            except (AttributeError, WriteBarrierError):
+                continue
+            assert not isinstance(value, WorldState)
+
+        # (6) 唯一槽为 int token（机制性断言，防回归回槽承载状态）
+        token = object.__getattribute__(g, "_GuardedWorldState__token")
+        assert isinstance(token, int) and not isinstance(token, bool)
+
+    def test_guard_entity_scenario_facade_slot_vectors_blocked(self) -> None:
+        """G2 补充轮 1：实体 / scenario 门面的 mangled 槽同类缝隙已闭合。
+
+        - ``getattr(facade, "_GuardedEntityRecord__wrapped")`` →
+          WriteBarrierError（旧机制该向量返回活 EntityRecord，其
+          components dict 可被原地突变——与 GuardedWorldState 同型缝隙）；
+        - ``getattr(facade, "_GuardedScenarioState__wrapped")`` →
+          WriteBarrierError；
+        - 门面只持标量拷贝 + 深冻结视图：槽扫描无活记录 / 活模型引用，
+          槽名不含 ``wrapped``；components / data 视图为快照容器而非
+          权威容器别名（``is not``）。
+        """
+        state = _make_base_state(0)
+        g = guard(state)
+        alice = g.entities[EntityId("ent_alice")]
+
+        with pytest.raises(WriteBarrierError):
+            getattr(alice, "_GuardedEntityRecord__wrapped")
+        with pytest.raises(WriteBarrierError):
+            getattr(g.scenario_state, "_GuardedScenarioState__wrapped")
+
+        for facade, live_type in ((alice, EntityRecord), (g.scenario_state, ScenarioState)):
+            for slot in getattr(type(facade), "__slots__", ()):
+                assert "wrapped" not in slot.lower()
+                try:
+                    value = object.__getattribute__(facade, slot)
+                except (AttributeError, WriteBarrierError):
+                    continue
+                assert not isinstance(value, live_type)
+
+        # 视图为快照容器，非权威容器别名
+        pos = alice.components[ComponentTypeId("space.position")]
+        assert pos is not state.entities[EntityId("ent_alice")].components[
+            ComponentTypeId("space.position")
+        ]
+        assert g.scenario_state.data is not state.scenario_state.data
+
+    def test_guard_all_reachable_paths_write_blocked_state_unchanged(self) -> None:
+        """G2 补充轮 1（必须测试 7 检查单补充）：经任何可达路径对权威状态
+        的原地容器写入均被拦截，且 s 的 revision / 内容不变。
+
+        攻击面（自 guard 门面出发全枚举）：
+
+        1. ``world_variables`` 顶层 / 嵌套 dict 原地写（TypeError）；
+        2. ``entities`` 容器 / 实体门面 components / 嵌套组件数据原地写
+           （TypeError）；
+        3. ``scenario_state.data`` 原地写（TypeError）；
+        4. 私有缝隙路径：mangled 槽访问（WriteBarrierError，取不到活状态）；
+        5. 门面属性赋值 / model_copy / model_construct / copy / deepcopy /
+           pickle（WriteBarrierError）。
+        """
+        state = WorldState(
+            world_revision=Revision(0),
+            entities=_make_base_state(0).entities,
+            world_variables={"calendar": {"day": 3}, "gold": 10},
+            scenario_state=ScenarioState(
+                scenario_id="scn_main", stage="opening", data={"goal": "find key"}
+            ),
+        )
+        snapshot = state.model_dump(mode="json")
+        revision_before = state.world_revision
+        g = guard(state)
+        alice = g.entities[EntityId("ent_alice")]
+        pos_ct = ComponentTypeId("space.position")
+
+        # (1) world_variables
+        with pytest.raises(TypeError):
+            g.world_variables["injected"] = 1
+        with pytest.raises(TypeError):
+            g.world_variables["calendar"]["day"] = 99
+        with pytest.raises(TypeError):
+            g.world_variables.pop("gold")
+
+        # (2) entities
+        with pytest.raises(TypeError):
+            g.entities[EntityId("ent_intruder")] = alice
+        with pytest.raises(TypeError):
+            alice.components[pos_ct]["x"] = 55
+        with pytest.raises(TypeError):
+            alice.components[ComponentTypeId("intruder")] = {"x": 0}
+
+        # (3) scenario
+        with pytest.raises(TypeError):
+            g.scenario_state.data["goal"] = "篡改"
+
+        # (4) 私有缝隙路径
+        for mangled, target in (
+            ("_GuardedWorldState__wrapped", g),
+            ("_GuardedEntityRecord__wrapped", alice),
+            ("_GuardedScenarioState__wrapped", g.scenario_state),
+        ):
+            with pytest.raises(WriteBarrierError):
+                getattr(target, mangled)
+
+        # (5) 门面写路径 / 复制路径
+        with pytest.raises(WriteBarrierError):
+            g.world_revision = Revision(99)
+        with pytest.raises(WriteBarrierError):
+            g.model_copy(update={"world_revision": Revision(99)})
+        with pytest.raises(WriteBarrierError):
+            g.model_construct()
+        with pytest.raises(WriteBarrierError):
+            copy.copy(g)
+        with pytest.raises(WriteBarrierError):
+            copy.deepcopy(g)
+        with pytest.raises(WriteBarrierError):
+            pickle.dumps(g)
+
+        # 权威状态：revision 与内容均不变
+        assert state.world_revision == revision_before
+        assert state.model_dump(mode="json") == snapshot
+
+    def test_guard_view_copy_deepcopy_still_independent_snapshots(self) -> None:
+        """G2 补充轮 1 回归：视图 copy / deepcopy 仍返回独立可变快照。
+
+        producer 侧合法工作副本模式不受机制变更影响：对读出的视图做
+        ``copy.copy`` / ``copy.deepcopy`` 返回独立 dict（顶层可变、嵌套深
+        拷贝），改副本不波及权威状态；视图判等口径不变；门面本体仍不可
+        copy / deepcopy（写屏障契约不变）。
+        """
+        state = WorldState(
+            world_revision=Revision(0),
+            entities=_make_base_state(0).entities,
+            world_variables={"calendar": {"day": 3}, "gold": 10},
+            scenario_state=ScenarioState(
+                scenario_id="scn_main", stage="opening", data={"goal": "find key"}
+            ),
+        )
+        snapshot = state.model_dump(mode="json")
+        g = guard(state)
+
+        # world_variables 视图：copy / deepcopy 独立快照
+        shallow = copy.copy(g.world_variables)
+        assert isinstance(shallow, dict)
+        shallow["injected"] = 1
+        assert "injected" not in state.world_variables
+        deep = copy.deepcopy(g.world_variables)
+        assert isinstance(deep, dict)
+        deep["calendar"]["day"] = 99
+        assert state.world_variables["calendar"]["day"] == 3, "副本突变不波及权威状态"
+
+        # 实体组件数据视图：deepcopy 独立快照
+        alice = g.entities[EntityId("ent_alice")]
+        comp = copy.deepcopy(alice.components[ComponentTypeId("attrs.hp")])
+        assert isinstance(comp, dict)
+        comp["current"] = 1
+        assert state.entities[EntityId("ent_alice")].components[
+            ComponentTypeId("attrs.hp")
+        ]["current"] == 100
+
+        # scenario data 视图：deepcopy 独立快照
+        sdata = copy.deepcopy(g.scenario_state.data)
+        sdata["goal"] = "篡改"
+        assert state.scenario_state.data == {"goal": "find key"}
+
+        # 门面本体仍不可复制（写屏障契约不变）
+        with pytest.raises(WriteBarrierError):
+            copy.copy(g)
+        with pytest.raises(WriteBarrierError):
+            copy.deepcopy(g)
+
+        # 视图判等口径不变
+        assert g.entities == state.entities
+        assert g.world_variables == state.world_variables
+        assert g.scenario_state == state.scenario_state
+        assert state.model_dump(mode="json") == snapshot
 
     def test_static_audit_scanner_self_test(self) -> None:
         """向扫描器喂入合成违规源码字符串全部被捕获；reducer.py 自身白名单放行。"""

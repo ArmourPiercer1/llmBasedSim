@@ -1000,3 +1000,88 @@ G2 复跑命令口径（与 G1 一致）：`.venv/bin/python -m pytest tests/ -q
 ---
 
 *文档完。本设计不改变任何已冻结 P1 public contract；实现过程中若出现与本文档的偏差，须按 Plan §10「public contract 修改必须经 Gate review」披露。P2 各任务包以本文档为唯一执行依据。*
+
+---
+
+## 勘误（2026-08-20，G2 补充轮 1）
+
+> 以下勘误来自 P2 补充开发与 G2 门禁盲审（1 名"补充内容"裁决 + 3 名"投机通过"
+> 裁决）的闭合工作。本章节为**纯追加**，不改动上文既有正文；正文与本勘误
+> 不一致处，以本勘误为准。
+
+### E1 GuardedWorldState 机制变更（name-mangled 槽泄漏闭合 v2）
+
+设计正文 §2.6.3 描述 wrapped state 以"名称改写私有槽"持有，且"即使全局拦截
+未武装，producer 侧也拿不到任何写路径"。G2 门禁盲审**证伪**了该表述：名称
+改写槽 `_GuardedWorldState__wrapped` 在属性**存在**时经描述符常规查找命中
+（`__getattr__` 兜底永不触发），`getattr(g, "_GuardedWorldState__wrapped")` /
+`object.__getattribute__(g, ...)` 返回**活**的权威 WorldState，其嵌套容器
+（world_variables / 组件 dict / scenario data）可被原地突变——revision 不变、
+无事件/trace，构成 reducer 之外的权威状态写路径。`_GuardedEntityRecord__wrapped`
+/ `_GuardedScenarioState__wrapped` 存在同型槽（实测：经该槽取得活记录后原地改
+组件 dict 静默成功）。
+
+已落地机制（G2 补充轮 1，`reducer.py`，工单二选一方案 **a：模块级私有注册表**）：
+`guard()` 每次发放单调递增 int token，权威状态与其深冻结视图快照（guard() 时
+一次性构造，快照语义不变）进入模块私有注册表 `_GUARD_REGISTRY`；
+`GuardedWorldState` 实例唯一槽只持 token，任何实例属性（槽 / `__dict__` /
+`vars()` / `object.__getattribute__` / name-mangling 惯例访问）都不承载、也
+解析不出 wrapped 权威状态引用。`_GuardedEntityRecord` / `_GuardedScenarioState`
+同步值化：只持构造期拷贝的标量字段 + 深冻结视图，无活记录 / 活模型槽
+（其 `model_dump` 出口由同值重建后委托，输出与原对象一致；`__eq__` 按字段值
+判定，与契约模型值相等互认口径不变）。生命周期：注册表条目寿命 == guard 实例
+寿命，实例 `__del__` 释放（CPython 引用计数下确定；引用环场景由 gc 周期回收
+触发 `__del__`）；级联触发器求值上下文（§7.2）仅在单轮求值期间持有 guard，
+求值结束 executor 释放引用 → 条目自动回收，cascade 侧无额外清理点（最小改动
+方案，含泄漏回归测试）。公开行为全部保持：冻结视图语义（容器原地修改
+TypeError）、门面 copy/deepcopy/pickle → WriteBarrierError（门面不持任何复制
+路径——pickle 若放行会产生共享 token 的第二实例，其一回收即令另一实例失效）、
+视图 copy/deepcopy → 独立可变快照、写屏障行为、core `__all__` 导出面（纯保持，
+无增删）。
+
+**残留风险明示**：
+
+- raw `WorldState` 嵌套容器本身仍原地可变（**P1 D-15 advisory**）：producer
+  若持有 raw WorldState 引用，仍可原地突变嵌套容器（revision 不反映、无事件）；
+- 层二写屏障（opt-in 武装）只包裹 4 条 pydantic 构造逃逸路径
+  （`model_copy` / `model_construct` / `__copy__` / `__deepcopy__`），不覆盖
+  既有容器的原地修改；
+- producer 只应获得 `guard()` 视图。防护按三层口径：guard 视图（深冻结快照 +
+  零权威引用泄漏）+ 写屏障（4 条构造逃逸路径）+ 管线层 reducer 重校验
+  （`commit_revision == base_revision + 1` 与 L2 引用检查）。
+
+### E2 pickle 登记为第 5 条构造逃逸（加固项归 P8 persistence）
+
+层二写屏障（§2.6.2）拦截 4 条逃逸路径，但 **armed 状态下不阻断 pickle**：
+`pickle.loads(pickle.dumps(state))` 在武装态仍可成功，产生**分离对象**——
+它是副本而非权威实例本身，对其原地篡改不波及权威实例（实测：篡改 loaded
+副本的 world_variables / 组件 dict 后权威状态零变化）；风险在于反序列化对象
+绕过构造期校验、可被当作"陈旧权威状态"进入下游流程。据此将 pickle 登记为
+**第 5 条构造逃逸**；加固项归 **P8 persistence**：包裹 `__reduce_ex__` /
+`__setstate__`（武装态拒绝序列化或反序列化时强制重校验），或反序列化后强制
+`model_validate` 重校验 + 断言测试。
+
+### E3 AuthoritySelector 维度对齐
+
+以执行计划 §11 与实现为准：`AuthoritySelector` 为 5 个**单值**维度
+——`component_type` / `field` / `domain_tag` / `effect_type` / `entity_tag`
+（未指定维度 = 通配；指定维度全部命中才算匹配；policy 求值**首匹配**、
+无匹配规则即拒绝——**闭默认**）；**无 `entity_class` 维度**，`entity_tag`
+非列表 AND。设计正文 §3.1 列出的 `entity_class: str | None` +
+`entity_tags: list[str]`（全部命中 = AND 语义）与实现不一致，以此勘误为准。
+
+### E4 测试布局
+
+P2 测试实际全部位于 `tests/engine_v2/core/`（reducer / transaction executor /
+validation 单测与 P2-T09 对抗套件、G2 静态审计确认套件合并于 `core/` 下），
+未创建 `tests/engine_v2/kernel/` 子目录。设计正文 §2.6.1 / §11 中
+`kernel/` 子目录的描述（如 `tests/engine_v2/kernel/test_transaction_executor.py`）
+以此勘误为准。
+
+### E5 风险登记（供 Gate Report 摘录）
+
+| # | 风险 | 现状 | 后续 |
+|---|------|------|------|
+| R1 | 写屏障武装点当前仅 `CascadeExecutor.__init__`（`cascade.py`） | 绕过 `CascadeExecutor` 直接调用 `apply_transaction` / `commit_transaction` 的组件不受层二武装屏障覆盖（层三 guard 视图与管线层 reducer 重校验仍有效） | P3+ 评估武装点下沉至 commit 路径，或在启动自检断言 `write_barrier_installed()` |
+| R2 | `write_barrier_exempt` 位于 core 公开导出面（`core.__init__` 的 `__all__`） | 豁免窗口面向测试内部构建病态数据与诊断；对生产代码暴露即构成合法写绕过面 | P8 评估收窄为 devtools-only |
+| R3 | `model_validate`（正常构造）可伪造 revision | 设计上 reducer 是唯一合法 mutation 路径，但构造 API 本身不区分调用意图（正常构造不在 4 条逃逸路径内，属有意放行） | 管线层 `commit_revision == base_revision + 1` 与 L2 引用检查（`check_transaction_references`）拦截 stale / 伪造 revision |
