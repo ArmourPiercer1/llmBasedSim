@@ -54,7 +54,10 @@
      ``vars()`` / ``object.__getattribute__`` / name-mangling 惯例）不
      承载、不可解析出 wrapped 权威 WorldState 引用（旧
      ``_GuardedWorldState__wrapped`` 改名槽经描述符常规查找可达，已被
-     证伪并消除）。防护三层口径：guard 视图（本层，深冻结快照）+ 层二
+     证伪并消除）。**G2 补充轮 2（注册表纯快照化）**：注册表条目不再持
+     活权威引用，仅存 ``guard()`` 时刻经 JSON roundtrip 构造的深冻结
+     快照（独立副本、与活状态零别名）——对注册表条目的任何原地写只污染
+     该条目自己的快照副本，任何时刻解析不到可变活权威状态。防护三层口径：guard 视图（本层，深冻结快照）+ 层二
      写屏障（4 条 pydantic 构造逃逸路径，opt-in 武装）+ 管线层 reducer
      重校验（commit_revision == base_revision + 1 与 L2 引用检查）；
      raw WorldState 嵌套容器本身仍原地可变（P1 D-15 advisory），producer
@@ -1234,11 +1237,18 @@ def _freeze_deep(value: Any) -> Any:
 # 其嵌套容器（world_variables / 组件 dict / scenario data）可被原地修改，
 # revision 不变、无事件/trace——reducer 之外的权威状态写路径未闭合。
 #
-# 机制（G2 补充轮 1）：``guard()`` 每次发放单调递增 int token，权威状态
-# 与其深冻结视图快照（guard() 时一次性构造，快照语义不变）进入模块私有
+# 机制（G2 补充轮 1/2）：``guard()`` 每次发放单调递增 int token，
+# ``guard()`` 时刻的**深冻结快照**（权威状态的独立副本，经 JSON roundtrip
+# 构造、与活状态零别名——注册表条目上解析不出任何活权威状态引用）与其
+# 深冻结视图快照（guard() 时一次性构造，快照语义不变）进入模块私有
 # 注册表 :data:`_GUARD_REGISTRY`；GuardedWorldState 实例只持 token——任何
 # 实例属性（槽 / ``__dict__`` / ``vars()`` / ``object.__getattribute__`` /
-# name-mangling 惯例访问）都不承载、也解析不出 wrapped 权威状态引用。
+# name-mangling 惯例访问）都不承载、也解析不出 wrapped 权威状态引用；
+# 注册表条目同理（G2 补充轮 2 纯快照化：轮 1 的 ``state`` 槽曾持**活**
+# 权威引用，``token → 注册表 → 活状态 → 原地突变嵌套容器`` 构成无
+# revision/事件/trace 的权威写路径；现对注册表条目的任何原地写只污染
+# 该条目自己的快照副本，权威状态不受影响——E1 式"零权威引用泄漏"与
+# 代码事实一致）。
 #
 # 生命周期：注册表条目寿命 == guard 实例寿命。实例 ``__del__`` 释放
 # （CPython 引用计数下确定；guard 即便参与引用环，Python ≥3.4 的 gc 周期
@@ -1250,7 +1260,15 @@ _GUARD_TOKEN_COUNTER = itertools.count(1)
 
 
 class _GuardEntry:
-    """单个 ``guard()`` 的注册表条目：权威状态 + guard() 时构造的深冻结视图快照。
+    """单个 ``guard()`` 的注册表条目：guard() 时刻深冻结快照 + guard() 时构造的深冻结视图快照。
+
+    G2 补充轮 2（纯快照化）：``state`` 槽持**深冻结快照**——权威状态的
+    独立副本（经 JSON roundtrip 构造，嵌套容器 ``entities`` / 组件 dict /
+    ``world_variables`` / scenario ``data`` 全部为重建的独立对象，与活状态
+    **零别名**），不再持活权威 WorldState 引用：对快照的任何原地写只
+    污染该条目自己的副本，权威状态的内容 / revision / 事件 / trace 不受
+    影响——任何时刻 ``_GUARD_REGISTRY[token]`` 都解析不到可变活权威状态
+    （轮 1 的"注册表持活引用"缝隙由此闭合，勘误 R4）。
 
     视图快照语义不变：guard() 时一次构造、恒有效（被包装状态为 frozen
     契约）；raw 状态嵌套容器若被原地突变，快照不反射（P1 D-15 advisory
@@ -1278,10 +1296,23 @@ def _register_guard(
     world_variables_view: Any,
     scenario_view: _GuardedScenarioState,
 ) -> int:
-    """注册 state + 视图快照，返回 guard token（单调递增、不复用）。"""
+    """注册深冻结快照（guard() 时刻独立副本）+ 视图快照，返回 guard token
+    （单调递增、不复用）。
+
+    G2 补充轮 2（注册表纯快照化）：条目 ``state`` 槽存放的不再是活权威
+    引用，而是 ``guard()`` 时刻经 JSON roundtrip 构造的深冻结快照——与
+    ``state.py`` 的 ``_with_*`` 私有构造缝隙同一机制（``WorldState.
+    model_validate(state.model_dump(mode="json"))``）：全部嵌套容器经
+    序列化重建为独立对象，与活状态零别名。任何经注册表解析出的快照被
+    原地突变时，只污染该条目自己的快照副本；权威状态（内容 / revision /
+    事件 / trace）不受影响。委托读取（world_revision / 实体视图 /
+    scenario 视图 / model_dump 等）全部自该快照计算，快照与活状态在
+    ``guard()`` 时刻值相等，门面读值口径不变。
+    """
     token = next(_GUARD_TOKEN_COUNTER)
+    snapshot = WorldState.model_validate(state.model_dump(mode="json"))
     _GUARD_REGISTRY[token] = _GuardEntry(
-        state, entities_view, world_variables_view, scenario_view
+        snapshot, entities_view, world_variables_view, scenario_view
     )
     return token
 
@@ -1540,15 +1571,19 @@ def guard(state: WorldState) -> GuardedWorldState:
     委托 + 序列化出口；任何容器原地修改抛 ``TypeError``，门面属性赋值 /
     copy 路径 / 私有缝隙访问抛 :class:`WriteBarrierError`。
 
-    **G2 补充轮 1（name-mangling 槽缝隙闭合）**：实例不再持有任何指向
-    wrapped 权威状态的槽——旧 ``_GuardedWorldState__wrapped`` 名称改写槽
-    在属性存在时经描述符常规查找命中（``__getattr__`` 永不触发），
-    ``getattr(g, ...)`` / ``object.__getattribute__(g, ...)`` 返回活
-    WorldState，其嵌套容器可被原地突变（revision 不变、无事件/trace）
-    ——reducer 之外的权威状态写路径。现 ``guard()`` 发放单调递增 int
-    token，权威状态与其深冻结视图快照进入模块私有注册表
-    :data:`_GUARD_REGISTRY`，实例只持 token（任何实例属性都不承载、也
-    解析不出权威状态引用）。
+    **G2 补充轮 1/2（name-mangling 槽缝隙 + 注册表活引用缝隙闭合）**：
+    实例不再持有任何指向 wrapped 权威状态的槽——旧
+    ``_GuardedWorldState__wrapped`` 名称改写槽在属性存在时经描述符常规
+    查找命中（``__getattr__`` 永不触发），``getattr(g, ...)`` /
+    ``object.__getattribute__(g, ...)`` 返回活 WorldState，其嵌套容器可
+    被原地突变（revision 不变、无事件/trace）——reducer 之外的权威状态
+    写路径。现 ``guard()`` 发放单调递增 int token，``guard()`` 时刻的
+    **深冻结快照**（权威状态的独立副本，经 JSON roundtrip 构造、与活
+    状态零别名——G2 补充轮 2：注册表条目不再持活权威引用，对注册表
+    条目的任何原地写只污染该条目自己的快照副本）与其深冻结视图快照进入
+    模块私有注册表 :data:`_GUARD_REGISTRY`，实例只持 token（任何实例
+    属性都不承载、也解析不出权威状态引用；注册表条目同理——任何时刻
+    都解析不到可变活权威状态）。
 
     生命周期：注册表条目寿命 == guard 实例寿命，实例 ``__del__`` 释放
     （CPython 引用计数下确定；引用环场景由 gc 周期回收触发
@@ -1558,8 +1593,9 @@ def guard(state: WorldState) -> GuardedWorldState:
     如实边界（防护三层口径）：raw WorldState 嵌套容器本身仍原地可变
     （P1 D-15 advisory）——若 producer 持有 raw WorldState 引用，仍可能
     原地突变嵌套容器（revision 不反映）。防护来自三层：本层 guard 视图
-    （深冻结快照 + 零权威引用泄漏）、层二写屏障（包裹 4 条 pydantic
-    构造逃逸路径，opt-in 武装）、管线层 reducer 重校验
+    （深冻结快照 + 零权威引用泄漏——实例槽与注册表条目均不承载活权威
+    引用，注册表现仅存 guard() 时刻深冻结快照）、层二写屏障（包裹 4 条
+    pydantic 构造逃逸路径，opt-in 武装）、管线层 reducer 重校验
     （commit_revision == base_revision + 1 与 L2 引用检查拦截 stale/伪造
     revision）。producer 只应获得 ``guard()`` 视图。
 
@@ -1593,15 +1629,19 @@ class GuardedWorldState:
       （``data`` 深冻结）。任何 ``__setitem__`` / ``__delitem__`` /
       ``clear()`` / ``pop()`` 等容器原地修改均抛 ``TypeError``，属性赋值
       等写路径抛 :class:`WriteBarrierError`；
-    - **G2 补充轮 1（name-mangling 槽缝隙闭合）**：实例不再持有指向
-      wrapped 权威状态的槽——唯一槽只持 ``guard()`` 发放的 int token，
-      权威状态与其深冻结视图快照存于模块私有注册表
+    - **G2 补充轮 1/2（name-mangling 槽缝隙 + 注册表活引用缝隙闭合）**：
+      实例不再持有指向 wrapped 权威状态的槽——唯一槽只持 ``guard()``
+      发放的 int token，``guard()`` 时刻的深冻结快照（权威状态的独立
+      副本，经 JSON roundtrip 构造、与活状态零别名——G2 补充轮 2：
+      注册表条目不再持活权威引用）与其深冻结视图快照存于模块私有注册表
       :data:`_GUARD_REGISTRY`；任何实例属性（槽 / ``__dict__`` /
       ``vars()`` / ``object.__getattribute__`` / name-mangling 惯例
-      访问）都不承载、也解析不出 wrapped 权威 WorldState 引用。旧
-      ``_GuardedWorldState__wrapped`` 名称改写槽在属性存在时经描述符
-      常规查找命中（``__getattr__`` 永不触发），``getattr(g, ...)``
-      返回活权威状态、其嵌套容器可被原地突变——该缝隙已消除；
+      访问）都不承载、也解析不出 wrapped 权威 WorldState 引用，注册表
+      条目任何时刻都解析不到可变活权威状态（对条目快照的原地写只污染
+      该条目自己的副本）。旧 ``_GuardedWorldState__wrapped`` 名称改写
+      槽在属性存在时经描述符常规查找命中（``__getattr__`` 永不触发），
+      ``getattr(g, ...)`` 返回活权威状态、其嵌套容器可被原地突变——
+      该缝隙已消除；
     - **一律抛 :class:`WriteBarrierError`**：``model_copy`` /
       ``model_construct`` / ``copy.copy`` / ``copy.deepcopy`` /
       ``pickle``（不参与 round-trip）/ 属性赋值 / 属性删除 / 私有缝隙
@@ -1635,7 +1675,9 @@ class GuardedWorldState:
         world_variables_view = _freeze_deep(state.world_variables)
         scenario_view = _GuardedScenarioState(state.scenario_state)
         # 实例只持 token（经 object.__setattr__ 绕过本类的 __setattr__
-        # 拦截——构造期唯一一次实例状态写入）；state + 视图快照入注册表条目
+        # 拦截——构造期唯一一次实例状态写入）；_register_guard 内将
+        # guard() 时刻深冻结快照（JSON roundtrip 独立副本，G2 补充轮 2：
+        # 不存活引用）+ 视图快照入注册表条目
         object.__setattr__(
             self,
             "_GuardedWorldState__token",

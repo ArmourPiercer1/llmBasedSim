@@ -15,14 +15,24 @@ P2-T06 实现载体）。
   （``commit_revision is None``、``effects == []``——部分提交在数据层
   不可表达，P1 §5.6 不变量 2）。
 
-**原子性机制（§6.3）**：两类原子失败源统一表现为 ABORTED 事务 + 状态/
+**原子性机制（§6.3）**：三类原子失败源统一表现为 ABORTED 事务 + 状态/
 revision 原样——
 
 1. **终检失败**：装配后调用 :func:`check_transaction_references`
    （P1 §10.1 义务 C2 的 core 实现，P2-T04 交付）报告
    ``missing_entity`` / ``stale_revision`` / ``duplicated_effect_id``
    → ``abort_reason="reference_check_failed: " + "; ".join(issues)``；
-2. **reducer 应用失败**：``apply_transaction`` 抛
+2. **base/commit revision 一致性检查失败**（G2 补充轮 2）：任一
+   ``effect.base_revision != base_state.world_revision`` →
+   ``abort_reason="base_revision_mismatch: " + "; ".join(issues)``。
+   管线内 L1 的 ``future_base_revision`` 检查（validation 阶段 6）只
+   覆盖管道路径，**不覆盖直接调用** ``commit_transaction`` 的路径——
+   若无本检查，future/stale 之外的任意不一致 base_revision（含 future）
+   可静默提交出"已提交效果记录的 base_revision 与事务 base_revision
+   自相矛盾"的事务。L2 已报 ``stale_revision``（``base < current``）
+   的批次先行 abort（既有行为不变），本检查在 L2 之后、reducer 应用
+   之前兜住 L2 明确不报的形态（``base > current``）及其余不等形态；
+3. **reducer 应用失败**：``apply_transaction`` 抛
    :class:`EffectApplicationError`（携带 ``sequence``/``effect_id``）或
    批级 :class:`ReducerError`（防御性复检 / 未注册 effect_type）→
    ``abort_reason="reducer_failed[seq=<i>]: <detail>"``（单效果失败）或
@@ -189,7 +199,8 @@ def commit_transaction(
         恰 +1）、``new_state.world_revision == txn.commit_revision``、
         ``len(events) == len(accepted_effects)``（1:1 发射，D-P2-12）；
         ``new_state`` 与 ``base_state`` 三向零别名。
-        失败（L2 终检 / reducer 应用）：``(base_state, aborted, [])``——
+        失败（L2 终检 / base-revision 一致性检查 / reducer 应用）：
+        ``(base_state, aborted, [])``——
         返回**原状态对象**（原样）、``aborted.status`` ABORTED、
         ``commit_revision is None``、``effects == []``、``abort_reason``
         非空（格式见模块 docstring 原子性机制）。
@@ -248,6 +259,34 @@ def commit_transaction(
             base_state,
             tx_id,
             reason="reference_check_failed: " + "; ".join(issues),
+            producer=producer,
+            rejected_effects=effects,
+            logical_tick=logical_tick,
+            cascade=cascade,
+        )
+        return base_state, aborted, []
+
+    # 步骤 6b：base/commit revision 一致性检查（G2 补充轮 2）：每个
+    # effect.base_revision 必须等于 base 状态的 world_revision。
+    # 管线内 L1 的 future_base_revision 检查（validation 阶段 6）不覆盖
+    # 直接调用路径；L2 对 base > current 明确不报（见
+    # check_transaction_references docstring）——若不在 commit 路径兜底，
+    # future base_revision 直接调用将静默提交出"已提交效果记录的
+    # base_revision 与事务 base_revision 自相矛盾"的事务。位置在 L2 之
+    # 后：stale（base < current）批次仍由 L2 以既有 stale_revision 语义
+    # 先行 abort，本步只兜住 L2 放行后的不等形态，既有 abort_reason 不
+    # 变（与 L2 同一处置口径：原子 abort，不抛异常）。
+    mismatches = [
+        f"base_revision_mismatch:{str(effect.effect_id)}:"
+        f"base={int(effect.base_revision)} expected={int(base_revision)}"
+        for effect in effects
+        if effect.base_revision != base_revision
+    ]
+    if mismatches:
+        aborted = abort_transaction(
+            base_state,
+            tx_id,
+            reason="base_revision_mismatch: " + "; ".join(mismatches),
             producer=producer,
             rejected_effects=effects,
             logical_tick=logical_tick,

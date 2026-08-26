@@ -154,6 +154,7 @@ from src.engine_v2.core.provenance import (
     OriginKind,
     Provenance,
 )
+import src.engine_v2.core.reducer as reducer
 from src.engine_v2.core.reducer import (
     EFFECT_CREATE_ENTITY,
     EFFECT_REMOVE_ENTITY,
@@ -1848,6 +1849,300 @@ class TestScenario8CreateEntityEndToEnd:
 
 
 # ==============================================================================
+# G2 补充轮 2: 注册表纯快照化 + commit 路径一致性 (注册表条目不得解析活权威状态)
+# ==============================================================================
+
+
+class TestG2SupplementRound2RegistrySnapshot:
+    """G2 补充轮 2 对抗回归：注册表条目纯快照化 + commit 路径一致性检查。
+
+    上轮 G2 盲审一致发现：``guard()`` 实例唯一槽持 int token，token 可经
+    ``object.__getattribute__`` 读出，模块级 ``_GUARD_REGISTRY[token].state``
+    解析出**活**权威 WorldState（嵌套容器别名同源），原地突变静默成功——
+    revision 不变、无事件/trace，级联下注入突变可随合法事务提交且无效果
+    声明。本轮修复：注册表条目仅存 ``guard()`` 时刻经 JSON roundtrip 构造
+    的深冻结快照（独立副本、零别名）——对条目快照的任何原地写只污染该条
+    目自己的副本，权威状态不受影响。本类全部为**纯新增**断言，不改任何
+    既有测试。
+    """
+
+    def _make_state(self, rev: int = 0) -> WorldState:
+        """含实体（组件 dict）+ world_variables + scenario data 的测试状态。"""
+        return WorldState(
+            world_revision=Revision(rev),
+            entities={
+                EntityId("ent_alice"): EntityRecord(
+                    entity_id=EntityId("ent_alice"),
+                    components={
+                        ComponentTypeId("attrs.hp"): {"current": 100, "max": 100},
+                    },
+                    entity_class="character",
+                    tags=["hero"],
+                )
+            },
+            world_variables={"gold": 10, "calendar": {"day": 1}},
+            scenario_state=ScenarioState(scenario_id="s1", stage="night", data={"goal": "x"}),
+        )
+
+    def test_registry_entry_state_is_not_live_authority(self) -> None:
+        """(1) 恒等性：取 token 后 ``reducer._GUARD_REGISTRY[tok].state is s``
+        为 False——注册表条目持深冻结快照（独立副本），不再存活权威引用；
+        全部嵌套容器零别名，但 guard() 时刻值相等（门面读值口径不变）。"""
+        s = self._make_state(0)
+        g = guard(s)
+        tok = object.__getattribute__(g, "_GuardedWorldState__token")
+        entry = reducer._GUARD_REGISTRY[tok]
+
+        # 恒等性断言（任务 2.1：修复后恒成立）
+        assert reducer._GUARD_REGISTRY[tok].state is not s
+        # 嵌套容器零别名（快照为独立对象）
+        assert entry.state.world_variables is not s.world_variables
+        assert entry.state.world_variables["calendar"] is not s.world_variables["calendar"]
+        assert (
+            entry.state.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")]
+            is not s.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")]
+        )
+        assert entry.state.scenario_state is not s.scenario_state
+        assert entry.state.scenario_state.data is not s.scenario_state.data
+        # guard() 时刻值相等（委托读取口径不变）
+        assert entry.state == s
+
+    def test_registry_entry_inplace_mutation_leaves_authority_untouched(self) -> None:
+        """(2) 注册表条目原地突变（world_variables + 组件 dict）后，权威状态
+        s 的内容 / revision / 事件 / trace 全部不变；注入突变不得随合法
+        事务提交（提交产物只含已声明效果）。"""
+        s = self._make_state(0)
+        base_dump = s.model_dump(mode="json")
+        g = guard(s)
+        tok = object.__getattribute__(g, "_GuardedWorldState__token")
+        entry = reducer._GUARD_REGISTRY[tok]
+
+        # 经注册表条目原地突变（轮 1 机制下此处直接污染权威状态；
+        # 快照化后只污染条目自己的副本）
+        entry.state.world_variables["injected"] = 1
+        entry.state.world_variables["calendar"]["day"] = 99
+        entry.state.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")][
+            "current"
+        ] = 1
+
+        # 权威状态：内容 / revision 全不变
+        assert s.model_dump(mode="json") == base_dump
+        assert s.world_revision == Revision(0)
+        # 注入突变只落在条目自己的快照副本上
+        assert entry.state.world_variables["injected"] == 1
+        assert entry.state.world_variables["calendar"]["day"] == 99
+
+        # 合法事务提交：注入突变不得随提交落盘（无效果声明的变更不可达）
+        new_state, txn, events = commit_transaction(
+            s,
+            [
+                _make_proposed_effect(
+                    "eff_legit",
+                    EFFECT_SET_WORLD_VARIABLE,
+                    StateDomainTarget(domain=StateDomainId("world_variables")),
+                    {"key": "gold", "value": 5},
+                    base_revision=0,
+                )
+            ],
+            new_transaction_id(),
+            Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE),
+        )
+        assert txn.status == TransactionStatus.COMMITTED
+        assert new_state.world_revision == Revision(1)
+        # 提交产物只含已声明效果（gold=5）；注入键与组件突变零残留
+        assert new_state.world_variables == {"gold": 5, "calendar": {"day": 1}}
+        assert (
+            new_state.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")]
+            == {"current": 100, "max": 100}
+        )
+        # 事件 1:1 对应已声明效果（无未声明变更产生的事件）
+        assert len(events) == 1
+        assert events[0].event_type == EFFECT_SET_WORLD_VARIABLE
+
+    def test_producer_guard_only_token_registry_path_cannot_reach_live_state(self) -> None:
+        """(3) producer 仅持 guard（不持任何原始引用）时，显式覆盖
+        "token 读取 + 模块级 _GUARD_REGISTRY 解析"路径：解析出的条目上
+        不存在活权威状态；条目全槽扫描无活状态引用/别名容器；对解析结果
+        的原地写（快照可变性）只作用于副本。"""
+        s = self._make_state(0)
+        g = guard(s)
+        base_dump = s.model_dump(mode="json")
+
+        # producer 视角：只持有 guard 对象
+        tok = object.__getattribute__(g, "_GuardedWorldState__token")
+        assert isinstance(tok, int)
+        entry = reducer._GUARD_REGISTRY[tok]
+
+        # 条目任一槽都解析不出活权威状态 s（本体或别名容器）
+        live_containers = (
+            s,
+            s.world_variables,
+            s.world_variables["calendar"],
+            s.entities,
+            s.entities[EntityId("ent_alice")],
+            s.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")],
+            s.scenario_state,
+            s.scenario_state.data,
+        )
+        for slot in type(entry).__slots__:
+            value = object.__getattribute__(entry, slot)
+            assert not any(value is c for c in live_containers), f"槽 {slot} 解析出活权威容器"
+
+        # 对解析结果的原地写（快照副本可变性）只作用于副本
+        entry.state.world_variables["prod_injected"] = 42
+        entry.state.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")][
+            "current"
+        ] = 0
+        assert s.model_dump(mode="json") == base_dump
+        assert s.world_revision == Revision(0)
+        assert entry.state.world_variables["prod_injected"] == 42
+
+    def test_cascade_trigger_guard_only_no_undeclared_committed_change(self) -> None:
+        """(4) 端到端：级联 trigger 仅持 guard 视图，经 "token → 注册表 →
+        条目快照" 路径原地注入突变并正常提案已声明效果（与根提案不同
+        location，避免 §7.5 环路熔断）——提交后权威状态无任何未声明字段
+        变化（注入突变零落盘，声明效果正常落地）。"""
+        s = self._make_state(0)
+        base_dump = s.model_dump(mode="json")
+
+        def inject_and_propose(
+            events: list[DomainEvent], guarded: GuardedWorldState, depth: int
+        ) -> list[ProposedEffect]:
+            if depth != 0 or not events:
+                return []
+            # 注入者只有 guard 视图：经 token + 模块级注册表解析条目，
+            # 对解析结果原地突变（轮 1 机制下污染权威状态并随提交落盘）
+            tok = object.__getattribute__(guarded, "_GuardedWorldState__token")
+            entry = reducer._GUARD_REGISTRY[tok]
+            entry.state.world_variables["injected"] = "ghost"
+            entry.state.world_variables["calendar"]["day"] = 999
+            entry.state.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")][
+                "current"
+            ] = 666
+            return [
+                _make_proposed_effect(
+                    "eff_declared",
+                    EFFECT_SET_COMPONENT,
+                    EntityTarget(
+                        entity_id=EntityId("ent_alice"),
+                        component_type=ComponentTypeId("attrs.hp"),
+                    ),
+                    {"current": 10, "max": 10},
+                    source="rule.responder",
+                    base_revision=int(guarded.world_revision),
+                    cause_ids=[CauseRef(kind=CauseKind.EVENT, ref_id=str(events[0].event_id))],
+                )
+            ]
+
+        policy = AuthorityPolicy(
+            rules=[
+                AuthorityRule(
+                    selector=AuthoritySelector(),
+                    allowed_writers=[ProducerId("rule.system"), ProducerId("rule.responder")],
+                )
+            ]
+        )
+        trig_reg = CascadeTriggerRegistry()
+        trig_reg.register(SyncTrigger("inject_and_propose", inject_and_propose))
+        executor = CascadeExecutor(policy=policy, triggers=trig_reg)
+
+        root = _make_proposed_effect(
+            "eff_root",
+            EFFECT_SET_WORLD_VARIABLE,
+            StateDomainTarget(domain=StateDomainId("world_variables")),
+            {"key": "seed", "value": 1},
+            base_revision=0,
+        )
+        result = executor.run(
+            [root],
+            s,
+            causal_root_id="act_ghost_inject",
+            origin=Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE),
+        )
+
+        # 两回合两事务（根提案 + 触发器声明效果），全部 COMMITTED
+        assert len(result.transactions) == 2
+        assert all(txn.status == TransactionStatus.COMMITTED for txn in result.transactions)
+        assert result.final_state.world_revision == Revision(2)
+        # 声明效果落地（hp 为声明值 {10,10}，非注入值 666）
+        assert (
+            result.final_state.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")]
+            == {"current": 10, "max": 10}
+        )
+        # 注入突变零落盘：最终状态 == 仅应用声明效果的期望形态
+        expected = dict(base_dump)
+        expected["world_revision"] = 2
+        expected["world_variables"] = {"gold": 10, "calendar": {"day": 1}, "seed": 1}
+        expected["entities"]["ent_alice"]["components"]["attrs.hp"] = {"current": 10, "max": 10}
+        assert result.final_state.model_dump(mode="json") == expected
+        # 逐事务核对：已提交效果集合 == 声明集合（无未声明变更进入事务）
+        committed_ids = sorted(
+            str(committed.effect.effect_id)
+            for txn in result.transactions
+            for committed in txn.effects
+        )
+        assert committed_ids == ["eff_declared", "eff_root"]
+
+    def test_pickle_roundtrip_loaded_object_distinct_from_authority(self) -> None:
+        """(5) E2 pickle 回归补强：载入对象与权威状态不同恒等（副本非
+        权威实例本身），值相等、零别名——篡改载入副本不波及权威状态
+        （与勘误 E2 实测口径一致）；guard 门面的 pickle 拦截由既有测试
+        ``test_guard_all_reachable_paths_write_blocked_state_unchanged``
+        覆盖（本类不重复、不改既有断言）。"""
+        s = self._make_state(0)
+        base_dump = s.model_dump(mode="json")
+
+        loaded = pickle.loads(pickle.dumps(s))
+        # 不同恒等 + 值相等
+        assert loaded is not s
+        assert loaded == s
+        # 零别名：嵌套容器为独立对象
+        assert loaded.world_variables is not s.world_variables
+        assert (
+            loaded.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")]
+            is not s.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")]
+        )
+        # 篡改载入副本 → 权威状态零变化
+        loaded.world_variables["gold"] = 999999
+        loaded.entities[EntityId("ent_alice")].components[ComponentTypeId("attrs.hp")][
+            "current"
+        ] = -1
+        assert s.model_dump(mode="json") == base_dump
+        assert s.world_revision == Revision(0)
+
+    def test_future_base_revision_direct_commit_rejected(self) -> None:
+        """(6) 任务 4 回归：公开 commit_transaction 直接调用 + future
+        base_revision（effect.base_revision > base 状态 world_revision）→
+        原子拒绝（ABORTED，base_revision_mismatch 语义），不得静默提交出
+        "已提交效果记录的 base_revision 与事务 base_revision 自相矛盾"
+        的事务；状态 / revision 原样。"""
+        s = self._make_state(0)
+        base_dump = s.model_dump(mode="json")
+        new_state, txn, events = commit_transaction(
+            s,
+            [
+                _make_proposed_effect(
+                    "eff_future",
+                    EFFECT_SET_WORLD_VARIABLE,
+                    StateDomainTarget(domain=StateDomainId("world_variables")),
+                    {"key": "k", "value": 1},
+                    base_revision=10,  # future：base 状态是 0
+                )
+            ],
+            new_transaction_id(),
+            Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE),
+        )
+        assert txn.status == TransactionStatus.ABORTED
+        assert "base_revision_mismatch" in txn.abort_reason
+        assert txn.commit_revision is None and txn.effects == []
+        assert events == []
+        # 原子性：状态对象原样、内容不变
+        assert new_state is s
+        assert s.model_dump(mode="json") == base_dump
+        assert s.world_revision == Revision(0)
+
+
+# ==============================================================================
 # G2 门禁静态代码扫描确认 (Plan §11 G2 / P2 §12)
 # ==============================================================================
 
@@ -1885,6 +2180,25 @@ class TestG2StaticScanConfirmation:
             "remove_world_variable",
             "mutate",
             "update_state",
+        }
+    )
+
+    #: 注册表条目权威数据属性词表（G2 补充轮 2）：``_GUARD_REGISTRY[...]``
+    #: 索引后接以下任一属性访问即"直接注册表-状态访问"（绕过 guard 门面
+    #: 的唯一授权读面）——含条目槽（``state`` / ``*_view``）与 WorldState
+    #: 权威数据字段（``entities`` / ``world_variables`` / ``scenario_state``
+    #: / ``world_revision`` / ``schema_version``）。
+    _GUARD_REGISTRY_STATE_ATTRS: frozenset[str] = frozenset(
+        {
+            "state",
+            "entities",
+            "world_variables",
+            "scenario_state",
+            "entities_view",
+            "world_variables_view",
+            "scenario_view",
+            "world_revision",
+            "schema_version",
         }
     )
 
@@ -1984,6 +2298,73 @@ class TestG2StaticScanConfirmation:
         assert self._scan_state_container_subscript_writes(good_source) == []
         assert self._scan_public_mutator_api(good_source) == []
 
+    def test_no_direct_guard_registry_state_access(self) -> None:
+        """新增（G2 补充轮 2）：静态扫描 src/engine_v2/，断言白名单外无任何
+        "模块级 ``_GUARD_REGISTRY[...]`` 索引后接权威数据属性访问"——直接
+        注册表-状态访问绕过 guard 门面的唯一授权读面（条目仅存 guard() 时刻
+        深冻结快照；读快照亦属越权面，写快照会污染副本，且该访问形态本身
+        即轮 1 "注册表持活引用"缝隙的回潮信号）。含经别名变量中转形态
+        （``entry = _GUARD_REGISTRY[tok]`` → ``entry.state``）。"""
+        violations: list[str] = []
+        for py_file in ENGINE_V2_DIR.rglob("*.py"):
+            if py_file.name in self._SCAN_WHITELIST:
+                continue
+            violations.extend(
+                self._scan_guard_registry_state_access(
+                    py_file.read_text(encoding="utf-8"), py_file.name
+                )
+            )
+
+        assert not violations, (
+            f"发现直接注册表-状态访问（K2：guard 门面是唯一授权读面）: {violations}"
+        )
+
+    def test_guard_registry_scanner_self_test_on_synthetic_source(self) -> None:
+        """自测（同款纪律）：合成违规源码必须被注册表-状态访问扫描器捕获
+        ——直接形态（模块限定 / 模块级名）与别名变量中转形态均命中；合法
+        形态（guard 门面读面 / 非注册表下标）不误报。"""
+        bad_source = (
+            "import src.engine_v2.core.reducer as reducer_mod\n"
+            "def direct_via_module(g):\n"
+            '    tok = object.__getattribute__(g, "_GuardedWorldState__token")\n'
+            "    v = reducer_mod._GUARD_REGISTRY[tok].state\n"
+            "    return v\n"
+            "def direct_module_level(g):\n"
+            "    tok = 1\n"
+            "    w = _GUARD_REGISTRY[tok].world_variables\n"
+            "    e = _GUARD_REGISTRY[tok].entities\n"
+            "    return w, e\n"
+            "def via_alias(g):\n"
+            "    tok = 2\n"
+            "    entry = _GUARD_REGISTRY[tok]\n"
+            "    s = entry.state\n"
+            "    r = entry.world_revision\n"
+            "    return s, r\n"
+        )
+        violations = self._scan_guard_registry_state_access(bad_source)
+        # 直接形态 ×3（.state / .world_variables / .entities）+ 别名形态 ×2
+        # （entry.state / entry.world_revision）
+        assert len(violations) == 5
+        assert any("reducer_mod" not in v and ".state" in v for v in violations)
+        assert any(".world_variables" in v for v in violations)
+        assert any(".entities" in v for v in violations)
+        assert any(".world_revision" in v for v in violations)
+
+        # 合法形态不误报：guard 门面读面 / 非注册表下标 / 注册表方法调用
+        good_source = (
+            "def read_via_facade(g):\n"
+            "    v = g.world_variables\n"
+            "    r = g.world_revision\n"
+            "    return v, r\n"
+            "def other_subscript(g):\n"
+            "    m = _SOME_OTHER_REGISTRY[tok]\n"
+            "    return m.state\n"
+            "def registry_method_call(g):\n"
+            "    entry = _GUARD_REGISTRY.get(tok)\n"
+            "    return entry\n"
+        )
+        assert self._scan_guard_registry_state_access(good_source) == []
+
     @classmethod
     def _scan_public_mutator_api(cls, source: str, filename: str = "<synthetic>") -> list[str]:
         """全类口径 public 状态修改方法扫描器（白名单由调用方应用）。"""
@@ -2028,6 +2409,66 @@ class TestG2StaticScanConfirmation:
                             f"{filename}:{sub.lineno}: 直接下标写入 "
                             f".{sub.value.attr}[...]（K2：状态只能经 reducer 变更）"
                         )
+        return violations
+
+    @classmethod
+    def _scan_guard_registry_state_access(cls, source: str, filename: str = "<synthetic>") -> list[str]:
+        """注册表-状态直接访问扫描器（G2 补充轮 2；AST 静态口径）。
+
+        检测形态（白名单由调用方应用）：
+
+        1. **直接形态**：``_GUARD_REGISTRY[...]`` / ``mod._GUARD_REGISTRY[...]``
+           索引后**立即**接权威数据属性访问——
+           ``reducer._GUARD_REGISTRY[tok].state`` /
+           ``_GUARD_REGISTRY[tok].world_variables`` 等（ast.Attribute 的
+           value 为注册表名的 ast.Subscript）；
+        2. **别名变量中转形态**：``entry = _GUARD_REGISTRY[tok]``（含模块
+           限定）赋值后，对别名 Name 的权威数据属性访问——``entry.state`` /
+           ``entry.entities`` / ``entry.world_revision`` 等。
+
+        合法形态不误报：guard 门面读面（``g.world_variables``——value 为
+        Name/Call 而非常规注册表下标）、非注册表名的下标、注册表方法
+        调用（``_GUARD_REGISTRY.get(...)`` 为 Attribute 而非 Subscript 于
+        注册表名，不产生别名）。
+        """
+        violations: list[str] = []
+        tree = ast.parse(source, filename=filename)
+
+        def _is_registry_base(node: ast.expr) -> bool:
+            if isinstance(node, ast.Name):
+                return node.id == "_GUARD_REGISTRY"
+            if isinstance(node, ast.Attribute):
+                return node.attr == "_GUARD_REGISTRY"
+            return False
+
+        alias_vars: set[str] = set()
+        for node in ast.walk(tree):
+            # 别名收集：entry = _GUARD_REGISTRY[tok]（含模块限定形态）
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Subscript)
+                and _is_registry_base(node.value.value)
+            ):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        alias_vars.add(target.id)
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Attribute):
+                continue
+            if node.attr not in cls._GUARD_REGISTRY_STATE_ATTRS:
+                continue
+            base = node.value
+            if isinstance(base, ast.Subscript) and _is_registry_base(base.value):
+                violations.append(
+                    f"{filename}:{node.lineno}: 直接注册表-状态访问 "
+                    f"_GUARD_REGISTRY[...].{node.attr}（K2：guard 门面是唯一授权读面）"
+                )
+            elif isinstance(base, ast.Name) and base.id in alias_vars:
+                violations.append(
+                    f"{filename}:{node.lineno}: 经注册表别名变量中转的 "
+                    f"权威数据属性访问 .{node.attr}（K2：guard 门面是唯一授权读面）"
+                )
         return violations
 
     def test_reducer_pure_function_no_llm_imports_or_calls(self) -> None:

@@ -1003,10 +1003,11 @@ G2 复跑命令口径（与 G1 一致）：`.venv/bin/python -m pytest tests/ -q
 
 ---
 
-## 勘误（2026-08-20，G2 补充轮 1）
+## 勘误（G2 补充轮 1/2，2026-08-20）
 
-> 以下勘误来自 P2 补充开发与 G2 门禁盲审（1 名"补充内容"裁决 + 3 名"投机通过"
-> 裁决）的闭合工作。本章节为**纯追加**，不改动上文既有正文；正文与本勘误
+> 以下勘误来自 P2 补充开发与 G2 门禁盲审（轮 1：1 名"补充内容"裁决 + 3 名
+> "投机通过"裁决；轮 2：2 名"补充内容"裁决 + 2 名"投机通过"裁决）的闭合
+> 工作。本章节为**纯追加**，不改动上文既有正文；正文与本勘误
 > 不一致处，以本勘误为准。
 
 ### E1 GuardedWorldState 机制变更（name-mangled 槽泄漏闭合 v2）
@@ -1021,9 +1022,11 @@ G2 复跑命令口径（与 G1 一致）：`.venv/bin/python -m pytest tests/ -q
 / `_GuardedScenarioState__wrapped` 存在同型槽（实测：经该槽取得活记录后原地改
 组件 dict 静默成功）。
 
-已落地机制（G2 补充轮 1，`reducer.py`，工单二选一方案 **a：模块级私有注册表**）：
-`guard()` 每次发放单调递增 int token，权威状态与其深冻结视图快照（guard() 时
-一次性构造，快照语义不变）进入模块私有注册表 `_GUARD_REGISTRY`；
+已落地机制（G2 补充轮 1，`reducer.py`，工单二选一方案 **a：模块级私有注册表**；
+补充轮 2：条目纯快照化）：`guard()` 每次发放单调递增 int token，guard() 时刻
+深冻结快照（补充轮 2：经 JSON roundtrip 构造，与活状态零别名的独立副本）与其
+深冻结视图快照（guard() 时一次性构造，快照语义不变）进入模块私有注册表
+`_GUARD_REGISTRY`；
 `GuardedWorldState` 实例唯一槽只持 token，任何实例属性（槽 / `__dict__` /
 `vars()` / `object.__getattribute__` / name-mangling 惯例访问）都不承载、也
 解析不出 wrapped 权威状态引用。`_GuardedEntityRecord` / `_GuardedScenarioState`
@@ -1039,8 +1042,30 @@ TypeError）、门面 copy/deepcopy/pickle → WriteBarrierError（门面不持�
 视图 copy/deepcopy → 独立可变快照、写屏障行为、core `__all__` 导出面（纯保持，
 无增删）。
 
+G2 补充轮 2 盲审进一步证伪注册表条目路径：token 可自 guard 实例槽读出
+（`object.__getattribute__(g, "_GuardedWorldState__token")`），
+`reducer._GUARD_REGISTRY[token].state` 返回**活**权威 WorldState 引用，其嵌套
+容器（world_variables / 组件 dict）可被原地突变静默成功（revision 不变、无
+事件/trace），级联下随合法事务提交构成无效果声明。轮 2 修复：`_register_guard`
+改为以 guard() 时刻深冻结快照构造条目 `state` 槽——
+`WorldState.model_validate(state.model_dump(mode="json"))` JSON roundtrip
+（与 P1 `state.py` 的 `_with_*` 同机制），全部嵌套容器经序列化重建为独立对象，
+与活状态**零别名**。此后任何时刻注册表条目仅解析到快照，对条目的任何原地写
+只污染该条目自己的副本；全部委托读取（world_revision / 实体视图 / scenario
+视图 / model_dump / model_dump_json / schema_version 等）自快照计算
+（委托读取路径不变）。新鲜度：级联主循环每轮以最新状态重新 guard
+（`cascade.py` 的 `guard(state)` 为 src 中唯一 guard() 调用点），无内部消费者
+跨 commit 持有 guard 并依赖其反映最新状态，快照语义与新鲜度一致。`__del__` /
+`__reduce__`（pickle → WriteBarrierError）/ 只读语义公开行为全部保持；pickle
+回归载入对象与权威状态不同恒等、值相等。
+
 **残留风险明示**：
 
+- **注册表路径（已闭合，G2 补充轮 2）**：`_GUARD_REGISTRY` 条目现仅存
+  guard() 时刻深冻结快照（JSON roundtrip 独立副本，与活状态零别名）——
+  "token → 注册表 → 活状态"泄漏路径不复存在，任何时刻注册表解析不到可变活
+  权威状态；有回归测试覆盖（恒等性断言 / 原地写不污染 / producer 仅持 guard
+  端到端）；
 - raw `WorldState` 嵌套容器本身仍原地可变（**P1 D-15 advisory**）：producer
   若持有 raw WorldState 引用，仍可原地突变嵌套容器（revision 不反映、无事件）；
 - 层二写屏障（opt-in 武装）只包裹 4 条 pydantic 构造逃逸路径
@@ -1084,4 +1109,5 @@ validation 单测与 P2-T09 对抗套件、G2 静态审计确认套件合并于 
 |---|------|------|------|
 | R1 | 写屏障武装点当前仅 `CascadeExecutor.__init__`（`cascade.py`） | 绕过 `CascadeExecutor` 直接调用 `apply_transaction` / `commit_transaction` 的组件不受层二武装屏障覆盖（层三 guard 视图与管线层 reducer 重校验仍有效） | P3+ 评估武装点下沉至 commit 路径，或在启动自检断言 `write_barrier_installed()` |
 | R2 | `write_barrier_exempt` 位于 core 公开导出面（`core.__init__` 的 `__all__`） | 豁免窗口面向测试内部构建病态数据与诊断；对生产代码暴露即构成合法写绕过面 | P8 评估收窄为 devtools-only |
-| R3 | `model_validate`（正常构造）可伪造 revision | 设计上 reducer 是唯一合法 mutation 路径，但构造 API 本身不区分调用意图（正常构造不在 4 条逃逸路径内，属有意放行） | 管线层 `commit_revision == base_revision + 1` 与 L2 引用检查（`check_transaction_references`）拦截 stale / 伪造 revision |
+| R3 | `model_validate`（正常构造）可伪造 revision | G2 补充轮 2 实测：Transaction 原子不变量（`_check_atomic_invariants`，`model_validator(mode="after")`）在 `model_validate` 下**同样强制执行**——COMMITTED ⇒ `commit_revision == base_revision.next()`，伪造 commit_revision 于构造 / validate 时即被 schema 层拒绝；管线层 `commit_revision == base_revision + 1` 与 L2 引用检查（`check_transaction_references`）为**纵深防御**而非首道防线。base_revision（对提案时点状态的主张）无 schema 层约束；G2 补充轮 2 在 `commit_transaction` 步骤 6b（L2 终检之后、reducer 应用之前）新增 base-revision 一致性检查：任一 `effect.base_revision != base_state.world_revision`（含 future）→ ABORT，`abort_reason` 前缀 `base_revision_mismatch`——覆盖 L1 `_stage_staleness`（管线阶段检查）不覆盖、且 L2 明确对 base > current 不报的直接调用路径；stale（base < current）行为不变，仍由 L2 先行 abort | P8 评估构造 / 管线层统一 revision 一致性检查入口 |
+| R4 | G2 补充轮 1 的 `_GUARD_REGISTRY` 条目曾持**活**权威 WorldState 引用（条目 `state` 槽） | 修复前：token 可自 guard 实例槽读出 → `reducer._GUARD_REGISTRY[token].state` 解析到活状态，嵌套容器可被原地突变静默成功（revision 不变、无事件/trace），级联下随合法事务提交构成无效果声明；修复后（G2 补充轮 2）：条目仅存 guard() 时刻深冻结快照（JSON roundtrip 独立副本、零别名），任何时刻注册表解析不到可变活权威状态，原地写只污染条目自身副本；有回归测试覆盖（见 E1） | ——（本轮已闭合） |
