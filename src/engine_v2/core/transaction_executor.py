@@ -24,7 +24,11 @@ revision 原样——
    → ``abort_reason="reference_check_failed: " + "; ".join(issues)``；
 2. **base/commit revision 一致性检查失败**（G2 补充轮 2）：任一
    ``effect.base_revision != base_state.world_revision`` →
-   ``abort_reason="base_revision_mismatch: " + "; ".join(issues)``。
+   ``abort_reason="base_revision_mismatch:" + "; ".join(issues)``——每个
+   issue 项形如 ``eff_a:base=7 expected=5``（``"; "`` 连接全部不一致项），
+   前缀 ``base_revision_mismatch`` 在整串中**恰好出现一次**（G2 补充轮 3
+   已清理逐项前缀 + reason 前缀的双前缀外观缺陷；G2 补充轮 2 的旧格式
+   为 ``"base_revision_mismatch: base_revision_mismatch:eff_a:..."``）。
    管线内 L1 的 ``future_base_revision`` 检查（validation 阶段 6）只
    覆盖管道路径，**不覆盖直接调用** ``commit_transaction`` 的路径——
    若无本检查，future/stale 之外的任意不一致 base_revision（含 future）
@@ -277,8 +281,8 @@ def commit_transaction(
     # 先行 abort，本步只兜住 L2 放行后的不等形态，既有 abort_reason 不
     # 变（与 L2 同一处置口径：原子 abort，不抛异常）。
     mismatches = [
-        f"base_revision_mismatch:{str(effect.effect_id)}:"
-        f"base={int(effect.base_revision)} expected={int(base_revision)}"
+        f"{str(effect.effect_id)}:base={int(effect.base_revision)}"
+        f" expected={int(base_revision)}"
         for effect in effects
         if effect.base_revision != base_revision
     ]
@@ -286,7 +290,7 @@ def commit_transaction(
         aborted = abort_transaction(
             base_state,
             tx_id,
-            reason="base_revision_mismatch: " + "; ".join(mismatches),
+            reason="base_revision_mismatch:" + "; ".join(mismatches),
             producer=producer,
             rejected_effects=effects,
             logical_tick=logical_tick,

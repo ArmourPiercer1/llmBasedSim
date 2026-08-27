@@ -865,8 +865,14 @@ def apply_committed_effects(
 
     Raises:
         ReducerError: 防御性复检失败（共享 transaction_id / commit_revision /
-            sequence 恰为 0..n-1 / commit_revision == base + 1）或未注册
-            effect_type（不推断，D-P2-05）。
+            sequence 恰为 0..n-1 / commit_revision == base + 1 / **逐
+            effect base_revision 一致性**——每个 ``effect.base_revision``
+            必须等于 ``world_state.world_revision``，G2 补充轮 3 闭合直接
+            调用与 P8 转录回放路径的暴露）或未注册 effect_type（不推断，
+            D-P2-05）。base_revision 不一致时错误信息为单前缀
+            ``base_revision_mismatch:`` + 全部不一致项
+            ``<effect_id>:base=<实际> expected=<base>``（``"; "`` 连接），
+            失败必发生在任何应用之前（输入 ``world_state`` 逐字节不变）。
         EffectApplicationError: 单条 effect 应用失败（结构前置条件 / 无效
             payload / handler 错误），携带 ``sequence`` 与 ``effect_id``。
             **任何异常下输入 ``world_state`` 均不受影响**（原子性的函数式
@@ -906,6 +912,24 @@ def apply_committed_effects(
         raise ReducerError(
             f"effects[*].sequence 必须恰为 0..{len(effects) - 1}：得到 {sequences}"
         )
+    # 逐 effect base_revision 一致性复检（G2 补充轮 3，commit 路径步骤 6b 在
+    # 本公共入口的镜像）：每个 effect.base_revision 必须等于 base 状态的
+    # world_revision。缺本复检时，直接调用本入口（含 P8 转录回放路径）传入
+    # base_revision 被篡改（future/stale/任意不一致）的效果批，只要
+    # commit_revision == base + 1 且 sequence 合法即被静默应用，产生
+    # "已提交效果记录与 base 状态自相矛盾"的世界状态。收集全部不一致项后
+    # **单次**抛 ReducerError：本复检在本块全部复检之后、步骤 3 的
+    # _WorkingWorld 构造与任何应用之前——失败时输入 world_state 逐字节不
+    # 变（原子批级语义，与本块既有复检一致）。
+    base_revision = world_state.world_revision
+    base_mismatches = [
+        f"{committed.effect.effect_id}:base={int(committed.effect.base_revision)}"
+        f" expected={int(base_revision)}"
+        for committed in effects
+        if committed.effect.base_revision != base_revision
+    ]
+    if base_mismatches:
+        raise ReducerError("base_revision_mismatch:" + "; ".join(base_mismatches))
     ordered = sorted(effects, key=lambda effect: effect.sequence)
 
     # 步骤 3：批量应用（O(状态体积)）——reducer 自身（及其 handler）在

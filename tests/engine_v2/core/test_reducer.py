@@ -852,6 +852,7 @@ class TestPureFunctionAndZeroAliasing:
         eff = f.proposed(
             "core.set_world_variable", _domain_target("world_variables"),
             {"key": "k", "value": 1},
+            base_revision=3,  # G2 补充轮 3：必须匹配状态 revision（reducer 逐 effect 复检）
         )
         ce = f.committed(eff, commit_revision=4)
         assert apply_committed_effects(state_a, [ce]) == apply_committed_effects(state_b, [ce])
@@ -859,7 +860,8 @@ class TestPureFunctionAndZeroAliasing:
     def test_revision_bumped_by_exactly_one(self, f: _EffectFactory) -> None:
         state = _base_state(7)
         eff = f.proposed(
-            "core.remove_world_variable", _domain_target("world_variables"), {"key": "deep"}
+            "core.remove_world_variable", _domain_target("world_variables"), {"key": "deep"},
+            base_revision=7,  # G2 补充轮 3：必须匹配状态 revision（reducer 逐 effect 复检）
         )
         result = apply_committed_effects(state, [f.committed(eff, commit_revision=8)])
         assert result.world_revision == Revision(8)
@@ -868,7 +870,8 @@ class TestPureFunctionAndZeroAliasing:
     def test_apply_transaction_happy_path(self, f: _EffectFactory) -> None:
         state = _base_state(2)
         eff = f.proposed(
-            "core.remove_world_variable", _domain_target("world_variables"), {"key": "deep"}
+            "core.remove_world_variable", _domain_target("world_variables"), {"key": "deep"},
+            base_revision=2,  # G2 补充轮 3：必须匹配状态 revision（reducer 逐 effect 复检）
         )
         txn = _committed_transaction(state, [eff])
         result = apply_transaction(state, txn)

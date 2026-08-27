@@ -163,6 +163,7 @@ from src.engine_v2.core.reducer import (
     GuardedWorldState,
     ReducerError,
     WriteBarrierError,
+    apply_committed_effects,
     apply_transaction,
     default_handler_registry,
     guard,
@@ -2140,6 +2141,244 @@ class TestG2SupplementRound2RegistrySnapshot:
         assert new_state is s
         assert s.model_dump(mode="json") == base_dump
         assert s.world_revision == Revision(0)
+
+
+# ==============================================================================
+# G2 补充轮 3: reducer 公共入口逐 effect base_revision 一致性复检
+# ==============================================================================
+
+
+class TestG2SupplementRound3ReducerBaseRevision:
+    """G2 补充轮 3 对抗回归：``apply_committed_effects``（reducer 公共入口）
+    补逐 effect base_revision 一致性复检 + 步骤 6b abort_reason 去重前缀。
+
+    上轮暴露：reducer 步骤 2 防御性复检只查共享 transaction_id /
+    commit_revision / commit_revision == base + 1 / sequence 0..n-1，
+    **缺**逐 effect ``effect.base_revision == world_state.world_revision``
+    复检——直接调用（不经 commit 入口，含 P8 转录回放路径）传入
+    base_revision 被篡改（future/stale/任意不一致）的效果批，只要
+    commit_revision == base + 1 且 sequence 合法即被静默应用，产生
+    "已提交效果记录与 base 状态自相矛盾"的世界状态（commit 路径步骤 6b
+    已有该检查，reducer 直调入口无）。本轮修复：复检块内（sequence 检查
+    之后、_WorkingWorld 构造与任何应用之前）收集全部不一致项后单次抛
+    ``ReducerError``（单前缀 ``base_revision_mismatch:`` + 全部不一致项
+    ``<effect_id>:base=<实际> expected=<base>``，"; " 连接）；同时清理
+    步骤 6b abort_reason 双前缀（旧
+    ``"base_revision_mismatch: base_revision_mismatch:eff_..."`` → 新
+    ``"base_revision_mismatch:eff_..."``，前缀恰好一次）。本类全部为
+    **纯新增**断言，不改任何既有测试（含轮 2 的子串断言保持绿）。
+    """
+
+    def _make_state(self, rev: int = 0) -> WorldState:
+        """含实体（组件 dict）+ world_variables + scenario data 的测试状态。"""
+        return WorldState(
+            world_revision=Revision(rev),
+            entities={
+                EntityId("ent_alice"): EntityRecord(
+                    entity_id=EntityId("ent_alice"),
+                    components={
+                        ComponentTypeId("attrs.hp"): {"current": 100, "max": 100},
+                    },
+                    entity_class="character",
+                    tags=["hero"],
+                )
+            },
+            world_variables={"gold": 10, "calendar": {"day": 1}},
+            scenario_state=ScenarioState(scenario_id="s1", stage="night", data={"goal": "x"}),
+        )
+
+    def _make_committed(
+        self,
+        effect_id: str,
+        base_revision: int,
+        commit_revision: int,
+        sequence: int,
+        transaction_id: TransactionId,
+    ) -> CommittedEffect:
+        """合法形态 CommittedEffect：结构效果 core.set_world_variable。"""
+        return CommittedEffect(
+            effect=_make_proposed_effect(
+                effect_id,
+                EFFECT_SET_WORLD_VARIABLE,
+                StateDomainTarget(domain=StateDomainId("world_variables")),
+                {"key": f"k_{effect_id}", "value": 1},
+                base_revision=base_revision,
+            ),
+            transaction_id=transaction_id,
+            commit_revision=Revision(commit_revision),
+            sequence=sequence,
+        )
+
+    def test_direct_apply_future_base_revision_rejected(self) -> None:
+        """(1) 直调 apply_committed_effects + 某 effect base_revision=future
+        （base+5）→ ReducerError；输入 world_state 恒等且内容/revision
+        逐字节不变；无部分应用（复检在任何应用之前，纯函数原子批级语义）。"""
+        base = 5
+        s = self._make_state(base)
+        base_dump = s.model_dump(mode="json")
+        tx_id = new_transaction_id()
+        effects = [
+            self._make_committed("eff_ok", base, base + 1, 0, tx_id),  # 正确
+            self._make_committed("eff_future", base + 5, base + 1, 1, tx_id),  # future
+        ]
+        with pytest.raises(ReducerError) as exc_info:
+            apply_committed_effects(s, effects)
+        # 输入状态恒等：对象不变、revision 不变、内容逐字节不变
+        assert s.world_revision == Revision(base)
+        assert s.model_dump(mode="json") == base_dump
+        # 无部分应用：错误指明不一致 effect_id，且未涉及正确项
+        msg = str(exc_info.value)
+        assert "base_revision_mismatch" in msg
+        assert "eff_future" in msg
+        assert "eff_ok" not in msg
+        assert msg.count("base_revision_mismatch") == 1  # 单前缀
+
+    def test_direct_apply_stale_base_revision_rejected(self) -> None:
+        """(2) 直调 + base_revision=stale（base-1）→ ReducerError；输入
+        状态恒等且内容/revision 逐字节不变（同 (1) 不变性断言）。"""
+        base = 5
+        s = self._make_state(base)
+        base_dump = s.model_dump(mode="json")
+        tx_id = new_transaction_id()
+        effects = [
+            self._make_committed("eff_stale", base - 1, base + 1, 0, tx_id),  # stale
+        ]
+        with pytest.raises(ReducerError) as exc_info:
+            apply_committed_effects(s, effects)
+        msg = str(exc_info.value)
+        assert msg.startswith("base_revision_mismatch:eff_stale")
+        assert f"base={base - 1} expected={base}" in msg
+        assert msg.count("base_revision_mismatch") == 1
+        assert s.world_revision == Revision(base)
+        assert s.model_dump(mode="json") == base_dump
+
+    def test_direct_apply_mixed_batch_rejected_lists_all_mismatch_ids(self) -> None:
+        """(3) 混合批（部分 base_revision 正确、部分错误）→ ReducerError；
+        错误信息含**全部**不一致 effect_id（收集全部不一致项后单次抛，
+        非首错即抛）；输入状态逐字节不变。"""
+        base = 5
+        s = self._make_state(base)
+        base_dump = s.model_dump(mode="json")
+        tx_id = new_transaction_id()
+        effects = [
+            self._make_committed("eff_ok", base, base + 1, 0, tx_id),  # 正确
+            self._make_committed("eff_stale", base - 2, base + 1, 1, tx_id),  # 错
+            self._make_committed("eff_future", base + 3, base + 1, 2, tx_id),  # 错
+        ]
+        with pytest.raises(ReducerError) as exc_info:
+            apply_committed_effects(s, effects)
+        msg = str(exc_info.value)
+        assert "eff_stale" in msg
+        assert "eff_future" in msg
+        assert "eff_ok" not in msg  # 正确项不得误报
+        assert f"eff_stale:base={base - 2} expected={base}" in msg
+        assert f"eff_future:base={base + 3} expected={base}" in msg
+        assert msg.count("base_revision_mismatch") == 1  # 单前缀
+        assert s.world_revision == Revision(base)
+        assert s.model_dump(mode="json") == base_dump
+
+    def test_direct_apply_consistent_batch_applies_plus_one_zero_alias(self) -> None:
+        """(4) 一致性批（base_revision 全部 == base）→ 正常应用：
+        revision 恰 +1、与输入零别名（既有语义回归，新增复检不得误伤）。"""
+        base = 5
+        s = self._make_state(base)
+        tx_id = new_transaction_id()
+        effects = [
+            self._make_committed("eff_a", base, base + 1, 0, tx_id),
+            self._make_committed("eff_b", base, base + 1, 1, tx_id),
+        ]
+        new_state = apply_committed_effects(s, effects)
+        # revision 恰 +1（Spec §9 / D-P2-06）
+        assert new_state.world_revision == Revision(base + 1)
+        # 零别名（既有语义）：顶层与嵌套容器均独立对象
+        assert new_state is not s
+        assert new_state.world_variables is not s.world_variables
+        assert new_state.entities is not s.entities
+        assert (
+            new_state.entities[EntityId("ent_alice")].components[
+                ComponentTypeId("attrs.hp")
+            ]
+            is not s.entities[EntityId("ent_alice")].components[
+                ComponentTypeId("attrs.hp")
+            ]
+        )
+        assert new_state.scenario_state is not s.scenario_state
+        # 输入不受影响
+        assert s.world_revision == Revision(base)
+        # 效果确实落位（应用非空转）
+        assert new_state.world_variables["k_eff_a"] == 1
+        assert new_state.world_variables["k_eff_b"] == 1
+        assert "k_eff_a" not in s.world_variables
+
+    def test_commit_future_base_reason_prefix_appears_exactly_once(self) -> None:
+        """(5) commit 入口 future base_revision 直调 → ABORTED，且
+        abort_reason 中 "base_revision_mismatch" 前缀**恰好出现一次**
+        （count == 1 且形如 "base_revision_mismatch:eff_" 开头）——
+        双前缀外观缺陷（G2 补充轮 2 引入）已清理；处置口径不变
+        （原子 abort、不抛异常、状态/revision 原样）。"""
+        s = self._make_state(0)
+        base_dump = s.model_dump(mode="json")
+        new_state, txn, events = commit_transaction(
+            s,
+            [
+                _make_proposed_effect(
+                    "eff_future",
+                    EFFECT_SET_WORLD_VARIABLE,
+                    StateDomainTarget(domain=StateDomainId("world_variables")),
+                    {"key": "k", "value": 1},
+                    base_revision=5,  # future：base 状态是 0
+                )
+            ],
+            new_transaction_id(),
+            Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE),
+        )
+        assert txn.status == TransactionStatus.ABORTED
+        assert txn.commit_revision is None and txn.effects == []
+        assert events == []
+        assert txn.abort_reason is not None
+        assert "base_revision_mismatch" in txn.abort_reason
+        assert txn.abort_reason.count("base_revision_mismatch") == 1
+        assert txn.abort_reason.startswith("base_revision_mismatch:eff_")
+        assert "base=5 expected=0" in txn.abort_reason
+        # 原子性：状态对象原样、内容不变
+        assert new_state is s
+        assert s.model_dump(mode="json") == base_dump
+        assert s.world_revision == Revision(0)
+
+    def test_commit_mixed_base_reason_single_prefix_lists_all_items(self) -> None:
+        """(5b) commit 入口混合批（部分 future base_revision）→ ABORTED；
+        abort_reason 单前缀 + 全部不一致项 "; " 连接（多 mismatch 形态
+        的格式回归）。"""
+        s = self._make_state(0)
+        new_state, txn, events = commit_transaction(
+            s,
+            [
+                _make_proposed_effect(
+                    "eff_ok",
+                    EFFECT_SET_WORLD_VARIABLE,
+                    StateDomainTarget(domain=StateDomainId("world_variables")),
+                    {"key": "k_ok", "value": 1},
+                    base_revision=0,  # 正确
+                ),
+                _make_proposed_effect(
+                    "eff_bad",
+                    EFFECT_SET_WORLD_VARIABLE,
+                    StateDomainTarget(domain=StateDomainId("world_variables")),
+                    {"key": "k_bad", "value": 1},
+                    base_revision=9,  # future
+                ),
+            ],
+            new_transaction_id(),
+            Provenance(producer_id=ProducerId("rule.system"), origin=OriginKind.RULE),
+        )
+        assert txn.status == TransactionStatus.ABORTED
+        assert events == []
+        assert new_state is s
+        assert txn.abort_reason is not None
+        assert txn.abort_reason.count("base_revision_mismatch") == 1
+        assert txn.abort_reason.startswith("base_revision_mismatch:eff_")
+        assert "eff_bad:base=9 expected=0" in txn.abort_reason
+        assert "eff_ok" not in txn.abort_reason
 
 
 # ==============================================================================

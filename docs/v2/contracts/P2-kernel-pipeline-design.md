@@ -1003,7 +1003,7 @@ G2 复跑命令口径（与 G1 一致）：`.venv/bin/python -m pytest tests/ -q
 
 ---
 
-## 勘误（G2 补充轮 1/2，2026-08-20）
+## 勘误（G2 补充轮 1/2/3，2026-08-20）
 
 > 以下勘误来自 P2 补充开发与 G2 门禁盲审（轮 1：1 名"补充内容"裁决 + 3 名
 > "投机通过"裁决；轮 2：2 名"补充内容"裁决 + 2 名"投机通过"裁决）的闭合
@@ -1111,3 +1111,41 @@ validation 单测与 P2-T09 对抗套件、G2 静态审计确认套件合并于 
 | R2 | `write_barrier_exempt` 位于 core 公开导出面（`core.__init__` 的 `__all__`） | 豁免窗口面向测试内部构建病态数据与诊断；对生产代码暴露即构成合法写绕过面 | P8 评估收窄为 devtools-only |
 | R3 | `model_validate`（正常构造）可伪造 revision | G2 补充轮 2 实测：Transaction 原子不变量（`_check_atomic_invariants`，`model_validator(mode="after")`）在 `model_validate` 下**同样强制执行**——COMMITTED ⇒ `commit_revision == base_revision.next()`，伪造 commit_revision 于构造 / validate 时即被 schema 层拒绝；管线层 `commit_revision == base_revision + 1` 与 L2 引用检查（`check_transaction_references`）为**纵深防御**而非首道防线。base_revision（对提案时点状态的主张）无 schema 层约束；G2 补充轮 2 在 `commit_transaction` 步骤 6b（L2 终检之后、reducer 应用之前）新增 base-revision 一致性检查：任一 `effect.base_revision != base_state.world_revision`（含 future）→ ABORT，`abort_reason` 前缀 `base_revision_mismatch`——覆盖 L1 `_stage_staleness`（管线阶段检查）不覆盖、且 L2 明确对 base > current 不报的直接调用路径；stale（base < current）行为不变，仍由 L2 先行 abort | P8 评估构造 / 管线层统一 revision 一致性检查入口 |
 | R4 | G2 补充轮 1 的 `_GUARD_REGISTRY` 条目曾持**活**权威 WorldState 引用（条目 `state` 槽） | 修复前：token 可自 guard 实例槽读出 → `reducer._GUARD_REGISTRY[token].state` 解析到活状态，嵌套容器可被原地突变静默成功（revision 不变、无事件/trace），级联下随合法事务提交构成无效果声明；修复后（G2 补充轮 2）：条目仅存 guard() 时刻深冻结快照（JSON roundtrip 独立副本、零别名），任何时刻注册表解析不到可变活权威状态，原地写只污染条目自身副本；有回归测试覆盖（见 E1） | ——（本轮已闭合） |
+| R5 | G2 补充轮 2 步骤 6b `abort_reason` 曾带**双前缀**外观缺陷（每个 mismatch 项自身带前缀，reason 又拼一次前缀） | 清理前：`base_revision_mismatch: base_revision_mismatch:eff_a:base=5 expected=0`（前缀在整串出现两次）；清理后（G2 补充轮 3，`transaction_executor.py`）：`base_revision_mismatch:eff_a:base=5 expected=0`——mismatch 项与 reason 前缀二选一承载前缀，逐项形如 `<effect_id>:base=<实际> expected=<base>`，"; " 连接全部不一致项，前缀在整串**恰好出现一次**；处置口径不变（原子 abort、不抛异常；L2 `stale_revision` 的既有 `abort_reason` 不变）；有回归测试覆盖（count == 1 且形如 `base_revision_mismatch:eff_` 开头，见 E6） | ——（本轮已闭合） |
+
+### E6 apply_committed_effects 逐 effect base_revision 一致性复检（G2 补充轮 3）
+
+设计正文 §2.4 的 `apply_committed_effects` 是 P2 唯一的状态变更公共路径。G2
+补充轮 3 之前，其步骤 2 防御性复检只覆盖：共享 transaction_id、共享
+commit_revision、commit_revision == base + 1、sequence 恰为 0..n-1——**缺逐
+effect `effect.base_revision == world_state.world_revision` 复检**。commit
+路径 `commit_transaction` 步骤 6b（G2 补充轮 2 新增，见 R3）有该检查，
+reducer 直调入口无：直接调用 `apply_committed_effects`（含 **P8 转录回放
+路径**——回放即经本公共入口应用已提交效果）传入 base_revision 被篡改
+（future / stale / 任意不一致）的效果批，只要 commit_revision == base + 1
+且 sequence 合法即被**静默应用**，产生"已提交效果记录与 base 状态自相
+矛盾"的世界状态（探针实测：future（base+5）/ stale（base-1）/ 混合批
+均静默应用成功、输入不被改但输出世界 revision +1）。
+
+G2 补充轮 3 已闭合（`reducer.py` `apply_committed_effects`）：
+
+- **复检位置**：步骤 2 防御性复检块内、sequence 检查之后，**步骤 3
+  `_WorkingWorld` 构造与任何应用之前**——批级语义：收集**全部**不一致项
+  后**单次**抛 `ReducerError`（非首错即抛、更不存在"抛在部分应用之后"——
+  本函数为纯函数，失败时输入 `world_state` 逐字节不变、无部分应用）；
+- **错误格式**（与步骤 6b 处置口径一致，单前缀）：
+  `base_revision_mismatch:` + 全部不一致项
+  `<effect_id>:base=<实际> expected=<base>`（"; " 连接，明确指向每个
+  不一致 effect_id），例 `base_revision_mismatch:eff_1:base=10 expected=5`；
+  函数 docstring（步骤 2 说明 + Raises 段）已同步；
+- **回归测试**（纯新增 6 例，`tests/engine_v2/core/test_adversarial.py`
+  `TestG2SupplementRound3ReducerBaseRevision`）：直调 future（base+5）/
+  stale（base-1）/ 混合批（错误信息含全部不一致 effect_id、正确项不误报）
+  → `ReducerError` + 输入状态恒等且内容/revision 逐字节不变；一致性批 →
+  正常应用、revision 恰 +1、零别名（既有语义回归）；commit 入口 future →
+  ABORTED 且 `abort_reason` 中 `base_revision_mismatch` 前缀恰好出现一次
+  （count == 1，见 R5）；
+- **P8 回放暴露闭环**：P8 转录回放与直接调用共用本公共入口，本复检加入
+  后该形态暴露与 commit 路径步骤 6b 等效覆盖，**P8 回放暴露闭环自此
+  闭合**（R3 后续项"管线层统一 revision 一致性检查入口"评估时，本复检
+  为 reducer 侧既定落点）。
