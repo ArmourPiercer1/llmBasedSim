@@ -54,6 +54,7 @@ CORE_SUBMODULES: tuple[str, ...] = (
     "event_queue",
     "events",
     "ids",
+    "interrupt",
     "provenance",
     "reducer",
     "revision",

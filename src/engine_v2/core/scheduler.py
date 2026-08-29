@@ -12,7 +12,9 @@
   纯 (WorldState, RuntimeState, config) 派生、重入零副作用、置于循环前播种
   之前）→ 循环前播种（D-P3-22，幂等去重）→ ``take_due`` 批循环 → 时钟跳变
   （唯一写点 :func:`set_logical_tick`，D-P3-03）→ 逐 kind match 分支（§2.5
-  词表）→ 刻后边界求值（T05 接线，本任务只留结构）→ 暂停/terminal 返回；
+  词表）→ 刻后边界求值（T05 已接线：``interrupt.evaluate_boundaries`` +
+  INTERRUPTED 迁移 / npc wakeup 双记录 / 玩家 blocking 暂停，Leader 裁定见
+  下）→ 暂停/terminal 返回；
   单刻处理中任何 P3 错误 → 返回刻前状态对 + 错误 outcome（D-P3-24④，不崩溃、
   部分提交不可见）；
 - **§3.6（``start_action``）**：PROPOSED→VALIDATING→ACTIVE 两跳复合恒 2 条
@@ -42,13 +44,20 @@ Leader 预裁定（T04b，按裁定实现、报告 notes 标注"Leader 裁定"�
 
 - **(A)** ``Scheduler.__init__`` 必填 ``origin: Provenance``（E-P3-40 已入
   文档签名草图）；内部所有 ``run()`` 提交 ``origin=self._origin``；
-- **(B)** ``interrupt.py`` 为 T05 交付（本任务不存在）：``DecisionBoundary``
-  等类型用字符串前向注解 + ``if TYPE_CHECKING`` 块（运行时零 import）；
-  D-P3-24 入口首检现在完整实现（纯派生、对边界对象仅鸭子式属性读
-  ``blocking`` / ``actor_id`` / ``boundary_id``）；刻后边界求值段（§2.4
-  "边界求值"块）只留结构与 "T05 接线" 注释；``npc_notices`` →
-  ``enqueue_actor_wakeup`` 调用与 ``kind="wakeup"`` 的 ``_drain_wakeup``
-  处理留 T06；
+- **(B)** 边界类型与刻后求值：T04b 时 ``interrupt.py`` 未交付，``DecisionBoundary``
+  等类型用字符串前向注解 + ``if TYPE_CHECKING`` 块（运行时零 import）；D-P3-24
+  入口首检完整实现（纯派生、对边界对象仅鸭子式属性读
+  ``blocking`` / ``actor_id`` / ``boundary_id``，与 T05 实际
+  ``DecisionBoundary`` 兼容）；``kind="wakeup"`` 的 ``_drain_wakeup``
+  处理仍留 T06。**T05 已接线**：``interrupt.py`` 交付
+  （§3.7 全量），刻后边界求值段（§2.4 "边界求值"块）落位于
+  ``_maybe_evaluate_boundaries``（返回 5 元组：new_runtime / paused /
+  pause_reason / report / trace 记录）——全部中断经
+  ``transition_action(INTERRUPTED)`` 唯一迁移入口（无并行中断函数）、
+  ``npc_notices`` 逐对 ``enqueue_actor_wakeup`` 双记录（不受
+  ``pause_on_player_boundary`` 辖制）、fired 报告两路（record-only 与正常）
+  均经 ``TraceKind.SYSTEM`` 记录留痕；``condition_resolvers`` 缺省落位
+  ``BUILTIN_CONDITION_RESOLVERS`` 共享缺省实例（E-P3-39④）。
 - **(C)** ``run()`` 提交参数：``causal_root_id`` = 驱动该批的队列条目
   ``entry_id`` 字符串（本刻批首条 entry，F2-15/E-P3-38）；提交后
   ``CascadeResult`` 的 transactions（含 ABORTED，commit 序）/ events /
@@ -63,7 +72,8 @@ Leader 预裁定（T04b，按裁定实现、报告 notes 标注"Leader 裁定"�
   （``_commit_scheduled``：named_triggers 按 payload ``trigger_id`` 点名求值
   → stub 产出 ProposedEffect 序列经 ``CascadeExecutor.run(initial_proposals=…)``
   提交——空注册表 → 级联再求值面为空，D-P3-27）；``decision_boundary`` 分支
-  结构留 T05、``wakeup`` 留 T06；
+  为时钟停靠点（no payload effect，fired 判定属刻后求值——T05 已接线）、
+  ``wakeup`` 留 T06；
 - **(E)** 循环前播种（D-P3-22）：``kind="scheduled"`` 边界中 ``due_tick``
   大于当前刻者幂等补入 ``kind="decision_boundary"`` 队列条目
   （``boundary_id`` 去重，条目只是时钟停靠点，无 payload effect）；
@@ -141,7 +151,18 @@ from src.engine_v2.core.event_queue import (
     take_due,
 )
 from src.engine_v2.core.events import DomainEvent
-from src.engine_v2.core.ids import ActionInstanceId, EntityId
+from src.engine_v2.core.ids import (
+    ActionInstanceId,
+    EntityId,
+    new_trace_record_id,
+)
+from src.engine_v2.core.interrupt import (
+    BUILTIN_CONDITION_RESOLVERS,
+    BoundaryReport,
+    ConditionResolverRegistry,
+    DecisionBoundary,
+    evaluate_boundaries,
+)
 from src.engine_v2.core.provenance import Provenance
 from src.engine_v2.core.reducer import guard, write_barrier_installed
 from src.engine_v2.core.revision import RevalidationOutcome, Revision, is_stale
@@ -151,11 +172,10 @@ from src.engine_v2.core.state import (
     ScheduledEvent,
     WorldState,
 )
-from src.engine_v2.core.trace import TraceRecord
+from src.engine_v2.core.trace import TraceKind, TraceRecord
 from src.engine_v2.core.transaction import Transaction
 
-if TYPE_CHECKING:  # 运行时零 import（Leader 裁定 (B)：interrupt.py 为 T05 交付）
-    from src.engine_v2.core.interrupt import ConditionResolverRegistry, DecisionBoundary
+if TYPE_CHECKING:  # 仅注解用（revalidation.py 为 T07 交付，运行时零 import）
     from src.engine_v2.core.reducer import GuardedWorldState
     from src.engine_v2.core.revalidation import RevalidationDecision
 
@@ -357,9 +377,9 @@ def enqueue_actor_wakeup(
 def _fingerprint_project(value: object) -> object:
     """递归纯 dict 投影（E-P3-39③ 规范化 JSON 的前置投影）。
 
-    - Pydantic 模型：按 ``model_fields`` 声明顺序投影为 dict（嵌套递归）；
-    - 其他对象：按 ``vars()`` 投影（T04b 期 ``DecisionBoundary`` 为 T05
-      交付，测试侧鸭子对象亦经此路）；
+    - Pydantic 模型：按 ``model_fields`` 声明顺序投影为 dict（嵌套递归；
+      ``DecisionBoundary`` 实际对象经此路，interrupt.py T05 交付）；
+    - 其他对象：按 ``vars()`` 投影（测试侧鸭子对象经此路）；
     - 映射：按键投影（值递归）；列表/元组：逐项投影（序保持）；
     - JSON 标量（None/str/int/float/bool）：原样；其余（不可序列化兜底）：
       ``str()``（确定性）。
@@ -554,9 +574,11 @@ class Scheduler:
     ——Scheduler 内部全部 ``CascadeExecutor.run`` 提交统一用它；``causal_root_id``
     = 驱动该批的队列条目 ``entry_id`` 字符串（本刻批首条 entry，F2-15/E-P3-38）。
 
-    刻后边界求值（§2.4）与 ``kind="wakeup"`` 处理分别为 T05/T06 接线
-    （Leader 裁定 (B)）：本任务入口首检（D-P3-24）完整实现、刻后求值段只留
-    结构与注释。
+    刻后边界求值（§2.4）已接线（T05，Leader 裁定见模块头 (B)）：
+    ``_maybe_evaluate_boundaries`` 于每刻提交后以当刻新 ``guard()`` 视图求值
+    （G2 移交 2）——INTERRUPTED 迁移经 :func:`transition_action` 唯一入口、
+    npc wakeup 双记录、玩家 blocking 暂停（受 ``pause_on_player_boundary``
+    门控）；``kind="wakeup"`` 处理仍留 T06（Leader 裁定 (B)）。
     """
 
     __slots__ = (
@@ -591,11 +613,11 @@ class Scheduler:
     ) -> None:
         """装配（检查次序 F2-06 钉死；参数语义见类 docstring 与 §3.8 签名草图）。
 
-        ``condition_resolvers`` 缺省口径（E-P3-39④，T04b 过渡）：设计签名草图
-        缺省为 ``BUILTIN_CONDITION_RESOLVERS``（interrupt.py，T05 交付）；
-        本任务运行时零 import 约束（Leader 裁定 (B)）下缺省取 ``None``，
-        T05 接线刻后求值时以 BUILTIN 共享缺省实例落位（对共享缺省实例调用
-        register 属配置错误——实现方须自建 registry 传入）。
+        ``condition_resolvers`` 缺省口径（E-P3-39④，T05 落位）：缺省取
+        ``BUILTIN_CONDITION_RESOLVERS`` 共享缺省实例（interrupt.py，内置 4
+        kind 纯实现）；对该共享缺省实例调用 ``register`` 属配置错误
+        （``register`` 直接拒绝）——自定义 kind 请自建
+        ``ConditionResolverRegistry`` 传入。
         """
         # 第一步（F2-06，先于执行器构造）：R1 写屏障武装断言（D-P3-11②）
         if assert_barrier_armed and not write_barrier_installed():
@@ -625,7 +647,11 @@ class Scheduler:
         self._origin = origin
         self._time_policy = time_policy
         self._boundaries: tuple[DecisionBoundary, ...] = tuple(boundaries)
-        self._condition_resolvers = condition_resolvers
+        self._condition_resolvers: ConditionResolverRegistry = (
+            condition_resolvers
+            if condition_resolvers is not None
+            else BUILTIN_CONDITION_RESOLVERS
+        )
         self._wakeup_hooks = wakeup_hooks if wakeup_hooks is not None else WakeupHookRegistry()
         self._trigger_registry = trigger_registry
         self._named_triggers = named
@@ -650,7 +676,8 @@ class Scheduler:
           自动失效（D-P3-24③，重报保证限定于该行动仍处 INTERRUPTED 期间）。
 
         边界对象按鸭子式属性读（``blocking`` / ``actor_id`` /
-        ``boundary_id``）——``DecisionBoundary`` 为 T05 交付（Leader 裁定 (B)）。
+        ``boundary_id``）——与 T05 交付的 ``DecisionBoundary``（interrupt.py）
+        及测试侧鸭子替身双向兼容。
         """
         if not self._time_policy.pause_on_player_boundary:
             return None
@@ -684,7 +711,8 @@ class Scheduler:
         payload effect，match 分支 no-op）；按 ``boundary_id`` 去重（查队列中
         既有条目，已存在即跳过），重复调用幂等不重复补入；``entry_id`` 经
         ``make_scheduled_event`` 缺省 ``new_scheduled_entry_id()`` 工厂签发。
-        边界是否 fired 仍由刻后求值判定（T05 接线）——机制层与语义层分离。
+        边界是否 fired 仍由刻后求值判定（T05 已接线：
+        ``_maybe_evaluate_boundaries``）——机制层与语义层分离。
         """
         existing: set[str] = {
             str(entry.payload["boundary_id"])
@@ -711,6 +739,169 @@ class Scheduler:
             runtime = enqueue_scheduled_event(runtime, entry)
             existing.add(boundary_id)
         return runtime
+
+    # —— 刻后边界求值（T05 接线，Leader 裁定：5 元组返回、不扰 except 结构）——
+
+    def _maybe_evaluate_boundaries(
+        self,
+        world: WorldState,
+        runtime: RuntimeState,
+        *,
+        tick: int,
+        tick_events: Sequence[DomainEvent],
+        transitions: list[LifecycleTransition],
+        skip_boundary_ids: frozenset[str] = frozenset(),
+    ) -> tuple[
+        RuntimeState,
+        bool,
+        PauseReason | None,
+        BoundaryReport,
+        TraceRecord | None,
+    ]:
+        """每刻提交后的边界求值与处置（§2.4 刻后求值块，顺序固定，D-P3-09/10）。
+
+        次序钉死（伪代码 §2.4 L174-194 逐行对应）：
+
+        1. ``view = guard(world)``——每刻提交后**重新** guard（G2 移交 2；
+           视图为 guard() 时刻深冻结快照、零权威引用泄漏）；
+        2. ``report = evaluate_boundaries(...)``——注册序求值（interrupt.py，
+           纯函数、不迁移不入队）；``registry`` 缺省 BUILTIN（E-P3-39④）、
+           ``tick`` 显式传当前刻（D-P3-21）；``skip_boundary_ids`` 为同一
+           逻辑刻内**已 fired** 的边界 id（活络守卫，见下）；
+        3. fired 逐对处置：玩家 blocking 命中且
+           ``pause_on_player_boundary=False`` → continue（record-only，
+           E-P3-36：fired 记录 + trace 照常、不中断）；否则对 action_ids 中
+           **当前** ``status==ACTIVE`` 且 ``interruptible`` 者
+           ``transition_action(INTERRUPTED, at_tick=tick,
+           updates={'base_world_revision': world.world_revision})``——唯一
+           迁移入口（Leader 裁定：无并行中断函数）、re-anchor 至当前世界
+           revision（§2.4 中断分支 / D-P3-08）、边界 ``reason`` 原样透传、
+           迁移记录 append 进 ``transitions``（outcome 按调用聚合，D-P3-18；
+           §5.2 S8 断言 transitions=[S7] 一条）；同刻多边界命中同一实例时
+           前序迁移已离开 ACTIVE → 后序防御性复查跳过（确定性、不重入）；
+        4. npc_notices 逐对 ``enqueue_actor_wakeup(due_tick=tick,
+           reason=boundary_id)``——双记录口径（§2.5 尾注：payload 仅
+           actor_id、reason 仅存 ActorWakeup 记录）；**不受**
+           ``pause_on_player_boundary`` 辖制（D-P3-10 选 B）；
+        5. fired 或 npc_notices 非空 → ``TraceKind.SYSTEM`` 记录（F2-12
+           系统事件模式：``record_id`` 经 ``new_trace_record_id()`` 工厂、
+           ``world_revision`` / ``logical_tick`` 权威序坐标、payload 承载
+           fired 报告）——record-only 与正常两路均留痕（Leader 裁定 D；
+           D-P3-24⑥ 一次性暂停的"已送达"留痕同口径）；两者皆空 → ``None``
+           （无噪声记录）；
+        6. 暂停判定：``report.player_blocking 且 pause_on_player_boundary``
+           → ``paused=True`` + ``pause_reason=PauseReason(kind=
+           "decision_boundary", boundary_id=<注册序首个玩家 blocking 命中>,
+           tick=tick)``（D-P3-10）；否则 False + None。
+
+        返回 5 元组 ``(new_runtime, paused, pause_reason, report, trace)``
+        （Leader 裁定）：``report`` 供调用方观察（fired 判定纯派生、无持久
+        状态）；本方法不返回 outcome、不触碰 ``world``、不推进时钟；错误
+        （含 :class:`UnknownConditionError`、表外迁移
+        :class:`IllegalTransitionError`）向上抛——由调用方 try 内的原子刻
+        ``except SchedulerError`` 承接（D-P3-24④：刻前状态对 + 错误
+        outcome，不崩溃、部分提交不可见）。
+
+        **活络守卫（同刻 fired 去重）**：``skip_boundary_ids`` 内的边界本刻
+        已求值过（已 fired）→ 本次整体跳过。依据：§2.4 边界情形注——同刻
+        新入队条目（本方法 npc_notices 路径的 wakeup 即其一）"追加至同刻批
+        尾部、仍在同一 ``t`` 内处理完"，主循环因此可能于同一逻辑刻重入本
+        方法；若同一边界于同刻二次 fired，将再入队一个 ``due_tick == t``
+        的 wakeup → 无限再生（scheduled 边界 ``due_tick <= tick`` 恒参评、
+        状态型 condition 恒真时尤甚），§2.4 "队列耗尽终点" 不可达。守卫仅
+        限"同刻"（跨刻重评不受辖制——条件可能因提交而变），只跳过已
+        fired 者（本刻未命中者照常重评，T06 hook 同刻提交后新命中仍须
+        可见），注册序稳定性与 fired 内容不受影响。
+        """
+        boundaries = [
+            boundary
+            for boundary in self._boundaries
+            if boundary.boundary_id not in skip_boundary_ids
+        ]
+        if not boundaries:
+            return runtime, False, None, BoundaryReport(tick=tick, fired=[]), None
+        view = guard(world)  # 每刻提交后重新 guard（G2 移交 2）
+        report = evaluate_boundaries(
+            view,
+            runtime,
+            tick=tick,
+            events=tick_events,
+            boundaries=boundaries,
+            registry=self._condition_resolvers,
+            player_actor_ids=self._player_actor_ids,
+        )
+        boundaries_by_id: dict[str, DecisionBoundary] = {
+            boundary.boundary_id: boundary for boundary in boundaries
+        }
+        new_runtime = runtime
+        # 3. fired 逐对处置（§2.4 中断分支；record-only 门控 E-P3-36）
+        record_only = not self._time_policy.pause_on_player_boundary
+        for boundary_id, action_ids in report.fired:
+            boundary = boundaries_by_id[boundary_id]
+            player_hit = boundary.blocking and (
+                boundary.actor_id in self._player_actor_ids
+            )
+            if player_hit and record_only:
+                continue  # record-only（E-P3-36）：不中断可中断行动
+            for instance_id in action_ids:
+                action = new_runtime.active_actions.get(instance_id)
+                if (
+                    action is None
+                    or action.status is not ActionLifecycleStatus.ACTIVE
+                    or not action.interruptible
+                ):
+                    # 防御性复查：同刻前序边界可能已迁移该实例（离开 ACTIVE）
+                    continue
+                new_runtime, transition = transition_action(
+                    new_runtime,
+                    instance_id,
+                    LifecycleEvent.INTERRUPTED,
+                    at_tick=tick,
+                    reason=boundary.reason,
+                    updates={"base_world_revision": world.world_revision},
+                )
+                transitions.append(transition)
+        # 4. npc_notices 逐对 wakeup 双记录（不受标志辖制）
+        for boundary_id, actor_id in report.npc_notices:
+            new_runtime = enqueue_actor_wakeup(
+                new_runtime, actor_id, due_tick=tick, reason=boundary_id
+            )
+        # 5. fired 报告留痕（两路均记录，F2-12 / D-P3-24⑥）
+        trace: TraceRecord | None = None
+        if report.fired or report.npc_notices:
+            trace = TraceRecord(
+                record_id=new_trace_record_id(),
+                kind=TraceKind.SYSTEM,
+                world_revision=world.world_revision,
+                logical_tick=tick,
+                payload={
+                    "diagnostic": "decision_boundary_fired",
+                    "fired": [
+                        [bid, [str(iid) for iid in instance_ids]]
+                        for bid, instance_ids in report.fired
+                    ],
+                    "player_blocking": report.player_blocking,
+                    "npc_notices": [
+                        [bid, str(actor)] for bid, actor in report.npc_notices
+                    ],
+                },
+            )
+        # 6. 暂停判定（注册序首个玩家 blocking 命中，D-P3-10）
+        paused = report.player_blocking and (
+            self._time_policy.pause_on_player_boundary
+        )
+        pause_reason: PauseReason | None = None
+        if paused:
+            for boundary_id, _instance_ids in report.fired:
+                boundary = boundaries_by_id[boundary_id]
+                if boundary.blocking and boundary.actor_id in self._player_actor_ids:
+                    pause_reason = PauseReason(
+                        kind="decision_boundary",
+                        boundary_id=boundary_id,
+                        tick=tick,
+                    )
+                    break
+        return new_runtime, paused, pause_reason, report, trace
 
     # —— 提交管道（Leader 裁定 (C)：提交参数与聚合承接）——
 
@@ -981,7 +1172,8 @@ class Scheduler:
         次序钉死：入口首检（D-P3-24，置于循环前播种之前）→ 循环前播种
         （D-P3-22）→ ``take_due`` 批循环（同刻批稳定 FIFO，D-P3-05）→ 时钟
         跳变（D-P3-03，唯一写点）→ 批内逐条 kind 分支 → 刻后边界求值
-        （T05 接线）→ 暂停/terminal 返回；单刻原子性（D-P3-24④）：批处理中
+        （T05 已接线：``_maybe_evaluate_boundaries``）→ 暂停/terminal 返回；
+        单刻原子性（D-P3-24④）：批处理中
         任何 P3 错误 → 返回刻前状态对 + 错误 outcome。
         """
         # —— 入口首检（未响应暂停幂等重报，D-P3-24；重入零副作用）——
@@ -999,6 +1191,9 @@ class Scheduler:
         events: list[DomainEvent] = []
         traces: list[TraceRecord] = []
         transitions: list[LifecycleTransition] = []
+        # 活络守卫簿记（本次运行局部，跨运行不残留）：boundary_id → 最近
+        # fired 的逻辑刻；同刻重入时据此跳过已 fired 边界（§2.4 边界情形注）
+        boundary_fired_at: dict[str, int] = {}
         while True:
             batch_opt = take_due(runtime)
             if batch_opt is None:
@@ -1097,22 +1292,50 @@ class Scheduler:
                     else:  # 防御：构造点已强制词表（make_scheduled_event）
                         raise QueueInvariantError(f"未知队列条目 kind：{entry.kind!r}")
                     # 本刻事件流统一维护：逐条 dispatch 后收集本条新增事件
-                    # （完成/事件提交经 outcome 列表承接，供 T05 边界求值与
+                    # （完成/事件提交经 outcome 列表承接，供刻后边界求值与
                     # 同刻后续触发器求值共用）
                     tick_events.extend(events[n_events_before:])
-                # —— 刻后求值（顺序固定，D-P3-09/10）——
-                # T05 接线（Leader 裁定 (B)）：interrupt.py 交付后此处落——
-                #   view = guard(world)                    # 每刻提交后重新 guard（G2 移交 2）
-                #   report = evaluate_boundaries(view, runtime, tick=t, events=tick_events,
-                #       boundaries=self._boundaries, registry=self._condition_resolvers
-                #       （BUILTIN 缺省，E-P3-39④）, player_actor_ids=self._player_actor_ids)
-                #   fired：pause_on_player_boundary=False 且玩家 blocking 命中 →
-                #       continue（record-only，E-P3-36）；否则对 action_ids 中
-                #       status==ACTIVE 且 interruptible 者 transition_action(INTERRUPTED,
-                #       updates={'base_world_revision': world.world_revision})（§2.4 中断分支）
-                #   npc_notices → enqueue_actor_wakeup（T06 接线，Leader 裁定 (B)）
-                #   report.player_blocking 且 pause_on_player_boundary → 返回
-                #       paused(SchedulerOutcome(pause_reason=boundary, tick=t))
+                # —— 刻后求值（顺序固定，D-P3-09/10；T05 接线，Leader 裁定）——
+                # 每刻提交后以当刻新 guard() 视图求值（G2 移交 2）；INTERRUPTED
+                # 迁移经 transition_action 唯一入口、npc wakeup 双记录、玩家
+                # blocking 暂停（受 pause_on_player_boundary 门控，E-P3-36
+                # record-only 两路留痕）；fired 报告经 TraceKind.SYSTEM 记录
+                # 入 outcome.trace_records（F2-12 系统事件模式）。活络守卫：
+                # 同一逻辑刻内已 fired 的边界（本刻 npc_notices 派生的同刻
+                # wakeup 重入时）跳过，防无限再生（§2.4 边界情形注）。任何
+                # P3 错误落入下方原子刻 except（D-P3-24④）。
+                skip_ids = frozenset(
+                    bid for bid, fired_tick in boundary_fired_at.items() if fired_tick == t
+                )
+                runtime, boundary_paused, boundary_pause, _report, boundary_trace = (
+                    self._maybe_evaluate_boundaries(
+                        world,
+                        runtime,
+                        tick=t,
+                        tick_events=tick_events,
+                        transitions=transitions,
+                        skip_boundary_ids=skip_ids,
+                    )
+                )
+                for _bid, _instance_ids in _report.fired:
+                    boundary_fired_at[_bid] = t
+                if boundary_trace is not None:
+                    traces.append(boundary_trace)
+                if boundary_paused:
+                    # 玩家 blocking 边界命中 → 暂停（§2.4 末行；D-P3-10）
+                    return (
+                        world,
+                        runtime,
+                        self._build_outcome(
+                            True,
+                            boundary_pause,
+                            t,
+                            txs,
+                            events,
+                            traces,
+                            transitions,
+                        ),
+                    )
             except SchedulerError as exc:
                 # 原子刻错误路径（D-P3-24④）：刻前状态对 + 非空诊断（不崩溃、
                 # 部分提交不可见，§2.4 确定性论证 5）

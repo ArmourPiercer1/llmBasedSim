@@ -99,6 +99,10 @@ from src.engine_v2.core.ids import (
     EffectId,
     ProducerId,
 )
+from src.engine_v2.core.interrupt import (
+    DecisionBoundary,
+    InterruptCondition,
+)
 from src.engine_v2.core.provenance import OriginKind, Provenance
 from src.engine_v2.core.reducer import (
     EFFECT_SET_WORLD_VARIABLE,
@@ -139,8 +143,10 @@ _WALK_EFFECT = ActionTypeId("walk_effect")
 
 
 class _Boundary:
-    """DecisionBoundary 鸭子替身：scheduler 只读 blocking/actor_id/boundary_id/
-    kind/due_tick 五属性（_unanswered_pause / _seed_boundary_entries 口径）。"""
+    """DecisionBoundary 鸭子替身：T04b 机制面（_unanswered_pause /
+    _seed_boundary_entries）只读 blocking/actor_id/boundary_id/kind/due_tick
+    五属性；T05 刻后求值（interrupt.evaluate_boundaries）读全属性面
+    （+condition/interrupt/reason）——替身按全表面给出，语义与真型一致。"""
 
     def __init__(
         self,
@@ -149,13 +155,19 @@ class _Boundary:
         *,
         kind: str = "scheduled",
         due_tick: int | None = None,
+        condition: InterruptCondition | None = None,
         blocking: bool = False,
+        interrupt: bool = True,
+        reason: str | None = None,
     ) -> None:
         self.boundary_id = boundary_id
         self.actor_id = actor_id
         self.kind = kind
         self.due_tick = due_tick
+        self.condition = condition
         self.blocking = blocking
+        self.interrupt = interrupt
+        self.reason = reason
 
 
 # —— 构造辅助 ——
@@ -1730,3 +1742,292 @@ class TestAtomicTick:
         assert world2 is world  # 刻前 world——前半提交对外不可见
         assert oc.errors and len(oc.errors) == 1
         assert oc.transactions == ()  # 部分提交不可见
+
+
+# —— 11. 刻后边界求值接线（T05，§2.4 刻后块 / §3.7；真实 DecisionBoundary 对象）——
+
+
+def _hit_condition(cid: str = "C1") -> InterruptCondition:
+    """玩家/NPC 共用的命中条件：本刻提交事件流出现 core.set_world_variable
+    （D-P3-17：event_type 恒等于 effect type）。"""
+    return InterruptCondition(
+        condition_id=cid,
+        kind="event_type",
+        parameters={"event_type": EFFECT_SET_WORLD_VARIABLE},
+    )
+
+
+def _event_entry(
+    due_tick: int,
+    *,
+    key: str = "flag",
+    value: object = True,
+    effect_id: str = "eff_bnd_001",
+    base_revision: int = 0,
+):
+    """确定性 event 条目：commit core.set_world_variable（无 trigger 路径）。"""
+    return make_scheduled_event(
+        "event",
+        due_tick,
+        payload={
+            "effects": [
+                _set_var_effect(
+                    key,
+                    value,
+                    effect_id=effect_id,
+                    base_revision=base_revision,
+                ).model_dump(mode="json")
+            ]
+        },
+    )
+
+
+def _fired_traces(oc: SchedulerOutcome) -> list:
+    """outcome 中 decision_boundary_fired 系统事件记录（F2-12 留痕面）。"""
+    return [
+        r
+        for r in oc.trace_records
+        if r.kind is TraceKind.SYSTEM
+        and r.payload.get("diagnostic") == "decision_boundary_fired"
+    ]
+
+
+class TestPostTickBoundaryWiring:
+    """真实 DecisionBoundary 对象的刻后求值 e2e（§5.2 S7/S8 口径）。"""
+
+    def test_player_condition_boundary_interrupts_and_pauses(self) -> None:
+        """Gate 式玩家条件边界：fired → INTERRUPTED（re-anchor rev 1、progress
+        镜像 0.4、reason 透传）+ paused（decision_boundary/B1/12）+ fired 系统
+        事件 trace（§5.2 S7/S8：transitions 恰 1 条）。"""
+        b = DecisionBoundary(
+            boundary_id="B1",
+            actor_id=_PLAYER,
+            kind="condition",
+            condition=_hit_condition(),
+            blocking=True,
+            interrupt=True,
+            reason="encounter",
+        )
+        s = _scheduler(boundaries=(b,), player_ids=(_PLAYER,))
+        world = _world()
+        rt = RuntimeState(
+            logical_tick=0,
+            active_actions={"act_b1": _active("act_b1", _PLAYER, ActionLifecycleStatus.ACTIVE)},
+        )
+        rt = enqueue_scheduled_event(rt, _event_entry(12))
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.paused is True
+        assert oc.pause_reason == PauseReason(
+            kind="decision_boundary", boundary_id="B1", tick=12
+        )
+        assert oc.ticks_processed == 12
+        act = rt2.active_actions["act_b1"]
+        assert act.status is ActionLifecycleStatus.INTERRUPTED
+        assert act.progress == pytest.approx(0.4)
+        assert act.base_world_revision == Revision(1)
+        assert act.last_transition_tick == 12
+        assert len(oc.transitions) == 1
+        t0 = oc.transitions[0]
+        assert t0.event is LifecycleEvent.INTERRUPTED
+        assert t0.instance_id == "act_b1"
+        assert t0.at_tick == 12
+        assert t0.reason == "encounter"
+        assert world2.world_revision == Revision(1)
+        traces = _fired_traces(oc)
+        assert len(traces) == 1
+        assert traces[0].logical_tick == 12
+        assert traces[0].payload["fired"] == [["B1", ["act_b1"]]]
+        assert traces[0].payload["player_blocking"] is True
+        assert traces[0].payload["npc_notices"] == []
+
+    def test_record_only_keeps_active_and_continues(self) -> None:
+        """E-P3-36 record-only（pause_on_player_boundary=False）：玩家 blocking
+        命中仍 fired + trace，但**不中断、不暂停**——行动保持 ACTIVE、后续刻
+        照常推进至 terminal。"""
+        b = DecisionBoundary(
+            boundary_id="B1",
+            actor_id=_PLAYER,
+            kind="condition",
+            condition=_hit_condition(),
+            blocking=True,
+            interrupt=True,
+            reason="encounter",
+        )
+        s = _scheduler(
+            boundaries=(b,),
+            time_policy=TimePolicy(pause_on_player_boundary=False),
+            player_ids=(_PLAYER,),
+        )
+        world = _world()
+        rt = RuntimeState(
+            logical_tick=0,
+            active_actions={"act_b1": _active("act_b1", _PLAYER, ActionLifecycleStatus.ACTIVE)},
+        )
+        rt = enqueue_scheduled_event(rt, _event_entry(12))
+        # 第二停靠点：wakeup 条目（无 effect、无事件 → 条件不再命中）
+        rt = enqueue_actor_wakeup(rt, _NPC, 15, reason="probe")
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.paused is False
+        assert oc.pause_reason == PauseReason(kind="terminal", tick=15)
+        assert oc.transitions == ()
+        assert rt2.active_actions["act_b1"].status is ActionLifecycleStatus.ACTIVE
+        assert world2.world_revision == Revision(1)
+        traces = _fired_traces(oc)
+        assert [t.logical_tick for t in traces] == [12]
+        assert traces[0].payload["fired"] == [["B1", ["act_b1"]]]
+        assert traces[0].payload["player_blocking"] is True
+
+    def test_npc_blocking_boundary_interrupts_without_pause_wakes(self) -> None:
+        """NPC blocking 命中（D-P3-10 选 B）：中断 NPC 行动但**不暂停**；
+        npc_notices → wakeup 双记录（ActorWakeup 记录 reason=boundary_id、
+        队列 payload 仅 actor_id）；同刻 wakeup 重入不重报（活络守卫）；
+        后续 checkpoint 条目 → checkpoint_skipped_interrupted 诊断 no-op
+        （D-P3-25）。"""
+        b = DecisionBoundary(
+            boundary_id="B1",
+            actor_id=_NPC,
+            kind="condition",
+            condition=_hit_condition(),
+            blocking=True,
+            interrupt=True,
+            reason="ambush",
+        )
+        s = _scheduler(boundaries=(b,), player_ids=(_PLAYER,))
+        world = _world()
+        rt = RuntimeState(
+            logical_tick=0,
+            active_actions={"act_n1": _active("act_n1", _NPC, ActionLifecycleStatus.ACTIVE)},
+        )
+        rt = enqueue_scheduled_event(rt, _event_entry(12))
+        rt = enqueue_scheduled_event(
+            rt, make_scheduled_event("action_checkpoint", 20, payload={"instance_id": "act_n1"})
+        )
+        # 段 1：step() 单批——同刻 wakeup 重入前观察双记录
+        world2, rt2, oc = s.step(world, rt)
+        assert oc.paused is True
+        # step 强制暂停口径（NPC 命中不产生边界暂停，bounded 而非
+        # decision_boundary——与玩家边界路径对照见 test_step_…）
+        assert oc.pause_reason == PauseReason(kind="bounded", tick=12)
+        act = rt2.active_actions["act_n1"]
+        assert act.status is ActionLifecycleStatus.INTERRUPTED
+        assert len(oc.transitions) == 1
+        assert oc.transitions[0].event is LifecycleEvent.INTERRUPTED
+        assert oc.transitions[0].at_tick == 12
+        assert oc.transitions[0].reason == "ambush"
+        # wakeup 双记录：ActorWakeup 记录（reason=boundary_id）+ 队列条目
+        # （payload 仅 actor_id、reason 不入 payload，§2.5 尾注）
+        assert ActorWakeup(actor_id=_NPC, due_tick=12, reason="B1") in rt2.actor_wakeups
+        wq = [e for e in rt2.scheduler_queue if e.kind == "wakeup"]
+        assert len(wq) == 1
+        assert wq[0].due_tick == 12
+        assert wq[0].payload == {"actor_id": "npc_1"}
+        assert "reason" not in wq[0].payload
+        assert len(_fired_traces(oc)) == 1
+        # 段 2：续推——同刻 wakeup 消费（不重报：活络守卫）、checkpoint @20
+        # 诊断 no-op、terminal @20
+        world3, rt3, oc2 = s.fast_forward(world2, rt2)
+        assert oc2.paused is False
+        assert oc2.pause_reason == PauseReason(kind="terminal", tick=20)
+        assert rt3.scheduler_queue == []
+        # 双记录唯一：无重复 wakeup 记录、无二次迁移（重入求值被守卫跳过）
+        assert rt3.actor_wakeups == [ActorWakeup(actor_id=_NPC, due_tick=12, reason="B1")]
+        assert oc2.transitions == ()
+        assert rt3.active_actions["act_n1"].status is ActionLifecycleStatus.INTERRUPTED
+        diags = [
+            r.payload.get("diagnostic")
+            for r in oc2.trace_records
+            if r.kind is TraceKind.SYSTEM
+        ]
+        assert "checkpoint_skipped_interrupted" in diags
+        assert "decision_boundary_fired" not in diags  # 同刻重入不二次 fired 留痕
+        assert oc2.errors == ()
+
+    def test_player_blocking_interrupt_false_fires_and_pauses_only(self) -> None:
+        """D-P3-24⑥ 边角：玩家 blocking 命中但 interrupt=False → fired（空
+        实例）+ 暂停，行动保持 ACTIVE、零迁移。"""
+        b = DecisionBoundary(
+            boundary_id="B1",
+            actor_id=_PLAYER,
+            kind="condition",
+            condition=_hit_condition(),
+            blocking=True,
+            interrupt=False,
+            reason="gate",
+        )
+        s = _scheduler(boundaries=(b,), player_ids=(_PLAYER,))
+        world = _world()
+        rt = RuntimeState(
+            logical_tick=0,
+            active_actions={"act_b1": _active("act_b1", _PLAYER, ActionLifecycleStatus.ACTIVE)},
+        )
+        rt = enqueue_scheduled_event(rt, _event_entry(12))
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.paused is True
+        assert oc.pause_reason == PauseReason(
+            kind="decision_boundary", boundary_id="B1", tick=12
+        )
+        assert oc.transitions == ()
+        assert rt2.active_actions["act_b1"].status is ActionLifecycleStatus.ACTIVE
+        traces = _fired_traces(oc)
+        assert len(traces) == 1
+        assert traces[0].payload["fired"] == [["B1", []]]
+
+    def test_step_reports_decision_boundary_not_bounded(self) -> None:
+        """step() 单批 + 刻后求值：边界命中 → pause_reason =
+        decision_boundary（优先于 single_batch 的 bounded 口径）。"""
+        b = DecisionBoundary(
+            boundary_id="B1",
+            actor_id=_PLAYER,
+            kind="condition",
+            condition=_hit_condition(),
+            blocking=True,
+            interrupt=True,
+            reason="encounter",
+        )
+        s = _scheduler(boundaries=(b,), player_ids=(_PLAYER,))
+        world = _world()
+        rt = RuntimeState(
+            logical_tick=0,
+            active_actions={"act_b1": _active("act_b1", _PLAYER, ActionLifecycleStatus.ACTIVE)},
+        )
+        rt = enqueue_scheduled_event(rt, _event_entry(12))
+        world2, rt2, oc = s.step(world, rt)
+        assert oc.paused is True
+        assert oc.pause_reason == PauseReason(
+            kind="decision_boundary", boundary_id="B1", tick=12
+        )
+        assert oc.ticks_processed == 12
+        assert rt2.active_actions["act_b1"].status is ActionLifecycleStatus.INTERRUPTED
+
+    def test_unknown_condition_kind_atomic_error(self) -> None:
+        """未知条件 kind（未注册 resolver）→ UnknownConditionError（
+        D-P3-16 可检查不静默）→ 原子刻错误路径：刻前状态对 + 单条 errors、
+        零提交不可见。"""
+        b = DecisionBoundary(
+            boundary_id="B1",
+            actor_id=_PLAYER,
+            kind="condition",
+            condition=InterruptCondition(
+                condition_id="C1", kind="moon_phase", parameters={}
+            ),
+            blocking=True,
+        )
+        s = _scheduler(boundaries=(b,), player_ids=(_PLAYER,))
+        world = _world()
+        rt = RuntimeState(
+            logical_tick=0,
+            active_actions={"act_b1": _active("act_b1", _PLAYER, ActionLifecycleStatus.ACTIVE)},
+        )
+        rt = enqueue_scheduled_event(rt, _event_entry(12))
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert world2 is world  # 刻前 world——提交对外不可见
+        assert rt2.logical_tick == 0
+        assert rt.active_actions["act_b1"].status is ActionLifecycleStatus.ACTIVE
+        assert oc.paused is False
+        assert oc.pause_reason is None
+        assert oc.ticks_processed == 0
+        assert oc.transactions == ()
+        assert oc.events == ()
+        assert oc.transitions == ()
+        assert len(oc.errors) == 1
+        assert "moon_phase" in str(oc.errors[0])
