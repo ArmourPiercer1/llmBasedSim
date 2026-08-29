@@ -57,6 +57,7 @@ CORE_SUBMODULES: tuple[str, ...] = (
     "provenance",
     "reducer",
     "revision",
+    "scheduler",
     "serialization",
     "snapshot",
     "state",

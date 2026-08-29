@@ -54,17 +54,31 @@ from src.engine_v2.core.action_lifecycle import (
     IllegalTransitionError,
     LifecycleEvent,
     LifecycleTransition,
+    abort_action,
+    apply_checkpoint,
+    complete_action,
+    fail_action,
+    progress_of,
+    resume_action,
     transition_action,
 )
 from src.engine_v2.core.actions import ActionLifecycleStatus, ActionTypeId, ActiveAction
 from src.engine_v2.core.clock import SchedulerError
 from src.engine_v2.core.entity import ContractModel
+from src.engine_v2.core.effects import EffectTypeId, EntityTarget, ProposedEffect
 from src.engine_v2.core.event_queue import make_scheduled_event
-from src.engine_v2.core.ids import ActionInstanceId, new_action_instance_id, new_entity_id
+from src.engine_v2.core.ids import (
+    ActionInstanceId,
+    EffectId,
+    ProducerId,
+    new_action_instance_id,
+    new_entity_id,
+)
 from src.engine_v2.core.provenance import OriginKind, Provenance
 from src.engine_v2.core.revision import INITIAL_WORLD_REVISION, Revision
 from src.engine_v2.core.serialization import dump_json, load_json
-from src.engine_v2.core.state import ActorWakeup, RuntimeState, ScheduledEvent
+from src.engine_v2.core.state import ActorWakeup, RuntimeState, ScheduledEvent, WorldState
+from src.engine_v2.core.trace import TraceKind, TraceRecord
 
 # —— 状态/事件短名（测试专用，避免 100 列上限下的冗长参数化行）——
 
@@ -856,3 +870,846 @@ class TestErrorHierarchy:
         runtime = _runtime_with_action(action)
         with pytest.raises(ValueError):
             transition_action(runtime, action.instance_id, E_ABORTED, at_tick=5)
+
+
+# ======================================================================
+# §3.6 下半（P3-T04a：progress_of / resume_action / abort_action /
+# complete_action / fail_action）——同文件串行追加（§3.10 单 Owner 纪律；
+# 全部用例复用上方 T03 测试助手层 _action/_runtime/_entry/_gate_queue）。
+#
+# 本节不含 apply_checkpoint / start_action 用例（同属 §3.6 下半，范围
+# 裁定见任务/报告）；表外迁移在迁移表层（TestTransitionAction 全矩阵）
+# 已逐格覆盖，本节的表外用例仅钉住各公共入口的同一防线行为。
+# ======================================================================
+
+
+def _pos_effect() -> ProposedEffect:
+    """一个确定性位置类 ProposedEffect（complete_action 输入——纯函数只
+    原样传出给调用方（Scheduler）经 P2 管道提交，本函数不消费、不写世界）。"""
+    return ProposedEffect(
+        effect_id=EffectId("eff_" + "0" * 32),
+        effect_type=EffectTypeId("set_position"),
+        source=ProducerId("test.producer"),
+        target=EntityTarget(entity_id=new_entity_id(), field_path="position"),
+        payload={"x": 10.0, "y": 20.0},
+        base_revision=INITIAL_WORLD_REVISION,
+    )
+
+
+def _gate_a1() -> tuple[ActionInstanceId, RuntimeState, ActiveAction]:
+    """Gate §5.2 S7 / §5.3 A1 场景构造：travel 行动 start@0、end@30（周期
+    checkpoint 间隔 10，cp@20 已入队），@12 被 Plan Gate 中断——世界
+    revision 已推进至 1 并 re-anchor、progress 镜像 0.4、队列保留
+    cp@20/end@30（中断不剪除，D-P3-25 ①）。
+
+    返回 ``(instance_id, 中断后 runtime, 中断后 ActiveAction)``。
+    """
+    action = _action()
+    runtime = _runtime_with_action(
+        action, scheduler_queue=_gate_queue(action.instance_id)
+    )
+    runtime, _ = transition_action(
+        runtime,
+        action.instance_id,
+        E_INTERRUPT,
+        at_tick=12,
+        updates={"base_world_revision": Revision(1)},
+    )
+    return action.instance_id, runtime, runtime.active_actions[action.instance_id]
+
+
+def _interrupted_action(
+    *,
+    expected_end_tick: int | None,
+    next_checkpoint_tick: int | None,
+    progress: float | None,
+) -> tuple[ActionInstanceId, ActiveAction]:
+    """直接构造 INTERRUPTED 记录（跳过 start_action——T04b 范围），供
+    防御分支 / 事件驱动 / 伪造镜像用例使用。"""
+    action = ActiveAction(
+        instance_id=new_action_instance_id(),
+        action_id=ActionTypeId("travel"),
+        actor_id=new_entity_id(),
+        status=INTERRUPTED,
+        start_tick=0,
+        expected_end_tick=expected_end_tick,
+        progress=progress,
+        interruptible=True,
+        next_checkpoint_tick=next_checkpoint_tick,
+        base_world_revision=Revision(1),
+        provenance=Provenance(producer_id="test.producer", origin=OriginKind.SYSTEM),
+    )
+    return action.instance_id, action
+
+
+class TestProgressOf:
+    """D-P3-08 progress 纯派生（§3.6 下半公共面；E-P3-28 镜像/防篡改口径）。"""
+
+    def test_event_driven_returns_none(self) -> None:
+        """事件驱动（expected_end_tick 为 None）→ None（无时长语义）。"""
+        action = _action(expected_end_tick=None)
+        assert progress_of(action, 99) is None
+
+    def test_gate_a1_exact(self) -> None:
+        """G3-1 断言 4 口径：start=0、end=30、t=12 → 0.4（逐字相等）。"""
+        action = _action(start_tick=0, expected_end_tick=30)
+        assert progress_of(action, 12) == 0.4
+
+    def test_midpoint_half(self) -> None:
+        action = _action(start_tick=0, expected_end_tick=30)
+        assert progress_of(action, 15) == 0.5
+
+    def test_offset_start_window(self) -> None:
+        """start_tick 非 0：分母为 (end - start)，t=10 → (10-5)/(25-5)=0.25。"""
+        action = _action(start_tick=5, expected_end_tick=25)
+        assert progress_of(action, 10) == 0.25
+
+    def test_clamped_zero_before_start(self) -> None:
+        action = _action(start_tick=5, expected_end_tick=25)
+        assert progress_of(action, 0) == 0.0
+        assert progress_of(action, 4) == 0.0
+
+    def test_clamped_one_after_end(self) -> None:
+        action = _action(start_tick=0, expected_end_tick=30)
+        assert progress_of(action, 31) == 1.0
+        assert progress_of(action, 45) == 1.0
+
+    def test_monotonic_non_decreasing(self) -> None:
+        action = _action(start_tick=0, expected_end_tick=30)
+        seen = [progress_of(action, tick) for tick in range(0, 36)]
+        assert all(a is None or b is None or b >= a for a, b in zip(seen, seen[1:]))
+        assert seen[0] == 0.0
+        assert seen[30] == 1.0
+        assert seen[35] == 1.0
+
+    def test_stored_mirror_never_read(self) -> None:
+        """E-P3-28：存储 progress 仅作快照镜像——伪造 0.99 不影响纯派生。"""
+        action = _action(start_tick=0, expected_end_tick=30, progress=0.99)
+        assert progress_of(action, 12) == 0.4
+
+    def test_return_type_float(self) -> None:
+        action = _action(start_tick=0, expected_end_tick=30)
+        assert isinstance(progress_of(action, 12), float)
+
+
+class TestResumeAction:
+    """INTERRUPTED→ACTIVE（RESUMED，D-P3-07）：时间预算不变、re-anchor、
+    镜像重推、不剪除、不重复入队、防御补入队（D-P3-25 ①）。"""
+
+    def test_gate_a1_full(self) -> None:
+        """§5.3 A1：@12 resume，cp@20 已在队列 → 不重复入队；全部字段逐字。"""
+        world = WorldState()
+        iid, runtime, interrupted = _gate_a1()
+        assert interrupted.status is INTERRUPTED
+        assert interrupted.base_world_revision == Revision(1)
+        queue_before = [e.entry_id for e in runtime.scheduler_queue]
+        world2, runtime2, trans = resume_action(
+            world, runtime, iid, at_tick=12, current_revision=Revision(1)
+        )
+        assert world2 is world  # 纯函数不写世界
+        act = runtime2.active_actions[iid]
+        assert act.status is ACTIVE
+        assert act.start_tick == 0  # 时间预算不变（§2.3 / D-P3-08）
+        assert act.expected_end_tick == 30
+        assert act.base_world_revision == Revision(1)  # re-anchor 至 current_revision
+        assert act.progress == 0.4  # 镜像 = progress_of(action, 12) 纯重推
+        assert act.last_transition_tick == 12
+        # 不剪除、不重复入队：条目逐位不变（entry_id 序列逐字）
+        assert [e.entry_id for e in runtime2.scheduler_queue] == queue_before
+        assert runtime2.logical_tick == runtime.logical_tick  # 不推进逻辑时钟（D-P3-02）
+        assert trans.instance_id == iid
+        assert trans.from_status is INTERRUPTED
+        assert trans.to_status is ACTIVE
+        assert trans.event is E_RESUMED
+        assert trans.at_tick == 12
+        assert trans.reason is None  # 正常路径无诊断
+
+    def test_reanchor_to_new_revision(self) -> None:
+        """resume 刻世界 revision 已再推进（Plan Gate 期间他事提交）→
+        re-anchor 至调用方携带的 current_revision。"""
+        world = WorldState()
+        iid, runtime, _ = _gate_a1()
+        _, runtime2, _ = resume_action(
+            world, runtime, iid, at_tick=12, current_revision=Revision(2)
+        )
+        assert runtime2.active_actions[iid].base_world_revision == Revision(2)
+
+    def test_no_duplicate_enqueue_with_foreign_entries(self) -> None:
+        """他实例 / 其他 kind 条目不干扰本实例存在性判定（payload 双条件）。"""
+        world = WorldState()
+        iid, runtime, _ = _gate_a1()
+        other_iid, other = _interrupted_action(
+            expected_end_tick=40, next_checkpoint_tick=25, progress=0.1
+        )
+        queue = list(runtime.scheduler_queue)
+        queue.append(_entry("action_checkpoint", 25, instance_id=str(other_iid)))
+        queue.append(_entry("deadline", 40, instance_id=str(other_iid)))
+        runtime = _runtime(
+            tick=12,
+            active_actions={
+                iid: runtime.active_actions[iid],
+                other_iid: other,
+            },
+            scheduler_queue=queue,
+        )
+        _, runtime2, trans = resume_action(
+            world, runtime, iid, at_tick=12, current_revision=Revision(1)
+        )
+        assert len(runtime2.scheduler_queue) == 4  # 本实例 2 + 他实例 2，无新增
+        assert [e.entry_id for e in runtime2.scheduler_queue] == [
+            e.entry_id for e in queue
+        ]
+        assert trans.reason is None
+
+    def test_defect_requeue_diagnostic(self) -> None:
+        """D-P3-25 ① 防御分支：cp 条目因缺陷缺失 + next_checkpoint_tick 非空
+        → 按 next_checkpoint_tick 补入队 + 迁移记录承载诊断串。"""
+        world = WorldState()
+        iid, action = _interrupted_action(
+            expected_end_tick=30, next_checkpoint_tick=20, progress=0.4
+        )
+        runtime = _runtime(
+            tick=12,
+            active_actions={iid: action},
+            scheduler_queue=[_entry("action_end", 30, instance_id=str(iid))],
+        )
+        world2, runtime2, trans = resume_action(
+            world, runtime, iid, at_tick=12, current_revision=Revision(1)
+        )
+        assert world2 is world
+        cps = [e for e in runtime2.scheduler_queue if e.kind == "action_checkpoint"]
+        assert len(cps) == 1
+        assert cps[0].due_tick == 20  # 按 next_checkpoint_tick（无需间隔公式）
+        assert cps[0].payload["instance_id"] == str(iid)
+        assert cps[0].entry_id.startswith("sch_")  # ids.py 冻结工厂签发
+        assert [e.due_tick for e in runtime2.scheduler_queue] == [20, 30]  # 稳定排序
+        assert trans.reason == "checkpoint_requeued_after_defect"
+        assert trans.to_status is ACTIVE
+
+    def test_event_driven_absent_is_not_defect(self) -> None:
+        """事件驱动行动（next_checkpoint_tick 为 None）本无周期 checkpoint——
+        条目缺失不构成缺陷：不补入队、无诊断。"""
+        world = WorldState()
+        iid, action = _interrupted_action(
+            expected_end_tick=None, next_checkpoint_tick=None, progress=None
+        )
+        runtime = _runtime(
+            tick=12,
+            active_actions={iid: action},
+            scheduler_queue=[_entry("action_end", 30, instance_id=str(iid))],
+        )
+        _, runtime2, trans = resume_action(
+            world, runtime, iid, at_tick=12, current_revision=Revision(1)
+        )
+        assert len(runtime2.scheduler_queue) == 1
+        assert all(e.kind != "action_checkpoint" for e in runtime2.scheduler_queue)
+        assert trans.reason is None
+
+    def test_mirror_rederived_not_forged(self) -> None:
+        """E-P3-28：中断刻镜像若为伪造值（簿记缺陷），RESUMED 迁移重推覆盖——
+        存储值不进入推导。"""
+        world = WorldState()
+        iid, action = _interrupted_action(
+            expected_end_tick=30, next_checkpoint_tick=20, progress=0.99
+        )
+        runtime = _runtime(
+            tick=12,
+            active_actions={iid: action},
+            scheduler_queue=_gate_queue(iid),
+        )
+        _, runtime2, trans = resume_action(
+            world, runtime, iid, at_tick=12, current_revision=Revision(1)
+        )
+        assert runtime2.active_actions[iid].progress == 0.4
+        assert trans.reason is None  # cp@20 在队列 → 正常路径
+
+    @pytest.mark.parametrize("status", [PROPOSED, VALIDATING, ACTIVE, COMPLETED, FAILED])
+    def test_illegal_source_status(self, status: ActionLifecycleStatus) -> None:
+        """RESUMED 边仅出自 INTERRUPTED（D-P3-07 表外 → IllegalTransitionError）。"""
+        action = _action(status=status)
+        runtime = _runtime_with_action(action)
+        with pytest.raises(IllegalTransitionError):
+            resume_action(
+                WorldState(),
+                runtime,
+                action.instance_id,
+                at_tick=12,
+                current_revision=Revision(1),
+            )
+
+    def test_missing_instance(self) -> None:
+        runtime = _runtime()
+        with pytest.raises(IllegalTransitionError):
+            resume_action(
+                WorldState(),
+                runtime,
+                new_action_instance_id(),
+                at_tick=12,
+                current_revision=Revision(1),
+            )
+
+
+class TestAbortAction:
+    """INTERRUPTED→FAILED（ABORTED；§5.4 B1 口径；E-P3-29 ② ACTIVE 无直边）。"""
+
+    def test_gate_b1_full(self) -> None:
+        """§5.4 B1：@12 abort（默认 reason），result_summary 逐字、剪除全部
+        该实例条目、无完成 effect。"""
+        iid, runtime, _ = _gate_a1()
+        runtime2 = abort_action(runtime, iid, at_tick=12)
+        act = runtime2.active_actions[iid]
+        assert act.status is FAILED
+        assert act.result_summary == {"reason": "aborted", "tick": 12, "progress": 0.4}
+        assert act.last_transition_tick == 12
+        assert runtime2.scheduler_queue == []  # cp@20/end@30 均剪除（终态）
+        assert runtime2.logical_tick == runtime.logical_tick
+
+    def test_custom_reason(self) -> None:
+        iid, runtime, _ = _gate_a1()
+        runtime2 = abort_action(runtime, iid, at_tick=12, reason="npc_intervened")
+        assert runtime2.active_actions[iid].result_summary["reason"] == "npc_intervened"
+
+    def test_event_driven_progress_none(self) -> None:
+        action = _action(status=INTERRUPTED, expected_end_tick=None)
+        runtime = _runtime_with_action(action)
+        runtime2 = abort_action(runtime, action.instance_id, at_tick=7)
+        assert runtime2.active_actions[action.instance_id].result_summary["progress"] is None
+
+    def test_abort_after_clock_advance(self) -> None:
+        """中断刻与中止刻之间时钟推进：progress 按**中止刻**纯派生（不依赖
+        存储镜像）——@12 中断、@20 中止 → 20/30。"""
+        iid, runtime, _ = _gate_a1()
+        runtime2 = abort_action(runtime, iid, at_tick=20)
+        summary = runtime2.active_actions[iid].result_summary
+        assert summary["tick"] == 20
+        assert summary["progress"] == pytest.approx(20 / 30)
+        assert summary["reason"] == "aborted"
+
+    def test_prunes_only_own_entries(self) -> None:
+        """剪除仅命中本实例（payload instance_id 双条件）；他实例条目不动。"""
+        iid, runtime, _ = _gate_a1()
+        other_iid, other = _interrupted_action(
+            expected_end_tick=40, next_checkpoint_tick=25, progress=0.1
+        )
+        queue = list(runtime.scheduler_queue)
+        queue.append(_entry("action_checkpoint", 25, instance_id=str(other_iid)))
+        queue.append(_entry("deadline", 40, instance_id=str(other_iid)))
+        runtime = _runtime(
+            tick=12,
+            active_actions={
+                iid: runtime.active_actions[iid],
+                other_iid: other,
+            },
+            scheduler_queue=queue,
+        )
+        runtime2 = abort_action(runtime, iid, at_tick=12)
+        remaining = runtime2.scheduler_queue
+        assert len(remaining) == 2
+        assert all(e.payload.get("instance_id") == str(other_iid) for e in remaining)
+        assert runtime2.active_actions[iid].status is FAILED  # 状态记录保留
+        assert runtime2.active_actions[other_iid].status is INTERRUPTED  # 他实例不受影响
+
+    @pytest.mark.parametrize(
+        "status", [PROPOSED, VALIDATING, ACTIVE, COMPLETED, FAILED]
+    )
+    def test_illegal_source_status(self, status: ActionLifecycleStatus) -> None:
+        """ABORTED 边仅出自 INTERRUPTED——含 E-P3-29 ② 关键点：ACTIVE 无
+        直接 ABORTED 边（须先中断再中止）。"""
+        action = _action(status=status)
+        runtime = _runtime_with_action(action)
+        with pytest.raises(IllegalTransitionError):
+            abort_action(runtime, action.instance_id, at_tick=12)
+
+    def test_missing_instance(self) -> None:
+        runtime = _runtime()
+        with pytest.raises(IllegalTransitionError):
+            abort_action(runtime, new_action_instance_id(), at_tick=12)
+
+
+class TestCompleteAction:
+    """ACTIVE→COMPLETED（D-P3-08 完成语义：位置/进度只在此刻经事务移动；
+    纯函数只出 effect、不写世界、不推进 revision）。"""
+
+    def test_gate_a4_full(self) -> None:
+        """§5.2 S8：@30 完成，end@30/cp@30 同刻条目一并剪除；世界原样返回。"""
+        world = WorldState()
+        action = _action()
+        iid = action.instance_id
+        queue = [
+            _entry("action_end", 30, instance_id=str(iid)),
+            _entry("action_checkpoint", 30, instance_id=str(iid)),
+        ]
+        runtime = _runtime_with_action(action, scheduler_queue=queue)
+        world2, runtime2, trans = complete_action(
+            world, runtime, iid, at_tick=30, completion_effects=[]
+        )
+        assert world2 is world  # 同一对象：纯函数不写世界
+        assert world2.world_revision == INITIAL_WORLD_REVISION  # 不推进 revision（P1 D-5）
+        act = runtime2.active_actions[iid]
+        assert act.status is COMPLETED
+        assert act.result_summary == {"completed_at": 30}
+        assert runtime2.scheduler_queue == []  # 终态剪除（D-P3-25 ①）
+        assert runtime2.logical_tick == runtime.logical_tick
+        assert act.progress is None  # COMPLETED 非镜像事件（E-P3-28）：不强推 1.0
+        assert trans.instance_id == iid
+        assert trans.from_status is ACTIVE
+        assert trans.to_status is COMPLETED
+        assert trans.event is E_COMPLETED
+        assert trans.at_tick == 30
+        assert trans.reason is None
+
+    def test_completion_effects_do_not_touch_world(self) -> None:
+        """带 completion_effects（位置 effect）：纯函数仍不提交——世界同一
+        对象、revision 不变；effect 由调用方经 P2 管道提交（本函数只放行）。"""
+        world = WorldState()
+        action = _action()
+        iid = action.instance_id
+        runtime = _runtime_with_action(
+            action, scheduler_queue=[_entry("action_end", 30, instance_id=str(iid))]
+        )
+        world2, runtime2, _ = complete_action(
+            world, runtime, iid, at_tick=30, completion_effects=[_pos_effect()]
+        )
+        assert world2 is world
+        assert world2.world_revision == INITIAL_WORLD_REVISION
+        assert runtime2.active_actions[iid].status is COMPLETED
+        assert runtime2.scheduler_queue == []
+
+    @pytest.mark.parametrize(
+        "status", [PROPOSED, VALIDATING, INTERRUPTED, COMPLETED, FAILED]
+    )
+    def test_illegal_source_status(self, status: ActionLifecycleStatus) -> None:
+        """COMPLETED 边仅出自 ACTIVE（终态不可逆：COMPLETED 自身无出边）。"""
+        action = _action(status=status)
+        runtime = _runtime_with_action(action)
+        with pytest.raises(IllegalTransitionError):
+            complete_action(
+                WorldState(), runtime, action.instance_id, at_tick=30, completion_effects=[]
+            )
+
+    def test_missing_instance(self) -> None:
+        with pytest.raises(IllegalTransitionError):
+            complete_action(
+                WorldState(), _runtime(), new_action_instance_id(),
+                at_tick=30, completion_effects=[],
+            )
+
+
+class TestFailAction:
+    """ACTIVE→FAILED（FAILED 边仅出自 ACTIVE；VALIDATING 被拒经
+    VALIDATION_REJECTED 属 submit_proposal REJECT 轨迹，不经本函数，
+    E-P3-05 口径）。"""
+
+    def test_deadline_missed_full(self) -> None:
+        """§2.4 口径：deadline 条目命中仍 ACTIVE → reason="deadline_missed"；
+        终态剪除该实例全部剩余条目。"""
+        action = _action()
+        iid = action.instance_id
+        queue = [
+            _entry("deadline", 30, instance_id=str(iid)),
+            _entry("action_checkpoint", 20, instance_id=str(iid)),
+        ]
+        runtime = _runtime_with_action(action, scheduler_queue=queue)
+        runtime2 = fail_action(runtime, iid, at_tick=30, reason="deadline_missed")
+        act = runtime2.active_actions[iid]
+        assert act.status is FAILED
+        assert act.result_summary == {"reason": "deadline_missed", "tick": 30}
+        assert runtime2.scheduler_queue == []
+        assert runtime2.logical_tick == runtime.logical_tick
+
+    def test_reason_is_required_keyword(self) -> None:
+        """reason 为必填关键字（无缺省）——遗漏 → TypeError（签名级防线）。"""
+        action = _action()
+        runtime = _runtime_with_action(action)
+        with pytest.raises(TypeError):
+            fail_action(runtime, action.instance_id, at_tick=30)  # type: ignore[call-arg]
+
+    def test_validating_not_reachable(self) -> None:
+        """E-P3-05：对 VALIDATING 实例调用 fail_action → 表外抛（该边属
+        VALIDATION_REJECTED 轨迹，不经本函数）；并结构钉住迁移表口径。"""
+        action = _action(status=VALIDATING)
+        runtime = _runtime_with_action(action)
+        with pytest.raises(IllegalTransitionError):
+            fail_action(runtime, action.instance_id, at_tick=5, reason="bad")
+        # 结构断言（嵌套表：状态 → frozenset{(事件, 目标态)}）：ACTIVE 出发的
+        # FAILED 目标边恰为 {E_FAILED}；VALIDATING 出边恰为 {E_SCHEDULED,
+        # E_REJECT}（两者皆非 fail_action 的调用面入口）
+        failed_from_active = {
+            ev for ev, tgt in LIFECYCLE_TRANSITIONS[ACTIVE] if tgt is FAILED
+        }
+        assert failed_from_active == {E_FAILED}
+        validating_events = {ev for ev, _tgt in LIFECYCLE_TRANSITIONS[VALIDATING]}
+        assert validating_events == {E_SCHEDULED, E_REJECT}
+
+    @pytest.mark.parametrize("status", [PROPOSED, INTERRUPTED, COMPLETED, FAILED])
+    def test_illegal_source_status(self, status: ActionLifecycleStatus) -> None:
+        action = _action(status=status)
+        runtime = _runtime_with_action(action)
+        with pytest.raises(IllegalTransitionError):
+            fail_action(runtime, action.instance_id, at_tick=5, reason="x")
+
+    def test_missing_instance(self) -> None:
+        with pytest.raises(IllegalTransitionError):
+            fail_action(_runtime(), new_action_instance_id(), at_tick=5, reason="x")
+
+    def test_input_runtime_untouched(self) -> None:
+        """纯函数纪律：原 RuntimeState / ActiveAction 不变（frozen 重建）。"""
+        action = _action()
+        runtime = _runtime_with_action(action)
+        fail_action(runtime, action.instance_id, at_tick=30, reason="deadline_missed")
+        assert runtime.active_actions[action.instance_id].status is ACTIVE
+        assert runtime.active_actions[action.instance_id].result_summary is None
+        assert runtime.scheduler_queue == []
+
+
+# ======================================================================
+# §3.6 下半（P3-T04a2：apply_checkpoint）——同文件串行追加（§3.10 单
+# Owner 纪律；用例复用上方 T03 助手层 _runtime/_runtime_with_action/
+# _entry/_gate_queue/_gate_a1，本节另落全字段构造助手 _full_action）。
+#
+# 口径依据（Leader 裁定 E-P3-40 修订后的现文）：
+# - §3.6 ``apply_checkpoint`` 现文：签名含关键字
+#   ``checkpoint_interval: int | None = None``（Scheduler 透传
+#   ``time_policy.checkpoint_interval_ticks``，D-P3-13；None → 不入队
+#   下一 checkpoint）；CHECKPOINT 自迁移 + progress 重算 + base
+#   re-anchor + 入队下一 checkpoint；纯 RuntimeState 簿记（P1 D-5）；
+#   正常路径 record=None；
+# - §5.2 S4 / §5.3 A2 两刻推演：t=10 → progress 10/30、入队 cp@20、
+#   队列 [ev@12, cp@20, end@30]；t=20（resume 后 R1）→ progress 20/30、
+#   入队 cp@30、队列 [end@30, cp@30]（稳定 FIFO：end@30 先入队）——
+#   同一函数/同一间隔公式两刻与 Gate 表逐字一致；
+# - §6.1 用例口径："progress 重算 + next_checkpoint_tick 前进 + 下刻
+#   入队 + base re-anchor + 无世界事务/revision 不变"；
+# - E-P3-12 ② / D-P3-25 非 ACTIVE 双道守卫：终态 →
+#   checkpoint_skipped_terminal、INTERRUPTED → checkpoint_skipped_interrupted
+#   （TraceKind.SYSTEM 开放信封），不查表/不迁移/不入队，状态与队列
+#   不变。
+# ======================================================================
+
+
+def _full_action(
+    *,
+    status: ActionLifecycleStatus = ACTIVE,
+    start_tick: int = 0,
+    expected_end_tick: int | None = 30,
+    progress: float | None = None,
+    next_checkpoint_tick: int | None = None,
+    base_world_revision: Revision = INITIAL_WORLD_REVISION,
+    last_transition_tick: int = 0,
+    result_summary: dict[str, JsonValue] | None = None,
+) -> ActiveAction:
+    """全字段 ActiveAction 构造（T04a2 节局部助手——T03 助手 ``_action``
+    不暴露 ``next_checkpoint_tick`` / ``last_transition_tick``，两刻推演
+    前置态按 Gate 表逐字钉死需显式构造；ID 工厂签发，键一致性天然成立）。"""
+    return ActiveAction(
+        instance_id=new_action_instance_id(),
+        action_id=ActionTypeId("travel"),
+        actor_id=new_entity_id(),
+        status=status,
+        start_tick=start_tick,
+        expected_end_tick=expected_end_tick,
+        progress=progress,
+        interruptible=True,
+        next_checkpoint_tick=next_checkpoint_tick,
+        base_world_revision=base_world_revision,
+        provenance=Provenance(producer_id="test.producer", origin=OriginKind.SYSTEM),
+        last_transition_tick=last_transition_tick,
+        result_summary=result_summary,
+    )
+
+
+class TestApplyCheckpoint:
+    """CHECKPOINT 自迁移（§3.6 下半；D-P3-07/08/13；E-P3-12 ② / E-P3-40）。"""
+
+    def test_s4_normal_path(self) -> None:
+        """§5.2 S4 两刻推演①：cp@10 处理 → CHECKPOINT 自迁移 + progress
+        10/30 重算 + re-anchor（current_revision=R0）+ 入队 cp@20 +
+        next_checkpoint_tick 10→20；队列 [ev@12, cp@20, end@30]（稳定
+        序）；record=None；逻辑时钟不推进。"""
+        action = _full_action(
+            progress=0.0,
+            next_checkpoint_tick=10,
+            base_world_revision=Revision(0),
+            last_transition_tick=0,
+        )
+        iid = action.instance_id
+        ev = _entry("event", 12, trigger_id="scenario.encounter_12")
+        end = _entry("action_end", 30, instance_id=str(iid))
+        runtime = _runtime_with_action(action, tick=10, scheduler_queue=[ev, end])
+        runtime2, record = apply_checkpoint(
+            runtime, iid, at_tick=10, current_revision=Revision(0), checkpoint_interval=10
+        )
+        assert record is None  # 正常路径 record=None（§3.6 现文）
+        act = runtime2.active_actions[iid]
+        assert act is not action  # rebuild 新对象（输入不变）
+        assert act.status is ACTIVE  # CHECKPOINT 自迁移：ACTIVE → ACTIVE
+        assert act.progress == 10 / 30  # progress 重算 = progress_of(action, 10)
+        assert act.next_checkpoint_tick == 20  # 前进至新入队刻（§6.1 口径）
+        assert act.base_world_revision == Revision(0)  # re-anchor 至 current_revision
+        assert act.last_transition_tick == 10  # 审计字段（actions.py:243）
+        assert act.start_tick == 0  # 时间预算不变
+        assert act.expected_end_tick == 30
+        # 队列：新 cp@20 经稳定排序插入 12 < 20 < 30 位，旧条目 entry_id 保留
+        assert [(e.kind, e.due_tick) for e in runtime2.scheduler_queue] == [
+            ("event", 12),
+            ("action_checkpoint", 20),
+            ("action_end", 30),
+        ]
+        assert runtime2.scheduler_queue[0].entry_id == ev.entry_id
+        assert runtime2.scheduler_queue[2].entry_id == end.entry_id
+        new_cp = runtime2.scheduler_queue[1]
+        assert new_cp.entry_id.startswith("sch_")  # new_scheduled_entry_id() 工厂
+        assert new_cp.payload == {"instance_id": str(iid)}
+        assert runtime2.logical_tick == 10  # 不推进逻辑时钟（D-P3-02）
+
+    def test_a2_normal_path(self) -> None:
+        """§5.3 A2 两刻推演②：cp@20 处理（resume 后，R1）→ progress 20/30
+        重算 + re-anchor（R1）+ 入队 cp@30 + next_checkpoint_tick 20→30；
+        队列 [end@30, cp@30]（稳定 FIFO：end@30 开始刻先入队）；
+        record=None。与 S4 同一函数/同一间隔公式，两刻推演一致且 progress
+        单调（Gate 分支 A 断言 0.0 → 0.3333 → 0.4 → 0.6667 → 1.0）。"""
+        action = _full_action(
+            progress=0.4,
+            next_checkpoint_tick=20,
+            base_world_revision=Revision(1),
+            last_transition_tick=12,
+        )
+        iid = action.instance_id
+        end = _entry("action_end", 30, instance_id=str(iid))
+        runtime = _runtime_with_action(action, tick=20, scheduler_queue=[end])
+        runtime2, record = apply_checkpoint(
+            runtime, iid, at_tick=20, current_revision=Revision(1), checkpoint_interval=10
+        )
+        assert record is None
+        act = runtime2.active_actions[iid]
+        assert act.status is ACTIVE
+        assert act.progress == 20 / 30  # > S4 的 10/30：两刻间单调
+        assert act.next_checkpoint_tick == 30
+        assert act.base_world_revision == Revision(1)
+        assert act.last_transition_tick == 20
+        # 稳定 FIFO：end@30（先入队）先于 cp@30（本刻派生，§2.5/D-P3-05）
+        assert [(e.kind, e.due_tick) for e in runtime2.scheduler_queue] == [
+            ("action_end", 30),
+            ("action_checkpoint", 30),
+        ]
+        assert runtime2.scheduler_queue[0].entry_id == end.entry_id
+        new_cp = runtime2.scheduler_queue[1]
+        assert new_cp.entry_id.startswith("sch_")
+        assert new_cp.entry_id != end.entry_id
+        assert new_cp.payload == {"instance_id": str(iid)}
+        assert runtime2.logical_tick == 20
+
+    def test_interval_none_no_enqueue(self) -> None:
+        """E-P3-40：checkpoint_interval=None → 不入队下一 checkpoint；
+        next_checkpoint_tick 镜像置 None（下一 checkpoint 不存在——保留
+        过去值会诱导 resume 防御补入队按过去刻入队 → QueueInvariantError）；
+        自迁移 / progress 重算 / re-anchor 照常；record=None。"""
+        action = _full_action(
+            progress=0.2,
+            next_checkpoint_tick=6,
+            base_world_revision=Revision(0),
+            last_transition_tick=6,
+        )
+        iid = action.instance_id
+        end = _entry("action_end", 30, instance_id=str(iid))
+        runtime = _runtime_with_action(action, tick=6, scheduler_queue=[end])
+        runtime2, record = apply_checkpoint(
+            runtime, iid, at_tick=6, current_revision=Revision(0), checkpoint_interval=None
+        )
+        assert record is None
+        act = runtime2.active_actions[iid]
+        assert act.status is ACTIVE
+        assert act.progress == 6 / 30  # 重算照常
+        assert act.base_world_revision == Revision(0)
+        assert act.last_transition_tick == 6
+        assert act.next_checkpoint_tick is None  # 无下一 checkpoint
+        # 队列不变：无新增条目
+        assert [(e.kind, e.due_tick) for e in runtime2.scheduler_queue] == [
+            ("action_end", 30)
+        ]
+        assert runtime2.scheduler_queue[0].entry_id == end.entry_id
+
+    def test_reanchor_to_new_revision(self) -> None:
+        """base re-anchor 可观察口径：checkpoint 刻世界 revision 已推进
+        （start 后他事提交）→ base_world_revision := current_revision
+        （D-P3-08 口径，与 INTERRUPTED 边 / resume_action 对齐；§5.2 S7 /
+        G3-1 断言 6）。"""
+        action = _full_action(
+            progress=0.0,
+            next_checkpoint_tick=10,
+            base_world_revision=Revision(0),
+            last_transition_tick=0,
+        )
+        runtime = _runtime_with_action(action, tick=10)
+        runtime2, _ = apply_checkpoint(
+            runtime,
+            action.instance_id,
+            at_tick=10,
+            current_revision=Revision(3),
+            checkpoint_interval=10,
+        )
+        assert (
+            runtime2.active_actions[action.instance_id].base_world_revision
+            == Revision(3)
+        )
+
+    def test_guard_completed_terminal(self) -> None:
+        """E-P3-12 ② 第二道防线：终态 COMPLETED → 不查迁移表 / 不调
+        transition_action / 不入队下一 checkpoint；返回（未变更 runtime,
+        诊断 TraceRecord：TraceKind.SYSTEM + checkpoint_skipped_terminal）；
+        状态 / progress / base / 审计字段 / 队列全不变。"""
+        action = _full_action(
+            status=COMPLETED,
+            progress=1.0,
+            next_checkpoint_tick=40,
+            base_world_revision=Revision(2),
+            last_transition_tick=30,
+            result_summary={"completed_at": 30},
+        )
+        iid = action.instance_id
+        queue = [
+            _entry("action_checkpoint", 30, instance_id=str(iid)),
+            _entry("action_end", 30, instance_id=str(iid)),
+        ]
+        runtime = _runtime_with_action(action, tick=30, scheduler_queue=queue)
+        queue_before = [e.entry_id for e in runtime.scheduler_queue]
+        runtime2, record = apply_checkpoint(
+            runtime, iid, at_tick=30, current_revision=Revision(2), checkpoint_interval=10
+        )
+        # 诊断 TraceRecord（§3.6 现文：开放信封 + SYSTEM + 诊断串）
+        assert isinstance(record, TraceRecord)
+        assert record.kind is TraceKind.SYSTEM
+        assert record.payload["diagnostic"] == "checkpoint_skipped_terminal"
+        assert record.payload["instance_id"] == str(iid)
+        assert record.record_id.startswith("trc_")  # new_trace_record_id() 工厂
+        assert record.logical_tick == 30
+        assert record.world_revision == Revision(2)
+        # 未变更：不查表 → 不迁移 / 不重算 / 不 re-anchor / 不推进审计字段
+        act = runtime2.active_actions[iid]
+        assert act.status is COMPLETED
+        assert act.progress == 1.0
+        assert act.base_world_revision == Revision(2)
+        assert act.last_transition_tick == 30
+        assert act.next_checkpoint_tick == 40  # 守卫不触碰（不置空、不清除）
+        # 队列不变：不入队下一 checkpoint、不触碰既有条目
+        assert [e.entry_id for e in runtime2.scheduler_queue] == queue_before
+        assert [(e.kind, e.due_tick) for e in runtime2.scheduler_queue] == [
+            ("action_checkpoint", 30),
+            ("action_end", 30),
+        ]
+
+    def test_guard_interrupted(self) -> None:
+        """E-P3-12 ② / D-P3-25：INTERRUPTED → 诊断
+        checkpoint_skipped_interrupted（同信封）；Gate S8 暂停点场景
+        （cp@20 命中未响应中断实例）——状态 / progress / base / 审计字段 /
+        队列全不变。"""
+        iid, runtime, _interrupted = _gate_a1()
+        queue_before = [e.entry_id for e in runtime.scheduler_queue]
+        runtime2, record = apply_checkpoint(
+            runtime, iid, at_tick=20, current_revision=Revision(1), checkpoint_interval=10
+        )
+        assert isinstance(record, TraceRecord)
+        assert record.kind is TraceKind.SYSTEM
+        assert record.payload["diagnostic"] == "checkpoint_skipped_interrupted"
+        assert record.payload["instance_id"] == str(iid)
+        assert record.record_id.startswith("trc_")
+        assert record.logical_tick == 20
+        assert record.world_revision == Revision(1)
+        # 未变更（Gate S7 点状态原样保留）
+        act = runtime2.active_actions[iid]
+        assert act.status is INTERRUPTED
+        assert act.progress == 0.4  # 不重算（镜像保留中断刻值）
+        assert act.base_world_revision == Revision(1)  # 不 re-anchor
+        assert act.last_transition_tick == 12  # 审计字段不推进
+        assert act.next_checkpoint_tick is None
+        # 队列不变：不入队下一 checkpoint（中断不剪除、守卫不追加）
+        assert [e.entry_id for e in runtime2.scheduler_queue] == queue_before
+        assert [(e.kind, e.due_tick) for e in runtime2.scheduler_queue] == [
+            ("action_checkpoint", 20),
+            ("action_end", 30),
+        ]
+
+    def test_return_tuple_shape(self) -> None:
+        """返回类型钉死（§3.6 现文签名 E-P3-12 ②）：正常路径
+        (RuntimeState, None)；守卫路径 (RuntimeState, TraceRecord)。"""
+        action = _full_action(progress=0.0, next_checkpoint_tick=10)
+        runtime = _runtime_with_action(action, tick=10)
+        runtime2, record = apply_checkpoint(
+            runtime,
+            action.instance_id,
+            at_tick=10,
+            current_revision=Revision(0),
+            checkpoint_interval=10,
+        )
+        assert isinstance(runtime2, RuntimeState)
+        assert record is None
+        assert isinstance(runtime2.active_actions[action.instance_id], ActiveAction)
+        # 守卫路径（checkpoint_interval 缺省 None——守卫路径不消费间隔）
+        iid, runtime_int, _ = _gate_a1()
+        runtime3, record3 = apply_checkpoint(
+            runtime_int, iid, at_tick=20, current_revision=Revision(1)
+        )
+        assert isinstance(runtime3, RuntimeState)
+        assert isinstance(record3, TraceRecord)
+        assert record3.kind is TraceKind.SYSTEM
+
+    def test_missing_instance_raises(self) -> None:
+        """实例不存在于 active_actions → IllegalTransitionError（可检查
+        不静默，D-P3-16 ① 同型；信息含 instance/event）。"""
+        runtime = _runtime(tick=10)
+        with pytest.raises(IllegalTransitionError, match="不存在于 active_actions"):
+            apply_checkpoint(
+                runtime,
+                new_action_instance_id(),
+                at_tick=10,
+                current_revision=Revision(0),
+                checkpoint_interval=10,
+            )
+
+    def test_unstarted_status_raises(self) -> None:
+        """PROPOSED/VALIDATING + cp 条目 = 簿记不变量违例（cp 条目仅可能
+        在 SCHEDULED 迁移后入队）→ 不属守卫 skip 口径（守卫仅覆盖
+        INTERRUPTED / 终态）→ IllegalTransitionError（与 transition_action
+        表外行为同型，不静默）。"""
+        for status in (PROPOSED, VALIDATING):
+            action = _full_action(status=status)
+            runtime = _runtime_with_action(
+                action,
+                tick=10,
+                scheduler_queue=[
+                    _entry("action_checkpoint", 10, instance_id=str(action.instance_id))
+                ],
+            )
+            with pytest.raises(IllegalTransitionError, match="簿记不变量违例"):
+                apply_checkpoint(
+                    runtime,
+                    action.instance_id,
+                    at_tick=10,
+                    current_revision=Revision(0),
+                    checkpoint_interval=10,
+                )
+
+    def test_purity_input_unchanged(self) -> None:
+        """纯函数纪律：原 RuntimeState / ActiveAction / 队列不变（frozen
+        重建）；逻辑时钟不推进（D-P3-02 唯一写点 set_logical_tick）；其余
+        RuntimeState 字段不触碰。"""
+        action = _full_action(progress=0.0, next_checkpoint_tick=10)
+        iid = action.instance_id
+        end = _entry("action_end", 30, instance_id=str(iid))
+        runtime = _runtime_with_action(action, tick=10, scheduler_queue=[end])
+        runtime2, _ = apply_checkpoint(
+            runtime, iid, at_tick=10, current_revision=Revision(0), checkpoint_interval=10
+        )
+        assert runtime2 is not runtime
+        assert runtime.active_actions[iid] is action  # 输入对象未被替换
+        assert runtime.active_actions[iid].progress == 0.0  # 原值保留
+        assert runtime.active_actions[iid].next_checkpoint_tick == 10
+        assert runtime.scheduler_queue == [end]  # 原队列不变
+        assert runtime.logical_tick == 10
+        assert runtime2.logical_tick == 10
+        # 其余 RuntimeState 字段不触碰
+        assert runtime2.actor_wakeups == runtime.actor_wakeups
+        assert runtime2.pending_proposals == runtime.pending_proposals
+        assert runtime2.lifecycle == runtime.lifecycle
+        assert runtime2.active_modes == runtime.active_modes
+        assert runtime2.mode_context == runtime.mode_context
