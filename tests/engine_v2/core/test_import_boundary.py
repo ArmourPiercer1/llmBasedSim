@@ -41,6 +41,7 @@ TESTS_ENGINE_DIR = REPO_ROOT / "tests" / "engine_v2"
 #: transaction_executor / validation；P1 已全数落盘，P2 模块随各任务包
 #: 填充行为主体）。
 CORE_SUBMODULES: tuple[str, ...] = (
+    "action_lifecycle",
     "action_registry",
     "actions",
     "authority",
