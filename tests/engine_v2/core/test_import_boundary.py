@@ -1,4 +1,5 @@
 """P1-T06 收尾验收：import 边界（设计文档 §7.6 B1–B3，扩展骨架 AST 口径）。
+P3-T08 扩展：``TestP3Boundary``（任务硬规则 4 的机械验证面）。
 
 对 T01–T05 落盘的整体 core 包做 §0.3 import 边界的包级验收（各模块的
 白名单口径已在 T01–T05 各自测试中逐模块固化，本文件是 **包级黑名单**
@@ -19,7 +20,17 @@
   断网环境（不设置任何 API key 环境变量）通过的机械保证——静态扫描测试
   树无任何网络/进程 IO/provider/v1 import（配合 B1/B2 双保险，即设计
   文档 §7 引注"全部用例必须无网络、无 API key、无 provider、无
-  LangGraph"的程序化表达）。
+  LangGraph"的程序化表达）；
+- **P3 扩展**（P3-T08 任务硬规则 4，``TestP3Boundary``）：
+  - P3 七个行为模块（``P3_SUBMODULES``：clock / event_queue /
+    action_registry / action_lifecycle / interrupt / revalidation /
+    scheduler）绝对 import 不得触及 ``datetime``/``time``/``random``/
+    ``asyncio``——确定性时间域：逻辑时钟是唯一时间源（D-P3-02），墙钟
+    与随机数不进调度路径；
+  - P3 测试扫描面（``P3_TEST_FILES`` 十个文件：7 个 P3 单元测试 +
+    Gate/对抗两文件 + 共享 conftest）适用**全谓词**（§0.3 黑名单 ∪
+    上列四个非确定性根）——测试侧同样不接 LLM、不引入时间/随机/异步
+    （Spec §47 Phase 1 验收的测试面镜像）。
 
 全部用例无网络、无 LLM、无 API key（Spec §47 Phase 1 验收）。
 """
@@ -129,6 +140,41 @@ NETWORK_IO_ROOTS: frozenset[str] = frozenset(
     }
 )
 
+# —— P3 扩展（P3-T08 任务硬规则 4 机械验证面）——
+
+#: P3 七个行为模块（P3 设计文档 §1.1 新增模块集；B1 的 CORE_SUBMODULES
+#: 26 元组已含此 7 项，此处单列以承载 P3 专属谓词的扫描面）。
+P3_SUBMODULES: tuple[str, ...] = (
+    "clock",
+    "event_queue",
+    "action_registry",
+    "action_lifecycle",
+    "interrupt",
+    "revalidation",
+    "scheduler",
+)
+
+#: P3 确定性时间域禁入根（硬规则 4）：逻辑时钟（D-P3-02）是调度路径
+#: 唯一时间源；墙钟/随机/异步不得进 P3 核心模块与 P3 测试面。
+P3_NONDETERMINISM_ROOTS: frozenset[str] = frozenset(
+    {"datetime", "time", "random", "asyncio"}
+)
+
+#: P3 测试扫描面（10 文件）：7 个 P3 单元测试文件 + Gate/对抗两文件 +
+#: 共享 conftest（全位于 ``tests/engine_v2/core/``）。
+P3_TEST_FILES: tuple[str, ...] = (
+    "test_clock.py",
+    "test_event_queue.py",
+    "test_action_registry.py",
+    "test_action_lifecycle.py",
+    "test_interrupt.py",
+    "test_revalidation.py",
+    "test_scheduler.py",
+    "test_p3_gate_scenario.py",
+    "test_p3_adversarial.py",
+    "conftest.py",
+)
+
 
 # —— 扫描工具（扩展骨架 AST 口径：保留完整点分模块名）——
 
@@ -176,6 +222,17 @@ def _blacklist_category(module_name: str) -> str | None:
         return "provider/LLM SDK"
     if root in NETWORK_IO_ROOTS:
         return "网络/进程 IO"
+    return None
+
+
+def _p3_strict_violation(module_name: str) -> str | None:
+    """P3 全谓词（硬规则 4）：§0.3 黑名单（B1 同一谓词）∪ 非确定性根
+    （datetime/time/random/asyncio，P3 确定性时间域）。命中返回类别串。"""
+    category = _blacklist_category(module_name)
+    if category is not None:
+        return category
+    if module_name.split(".")[0] in P3_NONDETERMINISM_ROOTS:
+        return "时间/随机/异步非确定性源（P3 硬规则 4）"
     return None
 
 
@@ -269,3 +326,51 @@ class TestB3OfflineRunnable:
     def test_t06_test_tree_has_no_network_provider_or_v1_imports(self) -> None:
         violations = _scan_violations(TESTS_ENGINE_DIR, "**/*.py")
         assert not violations, f"tests/engine_v2/ 出现 §0.3 黑名单 import：{violations}"
+
+
+class TestP3Boundary:
+    """P3（T01–T08）import 边界强化（P3-T08 任务硬规则 4，机械验证）。
+
+    - ``P3_SUBMODULES`` 七个 P3 核心模块：绝对 import 不得触及
+      ``datetime``/``time``/``random``/``asyncio``（逻辑时钟是唯一时间
+      源，D-P3-02；墙钟与随机数不进调度路径）；
+    - ``P3_TEST_FILES`` 十个 P3 测试文件：全谓词（§0.3 黑名单 ∪ 非确定
+      性根）——测试侧同样不接 provider/LLM、不引入时间/随机/异步/网络
+      （Spec §47 Phase 1 验收的测试面镜像）。
+    """
+
+    def test_p3_core_modules_no_nondeterminism_imports(self) -> None:
+        """七个 P3 核心模块（src/engine_v2/core/）绝对 import 无
+        datetime/time/random/asyncio 命中。"""
+        violations: dict[str, list[str]] = {}
+        for sub in P3_SUBMODULES:
+            path = CORE_DIR / f"{sub}.py"
+            assert path.exists(), f"P3 核心模块缺失：{sub}"
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if module_name.split(".")[0] in P3_NONDETERMINISM_ROOTS
+            ]
+            if bad:
+                violations[f"src/engine_v2/core/{sub}.py"] = bad
+        assert not violations, (
+            f"P3 核心模块 import 时间/随机/异步非确定性源：{violations}"
+        )
+
+    def test_p3_test_files_full_predicate(self) -> None:
+        """十个 P3 测试文件适用全谓词（§0.3 黑名单 ∪ 非确定性根）：
+        无 provider/LLM/v1/网络/进程 IO import，亦无
+        datetime/time/random/asyncio import。"""
+        violations: dict[str, list[str]] = {}
+        p3_tests_dir = TESTS_ENGINE_DIR / "core"
+        for name in P3_TEST_FILES:
+            path = p3_tests_dir / name
+            assert path.exists(), f"P3 测试扫描面文件缺失：{name}"
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if _p3_strict_violation(module_name) is not None
+            ]
+            if bad:
+                violations[name] = bad
+        assert not violations, f"P3 测试文件命中全谓词：{violations}"
