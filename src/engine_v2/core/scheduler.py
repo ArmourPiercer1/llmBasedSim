@@ -3,12 +3,14 @@
 
 依据 ``docs/v2/contracts/P3-scheduler-time-action-design.md``（下称"设计文档"）：
 
-- **§3.8（全量）**：本模块 10 个导出符号——:class:`TimePolicy` /
+- **§3.8（全量）**：本模块 11 个导出符号（§3.8 的 10 项 + ``start_action`` 经
+  D6 裁定落位本模块，设计 §3.6 落点偏离见 E-P3-41）——:class:`TimePolicy` /
   :class:`PauseReason` / :class:`SchedulerOutcome` / :class:`WakeupHook` /
   :class:`WakeupHookRegistry` / :func:`enqueue_actor_wakeup` /
   :func:`scheduler_fingerprint` / :class:`Scheduler`（门面：``fast_forward`` /
   ``step`` / ``submit_proposal`` / ``resume_action`` / ``abort_action``）/
-  :class:`SchedulerConfigurationError` / :class:`SchedulerWakeupError`；
+  :class:`SchedulerConfigurationError` / :class:`SchedulerWakeupError` /
+  :func:`start_action`；
 - **§2.4（主循环伪代码，权威）**：入口首检（D-P3-24，未响应暂停幂等重报——
   纯 (WorldState, RuntimeState, config) 派生、重入零副作用、置于循环前播种
   之前）→ 循环前播种（D-P3-22，幂等去重）→ ``take_due`` 批循环 → 时钟跳变
@@ -188,7 +190,7 @@ from src.engine_v2.core.state import (
 from src.engine_v2.core.trace import TraceKind, TraceRecord
 from src.engine_v2.core.transaction import Transaction
 
-if TYPE_CHECKING:  # 仅注解用（GuardedWorldState 为 P2 只读视图类型，本模块运行时零 import）
+if TYPE_CHECKING:  # 仅注解用（GuardedWorldState 为 P2 只读视图类型；本模块运行时对 reducer 仅 import guard/write_barrier_installed 纯函数，§3.2 依赖图）
     from src.engine_v2.core.reducer import GuardedWorldState
 
 __all__ = [

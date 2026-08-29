@@ -138,7 +138,7 @@ def _event_key(event: DomainEvent, outcome: SchedulerOutcome) -> tuple[str, int,
     发生刻 = 本次调用的 ``ticks_processed`` 水位：调度器不打逻辑戳于事务/事件
     （D-P2-18/D-P3-20：``event.logical_tick`` 恒 None），发生刻由事件在
     ``outcome.events`` 中的位置 + 调用 tick 水位承载（一次 ff 调用的事件全部
-    发生于该调用到达的水位刻）。uuid4 标识不入键（D-P3-15②：数量/运行内唯一性/
+    发生于该调用到达的水位刻）。uuid4 标识不入键（D-P3-15①/D-P3-20：数量/运行内唯一性/
     前缀/位置同构比较，不跨运行比原始值）。
     """
     return (event.event_type, int(event.world_revision), outcome.ticks_processed)

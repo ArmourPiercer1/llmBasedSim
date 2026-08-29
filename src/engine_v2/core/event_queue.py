@@ -7,7 +7,7 @@
   新增只有三样——**kind 封闭词表**（:data:`SCHEDULED_EVENT_KINDS`，§2.5 表
   为唯一定义处，7 kind）、**逐 kind payload 契约**（:func:`make_scheduled_event`
   在入队点强制校验——可检查不静默）、**队列操作纯函数**（本模块）；
-- §2.5 / D-P3-05 队列有序性三条不变量（``enqueue_scheduled_event`` 维护）：
+- §2.5 / D-P3-05 队列有序性四条不变量（``enqueue_scheduled_event`` 维护）：
   1. **写时稳定排序**：入队后按 ``due_tick`` 单键稳定重排（相等 tick 保持
      插入相对序）——队列任意时刻可检（K7），``take_due`` 无需运行时排序；
   2. **同刻序 = 稳定 FIFO**：同 ``due_tick`` 批内按列表位置（插入序）处理，
