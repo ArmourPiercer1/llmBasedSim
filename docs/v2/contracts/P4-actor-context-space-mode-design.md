@@ -449,11 +449,14 @@ class SpaceInvariantError(ValueError): ...
 class ContextBuildInput:
     """构建输入（当刻快照面；全部值传递，无别名风险）。
 
+    - ``actor_id``：为其构建上下文的 actor——决策主体身份的唯一依据
+      （CX-INV-1 查找基；唤醒侧值传递传入，ERR-P4-1）；
     - ``state``：**当刻** ``GuardedWorldState`` guard 视图（reducer.guard 产物，
       reducer.py:1590）——只用于 build 期间读取，**绝不**进入结果（CX-INV-4）；
     - ``tick``：逻辑刻（hook 侧 = ``clock.tick``，scheduler.py:1171-1173 传入）；
     - ``wake_reason``：唤醒原因（= boundary_id，G2 移交 3 双记录口径）或 None。
     """
+    actor_id: EntityId
     state: "GuardedWorldState"
     registry: ActionRegistry
     capability_table: CapabilityTable
@@ -1358,6 +1361,7 @@ class PolicyWakeupHook:
 
     def on_wakeup(self, actor_id, view, clock, reason):
         ctx = self._provider.build(ContextBuildInput(
+            actor_id=actor_id,
             state=view,
             registry=self._registry,
             capability_table=self._table,
@@ -1825,7 +1829,33 @@ wakeup@N = actor_wakeups 记录。S3 的 event 条目消费后不占队列（事
 
 ## 9. 勘误
 
-纯追加节（不修改/不删除正文）。初版无条目。
+纯追加节（不修改/不删除正文）。
+
+**ERR-P4-1**（P4 实现 Wave B 前置发现，Leader 裁定；按 G3 DOC-1 先例以
+文档级闭合补丁应用、不复审、不占代码补充预算）：
+
+- **症状**：§3.8 `ContextBuildInput` 原字段表（state/registry/
+  capability_table/space_registry/tick/wake_reason 共 6 字段）未携带
+  `actor_id`。而 `ActorDecisionContext` 输出 13 字段之首即 `actor_id`
+  （§3.8 L482），`build` 的六步中第 1 步（CX-INV-1 经
+  `entity_view` 解析 actor）与第 2/3/6 步（授权集回显、三组件物化、
+  可见集并集）全部以 actor 为基准；`ContextProvider.build(self, input)`
+  协议（§3.8 L520）除 `input` 外无 actor 参数，`DefaultContextProvider.
+  __init__` 仅收 `prompt`——build 无 actor 身份来源，T02 不可实现
+  （§6.1 单测口径「无 actor → ActorUnknownError」亦无输入面可承载）。
+- **裁定**（纯追加，两处）：① §3.8 `ContextBuildInput` 字段表首位增
+  `actor_id: EntityId` + docstring 条目（决策主体身份唯一依据；唤醒侧
+  值传递传入，符合该类「全部值传递」纪律）；② §5.1 逐字
+  `PolicyWakeupHook.on_wakeup` 的 `ContextBuildInput(...)` 调用首位增
+  `actor_id=actor_id,` 关键字——`on_wakeup` 首参 `actor_id` 为冻结源
+  scheduler.py:330-336 协议签名既有参数（`_drain_wakeup` 以被唤醒
+  actor 传入），hook 侧除透传外零变更。
+- **影响面核验**：`ContextBuildInput` 输入 6→7 字段；输出
+  `ActorDecisionContext` 13 字段不变；`context_provider` 导出仍 6 项
+  （§8.3 账本 L1759 不变，59→308 总量不变）；`build` 协议签名不变；
+  G4-2「同一 ContextBuildInput → 两 provider 逐字段相等」口径在本勘误
+  下成立且更严（同 actor、不同 prompt → 同 context，恰为 prompt
+  不透明断言面）。
 
 ---
 
