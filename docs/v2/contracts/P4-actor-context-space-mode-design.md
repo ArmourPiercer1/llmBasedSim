@@ -536,7 +536,7 @@ class ContextInvariantError(ValueError):
     """CX-INV-2/3/6 及 scope 结构非法。"""
 ```
 
-单测口径（test_context_provider.py）：13 字段构造与冻结（字段再赋值 TypeError）；无 actor → ActorUnknownError；能力矩阵六行（每 capability 授予/撤回两态 × 对应字段填充/缺省）；可见集并集四来源各一（self/obs/knowledge/local 各贡献恰一 id）+ 超集/缺项负例；local 五态（None scope 半径 1 / 半径 r / domain 限定 / 双键 / 未知键拒绝）+ 无 mapping 域不崩 + registry None 降级；prompt 不透明（不同 prompt 同输入 → 同 context，A2 的运行期面）；`granted_capabilities` 回显 == 表内该 actor 授权集。
+单测口径（test_context_provider.py）：13 字段构造与冻结（字段再赋值抛 FrozenInstanceError）；无 actor → ActorUnknownError；能力矩阵六行（每 capability 授予/撤回两态 × 对应字段填充/缺省）；可见集并集四来源各一（self/obs/knowledge/local 各贡献恰一 id）+ 超集/缺项负例；local 五态（None scope 半径 1 / 半径 r / domain 限定 / 双键 / 未知键拒绝）+ 无 mapping 域不崩 + registry None 降级；prompt 不透明（不同 prompt 同输入 → 同 context，A2 的运行期面）；`granted_capabilities` 回显 == 表内该 actor 授权集。
 
 ### 3.9 `behavior_policy.py`（P4-T01；4 导出）
 
@@ -1856,6 +1856,23 @@ wakeup@N = actor_wakeups 记录。S3 的 event 条目消费后不占队列（事
   G4-2「同一 ContextBuildInput → 两 provider 逐字段相等」口径在本勘误
   下成立且更严（同 actor、不同 prompt → 同 context，恰为 prompt
   不透明断言面）。
+
+**ERR-P4-2**（P4 实现 Wave B 发现，Leader 裁定；按 G3 DOC-1 先例以
+文档级闭合补丁应用、不复审、不占代码补充预算）：
+
+- **症状**：§3.8 单测口径（test_context_provider.py）原文钉「13 字段构造与
+  冻结（字段再赋值 TypeError）」。§3.8 的 `ContextBuildInput` /
+  `ActorDecisionContext` 为 stdlib `@dataclass(frozen=True)`（非 pydantic）；
+  frozen dataclass 字段再赋值实际抛 `dataclasses.FrozenInstanceError`
+  （MRO：FrozenInstanceError → AttributeError，**非** TypeError 子类）。
+  代码库基线 = `pytest.raises(FrozenInstanceError)`（test_entity_components.
+  py:336/634、test_cascade.py:303、test_closeout.py:292）；Wave D 若按
+  文档字面 TypeError 断言必失败。
+- **裁定**：该口径改「字段再赋值抛 FrozenInstanceError」；§6.1
+  test_context_provider.py 的 13 字段冻结断言口径随之统一。
+- **影响面核验**：纯文档措辞修复；§3.8 13 字段结构 / 6 导出 / dataclass
+  构造冻结语义零变化；TypeError 全文仅此处一处（grep 核验）；不占代码
+  补充预算。
 
 ---
 
