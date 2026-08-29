@@ -27,8 +27,9 @@
   （position 仅在 txn_2 提交点变 dest + 授权/校验/提交 trace 三口 + 伪造
   progress 探针）/ ``test_m3_purity_and_serialization``（双拷贝 outcome 逐项
   恒等 + snapshot/restore 续跑恒等 + RuntimeState 全字段 JSON-clean）；
-- **错误路径**（G3-3 三条错误路径，§6.2 G3-3"在 Gate 场景内复现"口径；
-  §6.3 A5/A2 探针）：分三处覆盖：
+- **错误路径**（invalid spec / unknown action / IllegalTransition 三条；
+  单元级锚点 = 设计 §6.3 A5/A2 探针与 §3.6 迁移矩阵，Gate 语境复现属
+  G3 门禁简报扩展核验项）：分三处覆盖：
 
   - invalid spec → ``test_invalid_spec_gate_context`` —— **fixture 无关的
     校验层探针**：非法 spec 属参数 schema 校验（``model_validate`` 构造期
@@ -61,9 +62,9 @@
 裁定 / 差异注记（与报告 one_line 同步）：
 
 - 文档 §6.2 G3-3 = ``test_progress_across_interrupt``（progress 跨中断语义）；
-  G3-3 三条错误路径分三处落实（见"错误路径"节：invalid spec 为 fixture
-  无关探针 + unknown action / IllegalTransition 于 Gate 语境复现），与
-  G3-3 progress 测试并存；
+  三条错误路径（invalid spec / unknown action / IllegalTransition）分三处
+  落实（见"错误路径"节：invalid spec 为 fixture 无关探针 + unknown action /
+  IllegalTransition 于 Gate 语境复现），与 G3-3 progress 测试并存；
 - COMPLETED 存储 progress = 最后 checkpoint 镜像（0.6667，``complete_action``
   不镜像 progress——§3.6 进度镜像仅 INTERRUPTED/RESUMED 两事件，E-P3-28）；
   §5.3 A4 表"COMPLETED / 1.0" = ``progress_of(action, 30)`` 派生权威值
@@ -769,21 +770,22 @@ def test_m3_purity_and_serialization(
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 错误路径（G3-3）：invalid spec（fixture 无关探针）+ unknown action（Gate
-# 语境）+ IllegalTransition（Gate 语境复用 S8 暂停点）
+# 错误路径（G3 门禁扩展核验项；单元级锚点 = 设计 §6.3 A2/A5）：
+# invalid spec（fixture 无关探针）+ unknown action（Gate 语境）
+# + IllegalTransition（Gate 语境复用 S8 暂停点）
 # ══════════════════════════════════════════════════════════════════════
 
 
 def test_invalid_spec_gate_context() -> None:
-    """G3-3 错误路径① invalid spec：fixture 无关的校验层探针。
+    """错误路径① invalid spec（G3 门禁扩展核验项）：fixture 无关的校验层探针。
 
     非法 spec 属**参数 schema 校验**（``model_validate`` 构造期拒绝，K7
     可检查不静默），与 Gate 场景状态无关（不涉世界/队列/时钟）——故此探针
     不装配 Gate 场景、不依赖 §5.1 fixture 状态，仅以 conftest §5.1 travel
     spec 常量为有效基线构造非法变体；其余两条错误路径（unknown action /
     IllegalTransition）由 ``test_unknown_action_gate_context`` /
-    ``test_illegal_transition_gate_context`` 在 Gate 语境复现（满足 §6.2
-    G3-3"在 Gate 场景内复现"口径）。单元级全矩阵另见
+    ``test_illegal_transition_gate_context`` 在 Gate 语境复现（G3 门禁简报
+    扩展核验项）。单元级全矩阵另见
     test_action_registry.py（extra_forbid / TestActionSpecContract）。
     """
     # ① ActionSpec extra 字段 → extra=forbid（ContractModel，entity.py:51）
@@ -803,7 +805,7 @@ def test_invalid_spec_gate_context() -> None:
 def test_unknown_action_gate_context(
     gate_state: tuple[WorldState, RuntimeState, Scheduler, ActionProposal],
 ) -> None:
-    """G3-3 错误路径② unknown action：Gate 场景内复现（§6.3 A5 口径逐条）。
+    """错误路径② unknown action（G3 门禁扩展核验项）：Gate 场景内复现（§6.3 A5 口径逐条）。
 
     (1) 场景内发生错误：先 ``submit_proposal`` 未注册 ``flying``（A5 探针）
         → ``UnknownActionError`` 于 registry 查找点抛出、被 ``submit_proposal``
@@ -892,7 +894,7 @@ def test_unknown_action_gate_context(
 def test_illegal_transition_gate_context(
     gate_state: tuple[WorldState, RuntimeState, Scheduler, ActionProposal],
 ) -> None:
-    """G3-3 错误路径③ IllegalTransition：Gate 场景内复现（§6.3 A2 探针口径）。
+    """错误路径③ IllegalTransition（G3 门禁扩展核验项）：Gate 场景内复现（§6.3 A2 探针口径）。
 
     (1) 先把合法 travel 行动推进到 S8 INTERRUPTED 暂停点（与主场景同款
         写法，经 ``gate_run_to_pause``：B1 命中、progress 12/30、队列
