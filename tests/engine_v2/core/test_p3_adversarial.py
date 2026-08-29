@@ -29,7 +29,7 @@
 - **A4**（回放确定性）：``TestA4`` —— E1（分支 A 全跑事件键序列）
   后缀 == E2（t=12 snapshot→restore 续跑）== E3（新 fixture 重跑续跑）；
   uuid4 标识按数量/运行内唯一性/前缀（evt_/txn_/sch_）/位置同构比较
-  （D-P3-15②：从不跨运行比较原始值）。
+  （D-P3-15①/D-P3-20：从不跨运行比较原始值）。
 - **A5**（未注册行动）：``TestA5`` —— action_id="flying" →
   UnknownActionError 被编排层捕获（D-P3-16 双轨 / E-P3-39⑧ 第 1 步）→
   REJECT ``unknown_action`` + FAILED 终态记录（result_summary reason +
@@ -774,7 +774,7 @@ class TestA3:
 class TestA4:
     """A4（回放确定性）：E1 分支 A 全跑事件键序列后缀 == E2
     （t=12 snapshot→restore 续跑）== E3（新 fixture 重跑续跑）；uuid4
-    标识按数量/运行内唯一性/前缀/位置同构比较（D-P3-15②，从不跨运行
+    标识按数量/运行内唯一性/前缀/位置同构比较（D-P3-15①/D-P3-20，从不跨运行
     比原始值）。"""
 
     def test_branch_a_replay_event_keys(self) -> None:
@@ -810,7 +810,7 @@ class TestA4:
         assert _trace_keys(o2) == _trace_keys(oE2) == _trace_keys(oE3)
 
     def test_uuid4_id_invariants_across_runs(self) -> None:
-        """D-P3-15②：uuid4 标识不跨运行比原始值——只比数量/运行内
+        """D-P3-15①/D-P3-20：uuid4 标识不跨运行比原始值——只比数量/运行内
         唯一性/前缀/位置同构。两次独立全跑（暂停 + 续跑）。"""
         def _run() -> tuple[list[str], list[str], list[str]]:
             world8, runtime8, scheduler, o1 = _branch_a_to_pause()

@@ -27,29 +27,43 @@
   （position 仅在 txn_2 提交点变 dest + 授权/校验/提交 trace 三口 + 伪造
   progress 探针）/ ``test_m3_purity_and_serialization``（双拷贝 outcome 逐项
   恒等 + snapshot/restore 续跑恒等 + RuntimeState 全字段 JSON-clean）；
-- **错误路径**（brief item f：illegal spec / unknown action / IllegalTransition）：
-  单元级覆盖已在既有测试（本文件不重复，仅补 Gate 全装配集成角度）：
+- **错误路径**（G3-3 三条错误路径，§6.2 G3-3"在 Gate 场景内复现"口径；
+  §6.3 A5/A2 探针）：分三处覆盖：
 
-  - illegal spec（ActionSpec extra/缺必填）→
+  - invalid spec → ``test_invalid_spec_gate_context`` —— **fixture 无关的
+    校验层探针**：非法 spec 属参数 schema 校验（``model_validate`` 构造期
+    拒绝：extra=forbid / 缺必填 / 注册表键一致性），与 Gate 场景状态无关
+    （不涉世界/队列/时钟）；单元级全矩阵见
     ``tests/engine_v2/core/test_action_registry.py::TestContractModelInvariants::test_extra_forbid``
-    （参数面含 ActionSpec）+ ``TestActionSpecContract``；registry 级契约在
-    Gate 上下文无新增角度，按 brief"仅补未覆盖"不重测；
-  - unknown action →
-    ``tests/engine_v2/core/test_scheduler.py::test_unknown_action_no_proposed_record``
-    （错误路径不建 PROPOSED 记录不变量）——本文件
-    ``test_error_paths_gate_context`` 补 Gate 装配端到端断言；
-  - IllegalTransition →
-    ``tests/engine_v2/core/test_scheduler.py::test_resume_from_active_illegal`` /
-    ``test_abort_from_active_illegal`` + ``test_action_lifecycle.py`` 各边
-    ``test_illegal_source_status`` 参数化矩阵（含终态无出边
-    ``test_terminal_states_have_no_out_edges``）——本文件补"经真实 Gate 暂停态
-    达到同一不变量"角度（abort 后 resume 拒绝）。
+    （参数面含 ActionSpec）+ ``TestActionSpecContract``；
+  - unknown action → ``test_unknown_action_gate_context`` —— **Gate 语境**
+    （conftest §5.1 共享 fixture：travel 世界 + 双幂等 named trigger stub +
+    空 trigger registry + B1 边界）：先提交未注册 ``flying``（A5 探针）→
+    ``UnknownActionError`` 于 registry 查找点抛出、被 ``submit_proposal``
+    捕获转 FAILED 轨迹（reason="unknown_action"；E-P3-39⑧ 次序第 1 步：
+    registry 查找先于 revalidate，错误路径不创建 PROPOSED 记录、不查迁移
+    表）；A5 口径逐条：不崩溃、队列零残留、世界零变更、诊断串含
+    action_id + F2-12 pending_proposals 簿记；随后同场景内继续 Gate 主
+    时序 → t=12 照常暂停（B1）、暂停点 progress == 12/30（与主场景同
+    值）——错误路径发生在场景内且场景语义完整；
+  - IllegalTransition → ``test_illegal_transition_gate_context`` —— **Gate
+    语境、复用 S8 暂停点**（``gate_run_to_pause`` 达成，与主场景同写
+    法）：表外探针 INTERRUPTED→INTERRUPTED 双中断（对照
+    LIFECYCLE_TRANSITIONS 唯一权威，INTERRUPTED 行仅 RESUMED/ABORTED
+    出边；A2 探针集）→ ``IllegalTransitionError``（消息含 from/to/
+    event）；错误后 ``fast_forward`` = D-P3-24 入口首检幂等重报
+    （paused=True、tick 水位不前进、transactions/events/transitions/
+    errors 全空、队列不变 [cp@20, end@30]、世界零副作用）；终态侧
+    （abort 后 resume）亦 IllegalTransitionError——与 test_scheduler.py
+    的 ACTIVE 探针互补的 Gate 全装配角度。
+  (a)(b) 不触碰既有 17 条 G3-1 断言（E-P3-04 计数口径不变：9+4+4=17）。
 
 裁定 / 差异注记（与报告 one_line 同步）：
 
 - 文档 §6.2 G3-3 = ``test_progress_across_interrupt``（progress 跨中断语义）；
-  brief item f 的"G3-3 错误路径"为独立义务，另行落
-  ``test_error_paths_gate_context``，两者并存；
+  G3-3 三条错误路径分三处落实（见"错误路径"节：invalid spec 为 fixture
+  无关探针 + unknown action / IllegalTransition 于 Gate 语境复现），与
+  G3-3 progress 测试并存；
 - COMPLETED 存储 progress = 最后 checkpoint 镜像（0.6667，``complete_action``
   不镜像 progress——§3.6 进度镜像仅 INTERRUPTED/RESUMED 两事件，E-P3-28）；
   §5.3 A4 表"COMPLETED / 1.0" = ``progress_of(action, 30)`` 派生权威值
@@ -65,11 +79,14 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from src.engine_v2.core.action_lifecycle import (
     ActiveAction,
     IllegalTransitionError,
+    LifecycleEvent,
     progress_of,
+    transition_action,
 )
 from src.engine_v2.core.action_registry import (
     ActionRegistry,
@@ -752,30 +769,62 @@ def test_m3_purity_and_serialization(
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 错误路径（brief item f）：Gate 全装配集成角度
+# 错误路径（G3-3）：invalid spec（fixture 无关探针）+ unknown action（Gate
+# 语境）+ IllegalTransition（Gate 语境复用 S8 暂停点）
 # ══════════════════════════════════════════════════════════════════════
 
 
-def test_error_paths_gate_context(
+def test_invalid_spec_gate_context() -> None:
+    """G3-3 错误路径① invalid spec：fixture 无关的校验层探针。
+
+    非法 spec 属**参数 schema 校验**（``model_validate`` 构造期拒绝，K7
+    可检查不静默），与 Gate 场景状态无关（不涉世界/队列/时钟）——故此探针
+    不装配 Gate 场景、不依赖 §5.1 fixture 状态，仅以 conftest §5.1 travel
+    spec 常量为有效基线构造非法变体；其余两条错误路径（unknown action /
+    IllegalTransition）由 ``test_unknown_action_gate_context`` /
+    ``test_illegal_transition_gate_context`` 在 Gate 语境复现（满足 §6.2
+    G3-3"在 Gate 场景内复现"口径）。单元级全矩阵另见
+    test_action_registry.py（extra_forbid / TestActionSpecContract）。
+    """
+    # ① ActionSpec extra 字段 → extra=forbid（ContractModel，entity.py:51）
+    with pytest.raises(ValidationError):
+        ActionSpec.model_validate({**p3.travel_spec().model_dump(), "__bogus__": 1})
+    # ② ActionSpec 缺必填字段（action_id 必填）→ ValidationError
+    data = p3.travel_spec().model_dump()
+    del data["action_id"]
+    with pytest.raises(ValidationError):
+        ActionSpec.model_validate(data)
+    # ③ 注册表键一致性：键 != spec.action_id → 构造期拒绝（P1
+    # active_actions 键一致性同款纪律，D-P3-06 数据层）
+    with pytest.raises(ValidationError):
+        ActionRegistry(specs={ActionTypeId("travel2"): p3.travel_spec()})
+
+
+def test_unknown_action_gate_context(
     gate_state: tuple[WorldState, RuntimeState, Scheduler, ActionProposal],
 ) -> None:
-    """错误路径集成角度（单元级覆盖见模块 docstring 引注；本测试仅补 Gate
-    装配端到端面）：
+    """G3-3 错误路径② unknown action：Gate 场景内复现（§6.3 A5 口径逐条）。
 
-    f-1 unknown action：``flying`` 未注册 → REJECT reason="unknown_action"；
-        错误路径直接落 FAILED 终态记录（无 PROPOSED 中间态，F2-12）、诊断串
-        含 action_id、队列零残留、世界零变更（A5 口径；全量残留断言另见
+    (1) 场景内发生错误：先 ``submit_proposal`` 未注册 ``flying``（A5 探针）
+        → ``UnknownActionError`` 于 registry 查找点抛出、被 ``submit_proposal``
+        捕获转 FAILED 轨迹（E-P3-39⑧ 次序第 1 步：registry 查找先于
+        revalidate，错误路径不创建 PROPOSED ActiveAction 记录、不查迁移表）；
+        A5 口径逐条：不崩溃、队列零残留、世界零变更、诊断串含 action_id，
+        另 F2-12 pending_proposals 簿记（REJECT 留痕 = 提案仍在列表 +
+        RevalidationDecision REJECT 记录；全量残留断言另见
         test_p3_adversarial.py TestA5）；
-    f-2 IllegalTransition 经真实 Gate 暂停态：abort 后 resume 拒绝
-        （FAILED 为终态无出边——与 test_scheduler.py 的 ACTIVE 探针互补：
-        终态侧经完整场景装配达到）。
+    (2) 时间线不受污染：错误发生后同场景内继续 Gate 主时序（提交 P1 →
+        fast_forward）→ t=12 照常暂停（B1 decision boundary）、暂停点
+        progress == 12/30 == 0.4（与主场景 G3-1#5 同值）、队列/位置/
+        revision/事务口径与主时序逐字一致——证明错误路径发生在场景内
+        且场景语义完整。
     """
-    world, runtime, scheduler, _proposal = gate_state
+    world, runtime, scheduler, proposal = gate_state
 
-    # f-1：未注册 action_id（registry 查找点抛 UnknownActionError，编排层
-    # 捕获转 FAILED 轨迹，E-P3-39⑧ 次序第 1 步）
-    bad = ActionProposal(
-        proposal_id=ActionInstanceId("act_flying"),
+    # —— (1) A5：未注册 action_id（registry 查找点抛，编排层捕获转 FAILED）——
+    flying_id = ActionInstanceId("act_flying")
+    flying = ActionProposal(
+        proposal_id=flying_id,
         actor_id=p3.ENT_PLAYER,
         action_id=ActionTypeId("flying"),
         arguments={},
@@ -783,31 +832,144 @@ def test_error_paths_gate_context(
         base_world_revision=INITIAL_WORLD_REVISION,
         provenance=p3.ORIGIN_PROVENANCE,
     )
-    worldX, runtimeX, decision = scheduler.submit_proposal(world, runtime, bad)
+    worldX, runtimeX, decision = scheduler.submit_proposal(world, runtime, flying)
+    # REJECT + reason + 诊断串含 action_id（A5 口径逐条）
     assert decision.outcome is RevalidationOutcome.REJECT
     assert decision.reason == "unknown_action"
-    assert any("flying" in d for d in decision.details)  # 诊断串含 action_id
-    flying = runtimeX.active_actions[ActionInstanceId("act_flying")]
-    assert flying.status is ActionLifecycleStatus.FAILED
-    assert flying.result_summary is not None
-    assert flying.result_summary.get("reason") == "unknown_action"
-    assert flying.result_summary.get("action_id") == "flying"
-    # 队列零残留（初始 ev_enc@12 原样）、世界零变更（R0）
+    assert any("flying" in d for d in decision.details)
+    # FAILED 终态记录（无 PROPOSED 中间态，E-P3-39⑧/F2-12 纪律）
+    flying_rec = runtimeX.active_actions[flying_id]
+    assert flying_rec.status is ActionLifecycleStatus.FAILED
+    assert flying_rec.result_summary == {
+        "reason": "unknown_action",
+        "action_id": "flying",
+    }
+    assert all(
+        r.status is not ActionLifecycleStatus.PROPOSED
+        for r in runtimeX.active_actions.values()
+    )
+    # F2-12 簿记：REJECT 提案留在 pending_proposals（移除仅发生于
+    # start_action 成功时）
+    assert [p.proposal_id for p in runtimeX.pending_proposals] == [flying_id]
+    # 队列零残留（初始 ev_enc@12 原样）+ 世界零变更（R0）
     assert [(e.kind, e.due_tick) for e in runtimeX.scheduler_queue] == [("event", 12)]
+    assert worldX == world
     assert worldX.world_revision == INITIAL_WORLD_REVISION
 
-    # f-2：Gate 暂停态 abort 后 resume → IllegalTransitionError（FAILED 终态
-    # 无出边；消息含 from/to/event）
-    w8, r8, _o8 = p3.gate_run_to_pause(
+    # —— (2) 继续 Gate 主时序：错误路径不污染场景语义 ——
+    worldA, runtimeA, dA = scheduler.submit_proposal(worldX, runtimeX, proposal)
+    assert dA.outcome is RevalidationOutcome.ACCEPT
+    worldF, runtimeF, outcomeF = scheduler.fast_forward(worldA, runtimeA)
+    actF = runtimeF.active_actions[p3.P1_INSTANCE_ID]
+    # t=12 照常暂停（B1，主场景 G3-1#1/#2 同值）
+    assert outcomeF.paused is True
+    assert outcomeF.pause_reason is not None
+    assert outcomeF.pause_reason.kind == "decision_boundary"
+    assert outcomeF.pause_reason.boundary_id == "B1"
+    assert outcomeF.pause_reason.tick == 12
+    assert runtimeF.logical_tick == 12
+    assert outcomeF.ticks_processed == 12
+    # 暂停点 progress == 12/30（与主场景同值，G3-1#5 口径）
+    assert actF.status is ActionLifecycleStatus.INTERRUPTED
+    assert actF.progress == 12 / 30
+    # 时间线与主场景一致：txn_1 恰一次提交 → R1、队列 [cp@20, end@30]、
+    # position 恒起点、transitions 恰 S7 一条（INTERRUPTED@12）
+    assert worldF.world_revision == INITIAL_WORLD_REVISION.next()
+    assert [(int(t.base_revision), int(t.commit_revision)) for t in outcomeF.transactions] == [
+        (0, 1)
+    ]
+    assert [(e.kind, e.due_tick) for e in runtimeF.scheduler_queue] == [
+        ("action_checkpoint", 20),
+        ("action_end", 30),
+    ]
+    assert p3.gate_position(worldF) == p3.START_POSITION
+    assert [
+        (t.from_status.value, t.event.value, t.to_status.value, t.at_tick)
+        for t in outcomeF.transitions
+    ] == [("active", "interrupted", "interrupted", 12)]
+
+
+def test_illegal_transition_gate_context(
+    gate_state: tuple[WorldState, RuntimeState, Scheduler, ActionProposal],
+) -> None:
+    """G3-3 错误路径③ IllegalTransition：Gate 场景内复现（§6.3 A2 探针口径）。
+
+    (1) 先把合法 travel 行动推进到 S8 INTERRUPTED 暂停点（与主场景同款
+        写法，经 ``gate_run_to_pause``：B1 命中、progress 12/30、队列
+        [cp@20, end@30]）；
+    (2) 触发一条表外迁移：INTERRUPTED→INTERRUPTED 双中断（对照
+        LIFECYCLE_TRANSITIONS 唯一权威选探针——INTERRUPTED 行仅
+        RESUMED/ABORTED 出边，A2 探针集）→ ``IllegalTransitionError``
+        （消息含 from/to/event，D-P3-16 可检查不静默）；
+    (3) 错误后暂停点幂等重报（D-P3-24 入口首检）：直接对暂停态再
+        ``fast_forward`` → 返回同一暂停（paused=True、B1、tick=12、
+        tick 水位不前进、transactions/events/transitions/errors 全空）、
+        队列零残留（队列不变 [cp@20, end@30]）、世界零副作用（revision
+        R1、position 恒起点）；
+    (4) 终态侧对照：abort（合法 INTERRUPTED→FAILED）后 resume →
+        ``IllegalTransitionError``（终态无出边，D-P3-07）——与
+        test_scheduler.py 的 ACTIVE 探针互补（终态侧经完整 Gate 场景
+        装配达到）。
+    """
+    world, runtime, scheduler, proposal = gate_state
+
+    # —— (1) 推进至 S8 INTERRUPTED 暂停点（与主场景同款达成写法）——
+    world8, runtime8, o8 = p3.gate_run_to_pause(scheduler, world, runtime, proposal)
+    assert o8.paused is True
+    act8 = runtime8.active_actions[p3.P1_INSTANCE_ID]
+    assert act8.status is ActionLifecycleStatus.INTERRUPTED
+    assert act8.progress == 12 / 30
+    assert runtime8.logical_tick == 12
+    queue8 = runtime8.scheduler_queue
+    assert [(e.kind, e.due_tick) for e in queue8] == [
+        ("action_checkpoint", 20),
+        ("action_end", 30),
+    ]
+
+    # —— (2) 表外探针：INTERRUPTED→INTERRUPTED 双中断（A2 探针集）——
+    with pytest.raises(IllegalTransitionError) as excinfo:
+        transition_action(
+            runtime8, p3.P1_INSTANCE_ID, LifecycleEvent.INTERRUPTED, at_tick=12
+        )
+    msg = str(excinfo.value)
+    # 消息含 from/to/event 三要素（D-P3-16 ①）
+    assert "from=interrupted" in msg
+    assert "to=<illegal>" in msg
+    assert "event=interrupted" in msg
+
+    # —— (3) D-P3-24 入口首检幂等重报：表外迁移不消耗队列、不推进时钟、
+    # 不静默跳过边界、不崩溃 ——
+    worldR, runtimeR, oR = scheduler.fast_forward(world8, runtime8)
+    assert oR.paused is True
+    assert oR.pause_reason is not None
+    assert oR.pause_reason.kind == "decision_boundary"
+    assert oR.pause_reason.boundary_id == "B1"
+    assert oR.pause_reason.tick == 12
+    assert oR.ticks_processed == 12
+    # 零副作用：四清单全空（SchedulerOutcome 字段为 tuple 型）
+    assert oR.transactions == ()
+    assert oR.events == ()
+    assert oR.transitions == ()
+    assert oR.errors == ()
+    # tick 水位不前进 + 队列零残留（队列不变）+ 世界零副作用
+    assert runtimeR.logical_tick == 12
+    assert runtimeR.scheduler_queue == queue8
+    assert worldR == world8
+    assert worldR.world_revision == INITIAL_WORLD_REVISION.next()
+    assert p3.gate_position(worldR) == p3.START_POSITION
+
+    # —— (4) 终态侧对照：abort 后 resume → IllegalTransitionError（FAILED
+    # 终态无出边；消息含 from/to/event）——
+    wB8, rB8, _oB8 = p3.gate_run_to_pause(
         scheduler,
         p3.make_gate_world(),
         p3.make_initial_runtime(),
         p3.make_gate_proposal(),
     )
-    r8 = scheduler.abort_action(w8, r8, p3.P1_INSTANCE_ID)
-    with pytest.raises(IllegalTransitionError) as excinfo:
-        scheduler.resume_action(w8, r8, p3.P1_INSTANCE_ID)
-    msg = str(excinfo.value)
-    # 消息含 from（FAILED 终态）与 event（RESUMED 边）——表外迁移不静默
-    assert "from=failed" in msg
-    assert "event=resumed" in msg
+    rB8 = scheduler.abort_action(wB8, rB8, p3.P1_INSTANCE_ID)
+    assert rB8.active_actions[p3.P1_INSTANCE_ID].status is ActionLifecycleStatus.FAILED
+    with pytest.raises(IllegalTransitionError) as excinfo2:
+        scheduler.resume_action(wB8, rB8, p3.P1_INSTANCE_ID)
+    msg2 = str(excinfo2.value)
+    assert "from=failed" in msg2
+    assert "event=resumed" in msg2

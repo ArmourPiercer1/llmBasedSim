@@ -275,7 +275,7 @@ kind 词表与 payload 契约（`make_scheduled_event` 在入队点强制校验�
         ├─ revalidation.py     （P1：revision（is_stale）/ state（has_entity）；P2
         │                       validation.check_transaction_references 仅测试口径一致性复用（§6.1），不入运行时路径）
         ├─ action_lifecycle.py （P1：actions/state/revision/ids/trace/effects/entity + stdlib + pydantic
-        │                       + clock/event_queue/action_registry；纯函数不消费 P2 符号，
+        │                       + clock/event_queue（D6 后无 action_registry 边，E-P3-41②）；纯函数不消费 P2 符号，
         │                       apply_checkpoint 返回的 TraceRecord 为 P1 trace.py 类型，R4/F3-06）
         └─ scheduler.py        （以上全部 + P2 cascade.CascadeExecutor/trigger 协议）
 ```
@@ -478,8 +478,9 @@ def complete_action(world: WorldState, runtime: RuntimeState, instance_id: Actio
 def fail_action(runtime: RuntimeState, instance_id: ActionInstanceId, *,
                 at_tick: int, reason: str) -> RuntimeState: ...
     """ACTIVE→FAILED：result_summary={"reason": reason, "tick": at_tick}。
-    （迁移表中 FAILED 目标边仅出自 ACTIVE——VALIDATING→FAILED 经 VALIDATION_REJECTED 边，
-    属 submit_proposal REJECT 轨迹路径，不经本函数。）"""
+    （迁移表中 FAILED 目标边仅出自 ACTIVE——submit_proposal REJECT 轨迹不查迁移表：
+    直接创建 FAILED 终态记录（无 PROPOSED/VALIDATING 中间态，§6.3 A5 / E-P3-39⑧；
+    澄清 E-P3-42），不经本函数。）"""
 
 class IllegalTransitionError(SchedulerError): ...   # 新增
 ```
@@ -1168,7 +1169,9 @@ def rebase_proposal(proposal: ActionProposal, current: Revision) -> ActionPropos
 
 ### 8.1 P1 零改动（G2 移交 4；基线 `603535e`）
 
-P3 对 13 个冻结契约模块**零源改动**。逐字段复用对齐表（"零改名零新增"的可检查声明）：
+P3 对 13 个冻结契约模块**零源改动**（实现期核验口径：`core/` 下全部既有 19 文件 =
+13 P1 契约 + 6 P2 行为模块相对 `603535e` 字节冻结，唯一差异文件为 `__init__.py`
+——D-P3-12 re-export 纯增量，E-P3-43）。逐字段复用对齐表（"零改名零新增"的可检查声明）：
 
 | P1 冻结物 | P3 消费方式 | 改动 |
 |---|---|---|
@@ -1387,7 +1390,20 @@ P3 新类型（`LogicalClock`/`ParameterSpec`/`DurationPolicy`/`ActionSpec`/`Act
 - **原因**：两处均为实现期（P3 Wave C T04a/T04b）暴露的契约缝隙——签名与 docstring/口径承诺不完全对齐；按 Leader 文档一致性修复处理（设计文档修订 + 本勘误留痕），零源码改动、零测试断言改动、Gate 17 条断言与全部不变量不变。（出处：P3 实现期 T04a blocked 上报 + T04b 预裁定；用户门禁策略：文档级修复不消耗实质补充预算。）
 
 
-**勘误合计**：E-P3-01 ~ E-P3-40 共 **40 条**（BLOCK 2 条单列；R2 措辞/事实类合并为 E-P3-10 一条；R3 补充轮 E-P3-11 ~ E-P3-23 共 13 条，F2-01~F2-04 单列、F2-13~F2-16 合并一条；R4 补充轮 E-P3-24 ~ E-P3-29 共 6 条，F3-01~F3-05 单列（E-P3-24 含 L3-01 留痕）、L3 轻量项与 F3-06 合并为 E-P3-29 一条；R5 补充轮 E-P3-30 ~ E-P3-32 共 3 条，F4-01（E-P3-30，含 E-P3-24 R5 注记补录）、F4-02（E-P3-31）单列、F4-03 与 L4-01 合并为 E-P3-32 一条，列明覆盖项；R6 补充轮 E-P3-33 ~ E-P3-36 共 4 条，L5-01（E-P3-33，就地更正 E-P3-32②(b) 区间）单列轻量注记、F5-01（E-P3-34）、F5-02（E-P3-35）、F5-03（E-P3-36，重裁 E-P3-32① 中断部分）单列，留痕；R7 收尾轮 E-P3-37 ~ E-P3-39 共 3 条，F7-01（E-P3-37，就地更正 D-P3-20 理由段工厂区间、取代 E-P3-21/E-P3-33 该处裁定）、F7-04（E-P3-38，F2-15 `causal_root_id` 偏离披露）单列，F7-02/F7-03/F7-05/F7-06 与 R7-01 ~ R7-05 合并为 E-P3-39 一条、列明九项覆盖项，留痕；实现期 Leader 裁定 E-P3-40 一条（P3 Wave C：`apply_checkpoint` 间隔通道 + Scheduler `origin` 必填参数，见条目——文档级修复，用户门禁策略零预算消耗））。本勘误落定后 §9 无"暂无"遗留项。
+### E-P3-41（G3 盲审 RA）D6 偏差留痕补录 + §3.2 依赖图边校正
+- **内容**：① 实现期偏差 D6 此前仅存于代码注释与提交记录（scheduler.py start_action 节注释、action_lifecycle.py `__all__` 注释、Wave E 提交信息），§9 无勘误条目——现补录：start_action 经 Leader 裁定归 T04b 落位 scheduler.py（§3.6 落点偏离），`__all__` 归属随实现为 action_lifecycle 11 / scheduler 11（§3.11 逐模块清单 12/10 之实现期归属注记），扁平 53 符号集合 / 包级 249 / 零撞名 / 196 保序子序列全部不变。② §3.2 依赖图：action_lifecycle→action_registry 边经 D6 失效（start_action 的时长解析委托在 scheduler.py 侧），图已校正为 clock/event_queue。
+- **原因**：已披露偏差应文档级可追溯（与 §8.5-D4 同披露模式）；图边随偏差失效属纯文档留痕，实现正确、公共面不变。（出处：G3 盲审 RA + Leader 集成；文档级修复，用户门禁策略零预算消耗。）
+
+### E-P3-42（G3 盲审 RA）§3.6 fail_action 注记 REJECT 轨迹字面歧义澄清
+- **内容**：原注记"VALIDATING→FAILED 经 VALIDATION_REJECTED 边，属 submit_proposal REJECT 轨迹路径"字面可歧义解读为 REJECT 轨迹需遍历 LIFECYCLE_TRANSITIONS（经 PROPOSED/VALIDATING 中间态）；按实现与 §6.3 A5 / E-P3-39⑧ 原文裁定：REJECT 轨迹不查迁移表——`_record_failed` 直接创建 FAILED 终态记录（不创建 PROPOSED 中间态，代码注释逐字留痕），注记已就地更正。
+- **原因**：实现与 A5 字面一致（A5 全部断言经行为面核对成立）；文档措辞澄清，零行为变更。（出处：G3 盲审 RA；文档级修复，用户门禁策略零预算消耗。）
+
+### E-P3-43（G3 盲审 RC）§8.1 冻结核验口径澄清（13 → 19 文件）
+- **内容**：原句"P3 对 13 个冻结契约模块零源改动"仅述 P1 契约层面；实现期核验实际口径 = `core/` 下全部既有 19 文件（13 P1 契约模块 + 6 P2 行为模块）相对 `603535e` 字节冻结，唯一差异文件为 `__init__.py`（D-P3-12 纯增量：196 条目保序 + 53 新增）——口径已就地澄清。
+- **原因**：P2 六模块于 G2 时点已冻结但原句未明示核验范围，与 Leader git diff 核验结果口径不完全对齐；表述澄清，零行为变更。（出处：G3 盲审 RC；文档级修复，用户门禁策略零预算消耗。）
+
+
+**勘误合计**：E-P3-01 ~ E-P3-43 共 **43 条**（2 条 BLOCK 单列；R2 措辞/事实类合并为 E-P3-10 一条；R3 补充轮 E-P3-11 ~ E-P3-23 共 13 条，F2-01~F2-04 单列、F2-13~F2-16 合并一条；R4 补充轮 E-P3-24 ~ E-P3-29 共 6 条，F3-01~F3-05 单列（E-P3-24 含 L3-01 留痕）、L3 轻量项与 F3-06 合并为 E-P3-29 一条；R5 补充轮 E-P3-30 ~ E-P3-32 共 3 条，F4-01（E-P3-30，含 E-P3-24 R5 注记补录）、F4-02（E-P3-31）单列、F4-03 与 L4-01 合并为 E-P3-32 一条，列明覆盖项；R6 补充轮 E-P3-33 ~ E-P3-36 共 4 条，L5-01（E-P3-33，就地更正 E-P3-32②(b) 区间）单列轻量注记、F5-01（E-P3-34）、F5-02（E-P3-35）、F5-03（E-P3-36，重裁 E-P3-32① 中断部分）单列，留痕；R7 收尾轮 E-P3-37 ~ E-P3-39 共 3 条，F7-01（E-P3-37，就地更正 D-P3-20 理由段工厂区间、取代 E-P3-21/E-P3-33 该处裁定）、F7-04（E-P3-38，F2-15 `causal_root_id` 偏离披露）单列，F7-02/F7-03/F7-05/F7-06 与 R7-01 ~ R7-05 合并为 E-P3-39 一条、列明九项覆盖项，留痕；实现期 Leader 裁定 E-P3-40 一条（P3 Wave C：`apply_checkpoint` 间隔通道 + Scheduler `origin` 必填参数，见条目——文档级修复，用户门禁策略零预算消耗）；G3 盲审轮 E-P3-41 ~ E-P3-43 共 3 条（D6 留痕 E-P3-41、§3.6 注记澄清 E-P3-42、§8.1 口径澄清 E-P3-43——均文档级，用户门禁策略零预算消耗））。本勘误落定后 §9 无"暂无"遗留项。
 ---
 
 ## 10. 未决问题
