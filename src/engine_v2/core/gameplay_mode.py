@@ -1,13 +1,19 @@
 """engine_v2 core 层 GameplayMode 游戏模式：模式操作词表、模式叠加层、不可变注册表、
-per-property 合并语义与动作可用性判定（P4-T08 上半，§3.10；下半 T09 同文件末尾串行追加）。
+per-property 合并语义与动作可用性判定（P4-T08/T09 全量，§3.10: T08 上半 + T09 下半）。
 
 依据 ``docs/v2/contracts/P4-actor-context-space-mode-design.md``（下称"设计文档"）：
 
-- **§3.10 上半（P4-T08 范围）**：本模块 7 个导出符号（按 §3.10 代码块条目序）——
-  :class:`ModeOperationKind` / :class:`ModeOperation` / :class:`ModeOverlay` /
-  :class:`ModeOverlayRegistry` / :class:`MergedModeConfiguration` /
-  :func:`merge_modes` / :func:`is_action_available`；:class:`ModeInvariantError`
-  由上半先行定义（账本行归 T09，同文件单 Owner 串行，下半复用不重定义）；
+- **§3.10（P4-T08/T09 全量，14 个导出符号）**：上半 8 项（按 §3.10 代码块条目序，
+  P4-T08 交付）——:class:`ModeOperationKind` / :class:`ModeOperation` /
+  :class:`ModeOverlay` / :class:`ModeOverlayRegistry` /
+  :class:`MergedModeConfiguration` / :func:`merge_modes` /
+  :func:`is_action_available` / :class:`ModeInvariantError`（由上半先行定义，
+  下半复用不重定义）；下半 6 项末尾追加（按 §3.10 代码块序，P4-T09 Wave C，
+  同文件单 Owner 串行交付）——:class:`ModeChangeRequest` /
+  :class:`ModeChangeResolution` / :class:`ModePolicy` /
+  :class:`DefaultModePolicy` / :func:`apply_mode_change` /
+  :class:`UnknownModeError`（14 名称集与设计文档 §8.3 账本 gameplay_mode 行
+  完全一致）；
 - **Spec:1398-1409（"Mode 是 overlay，不是另一个 world"）**：:class:`ModeOverlay`
   （priority / action_filter_kind / action_ids / systems / time_policy /
   checkpoint_interval / input_policy / context）；
@@ -32,25 +38,31 @@ per-property 合并语义与动作可用性判定（P4-T08 上半，§3.10；下
   （零公开 mutator；键必须 == ``overlay.mode_id``，违例 →
   :class:`ModeInvariantError`）；
 - **D-P4-17（错误分类两族）**：:class:`ModeInvariantError` 归 ValueError 族
-  （M-INV-1 跨字段 / 注册表键违反 = 输入/配置违反不变式）；LookupError 族
-  ``UnknownModeError`` 属下半 T09。
+  （M-INV-1 跨字段 / M-INV-2 构造期 / 注册表键违反 = 输入/配置违反不变式）；
+  :class:`UnknownModeError` 归 LookupError 族（M-INV-2 查找点：解析期 mode
+  存在性原子预校验，:func:`apply_mode_change` 第 1 步）。
 
-**T08/T09 分工**（设计文档 §3.12 同文件单 Owner 串行交付）：下半 6 导出
+**T08/T09 分工（已完成）**（设计文档 §3.12 同文件单 Owner 串行交付）：下半 6 导出
 （``ModeChangeRequest`` / ``ModeChangeResolution`` / ``ModePolicy`` /
-``DefaultModePolicy`` / ``apply_mode_change`` / ``UnknownModeError``）将由
-P4-T09（Wave C）于本文件**末尾追加**；``__all__`` 现为上半 8 项（任务书给定
-名称顺序），T09 追加 6 项补全至 14（名称集与设计文档 §8.3 账本 gameplay_mode
-行完全一致；模块内顺序允许与代码块顺序不同，口径同 space.py）。本文件上半不
-import state / clock / effects / provenance（§3.3 依赖图该行余下 import 名归
-下半 T09 地盘），与 capability / knowledge / space / context_provider /
+``DefaultModePolicy`` / ``apply_mode_change`` / ``UnknownModeError``）已由 P4-T09
+（Wave C）于本文件**末尾追加**；``__all__`` 已补全至 14 项（上半 8 项保持当前
+顺序，下半 6 项按 §3.10 代码块序末尾追加；名称集与设计文档 §8.3 账本
+gameplay_mode 行完全一致；模块内顺序允许与代码块顺序不同，口径同 space.py /
+T06T07 先例）。本文件 import 按 §3.3 依赖图 gameplay_mode 行落位：entity
+（ContractModel）/ scheduler（**仅 TimePolicy 类型**）/ provenance（Provenance,
+OriginKind，运行期）/ state（RuntimeState，运行期）/ clock（rebuild_runtime，
+运行期——P1 授权的行为侧重建缝，唯一重建通道）/ effects（ProposedEffect，
+类型消费）；与 capability / knowledge / space / context_provider /
 behavior_policy 零 import 边（§3.3 零边条款）。
 
 Import 边界（设计文档 §3.3 依赖图 / §3.4 黑名单 / §5.5 M1）：本模块只 import
 标准库、pydantic 与同包 ``src.engine_v2``（entity → ContractModel；scheduler →
 **仅 TimePolicy 类型**——类型级依赖，运行时零调用，M1③：本文件对 scheduler 的
-import 名集 ⊆ {TimePolicy}）；asyncio / random / datetime / time / uuid /
-json 直接 import / os / subprocess / 网络栈全部缺席；无云模型 / 网络 / 随机性；
-M1④ 封闭 12 标识符集 0 命中。
+import 名集 ⊆ {TimePolicy}；provenance → Provenance / OriginKind（运行期）/
+state → RuntimeState（运行期）/ clock → rebuild_runtime（运行期——P1 授权的
+行为侧重建缝）/ effects → ProposedEffect（类型消费））；asyncio / random /
+datetime / time / uuid / json 直接 import / os / subprocess / 网络栈全部缺席；
+无云模型 / 网络 / 随机性；M1④ 封闭 12 标识符集 0 命中。
 """
 
 from __future__ import annotations
@@ -58,11 +70,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from enum import Enum
 from typing import Any, Literal
+from typing import Protocol
 
 from pydantic import Field, JsonValue, ValidationError, model_validator
 
+from src.engine_v2.core.clock import rebuild_runtime
 from src.engine_v2.core.entity import ContractModel
+from src.engine_v2.core.effects import ProposedEffect
+from src.engine_v2.core.provenance import OriginKind, Provenance
 from src.engine_v2.core.scheduler import TimePolicy
+from src.engine_v2.core.state import RuntimeState
 
 __all__ = [
     "ModeOperationKind",
@@ -73,6 +90,12 @@ __all__ = [
     "merge_modes",
     "is_action_available",
     "ModeInvariantError",
+    "ModeChangeRequest",
+    "ModeChangeResolution",
+    "ModePolicy",
+    "DefaultModePolicy",
+    "apply_mode_change",
+    "UnknownModeError",
 ]
 
 
@@ -326,3 +349,209 @@ def is_action_available(merged: MergedModeConfiguration, action_id: str) -> bool
     if merged.action_filter_kind == "allow":
         return action_id in merged.action_ids
     return True
+
+
+# —— §3.10 下半（P4-T09；末尾追加，设计文档 §3.12 同文件单 Owner 串行交付）——
+
+#: M-INV-2 合法源像集（D-P4-15 origin 映射的取值面）：Script → SCENARIO
+#: （provenance.py:53）/ RuleEngine → SYSTEM（:55）/ Plugin → SYSTEM（:55）/
+#: 行为策略侧源（Spec:1442）→ BEHAVIOR_POLICY（:49）；其余 origin（RULE /
+#: SCRIPT / DYNAMICS_BACKEND / DEVELOPER）同式拒绝。
+#: 注释钉死：该映射是 P4 内部归属约定（M-INV-2 合法源清单），**不改变
+#: OriginKind 字面值集**（provenance 冻结，D-P4-15 末段）——SCRIPT / RULE
+#: 字面值属 P1 writer 族 origin 值（provenance.py:49-55），P4 映射不复用
+#: SCRIPT 字面值而归入 SCENARIO 族。
+_M_INV_2_LEGAL_ORIGINS: frozenset[OriginKind] = frozenset(
+    {OriginKind.SCENARIO, OriginKind.SYSTEM, OriginKind.BEHAVIOR_POLICY}
+)
+
+
+def _check_m_inv_2(request: ModeChangeRequest) -> None:
+    """M-INV-2 跨字段：``operations`` 非空 + ``source.origin`` 在合法源像集
+    （构造期拒绝，全部构造路径）。
+
+    - ``operations`` 为空 → M-INV-2（空请求无可解析操作）；
+    - ``source.origin`` ∉ {SCENARIO, SYSTEM, BEHAVIOR_POLICY} → M-INV-2
+      （D-P4-15 合法源像集；其余 origin 同式拒绝）。
+    """
+    if not request.operations:
+        raise ModeInvariantError("M-INV-2 违反：operations 必须非空")
+    origin = request.source.origin
+    if origin not in _M_INV_2_LEGAL_ORIGINS:
+        raise ModeInvariantError(
+            f"M-INV-2 违反：source.origin {origin!r} 不在合法源像集 "
+            "{SCENARIO, SYSTEM, BEHAVIOR_POLICY}（D-P4-15 origin 映射）"
+        )
+
+
+def _m_inv_2_message(exc: ValidationError) -> str | None:
+    """从 pydantic 重抛的 ``ValidationError`` 中取出 M-INV-2 原文；其余校验错误返回 None。"""
+    for error in exc.errors():
+        if error.get("type") == "value_error" and "M-INV-2" in str(error.get("msg", "")):
+            msg = str(error.get("msg", ""))
+            return msg.removeprefix("Value error, ") or msg
+    return None
+
+
+class ModeChangeRequest(ContractModel):
+    """模式变更请求（Spec:1448-1449 统一输出；Spec:1439-1443 四来源）。
+
+    **M-INV-2**：``source``（Provenance，K6 Spec:315）必填非空（pydantic
+    必填字段，缺失 → 两路径 ValidationError）；``operations`` 非空（空请求 →
+    :class:`ModeInvariantError` 构造期拒绝）；全部 ``op.mode_id`` ∈ registry
+    （解析期原子校验，先于任何簿记变更——查找点归 :func:`apply_mode_change`
+    第 1 步 → :class:`UnknownModeError`）。
+    origin 映射钉死（D-P4-15，provenance.py:41-55 词表）：
+    Script → SCENARIO（provenance.py:53）/ RuleEngine → SYSTEM（:55）/
+    Plugin → SYSTEM（:55）/ Spec:1439-1443 四来源之行为策略侧源
+    （Spec:1442）→ BEHAVIOR_POLICY（:49）；其余 origin → 同式拒绝。
+    注释钉死：该映射是 P4 内部归属约定（M-INV-2 合法源清单），不改变
+    OriginKind 字面值集（provenance 冻结，D-P4-15 末段）。
+    """
+
+    request_id: str
+    source: Provenance
+    operations: tuple[ModeOperation, ...]
+
+    @model_validator(mode="after")
+    def _validate_m_inv_2(self) -> ModeChangeRequest:
+        """M-INV-2 跨字段：operations 非空 + source.origin 合法源像集（全部构造路径）。"""
+        _check_m_inv_2(self)
+        return self
+
+    def __init__(self, /, **data: Any) -> None:
+        """直接构造：M-INV-2 抛具名 :class:`ModeInvariantError`（不静默、不包裹）。
+
+        校验器在 ``super().__init__`` 的校验内运行，其抛出的
+        :class:`ModeInvariantError`（ValueError 族）会被 pydantic 重抛为
+        ``ValidationError``——本覆盖将其还原为具名类型（其余校验错误原样
+        穿透，不转换）。
+        """
+        try:
+            super().__init__(**data)
+        except ValidationError as exc:
+            message = _m_inv_2_message(exc)
+            if message is not None:
+                raise ModeInvariantError(message) from exc
+            raise
+
+
+class ModeChangeResolution(ContractModel):
+    """解析结果（判定结果 = 数据，K7）。
+
+    **M-INV-4**：P4 域 ``effects`` 恒为 ``()``（模式变更零世界效果；P5 扩展
+    位保留字段，Spec:1452 由 ModePolicy 解析的扩展空间）；
+    ``applied`` / ``ignored`` = 操作字符串序列（``"activate:dialogue"`` 形态，
+    请求序）；``new_active_modes`` 排序；``new_mode_context`` = 变更后的完整
+    per-mode 上下文 dict。
+    """
+
+    effects: tuple[ProposedEffect, ...] = ()
+    new_active_modes: tuple[str, ...]
+    new_mode_context: dict[str, JsonValue]
+    applied: tuple[str, ...] = ()
+    ignored: tuple[str, ...] = ()
+
+
+class ModePolicy(Protocol):
+    """模式策略协议（Spec:1452 "由 ModePolicy 解析"；**P5 接缝**——
+    行为策略侧解析器（Spec:1439-1443 四来源之行为策略侧源）实现本协议，
+    P4 提供缺省实现）。"""
+
+    def resolve(self, request: ModeChangeRequest, registry: ModeOverlayRegistry,
+                runtime: RuntimeState) -> ModeChangeResolution: ...
+
+
+class DefaultModePolicy:
+    """缺省解析器：委托 :func:`apply_mode_change`（无额外判定逻辑）。"""
+
+    def resolve(self, request: ModeChangeRequest, registry: ModeOverlayRegistry,
+                runtime: RuntimeState) -> ModeChangeResolution:
+        """只取 :func:`apply_mode_change` 结果的 resolution 分量（M-INV-4
+        零效果保证由执行器自身给出，此处无额外判定逻辑）。"""
+        return apply_mode_change(request=request, runtime=runtime, registry=registry)[1]
+
+
+def apply_mode_change(
+    *, request: ModeChangeRequest, runtime: RuntimeState,
+    registry: ModeOverlayRegistry,
+) -> tuple[RuntimeState, ModeChangeResolution]:
+    """模式变更执行器（**T09 核心；P4 唯一 mode 写面**）。
+
+    **M-INV-3**：签名 = 三关键字参数（request/runtime/registry）——**无
+    世界状态参数**（Spec:1409；G4-6 结构断言面）。
+    次序钉死：1. 原子预校验——任一 op.mode_id ∉ registry →
+    :class:`UnknownModeError`（先于任何簿记变更，原子性）；2. active 集合与
+    mode_context dict 的本地工作副本；3. 按请求序执行操作：ACTIVATE 已激活 →
+    ignored；DEACTIVATE 未激活 → ignored；其余 applied（activate 写入
+    ``ctx[mode_id] = overlay.context``，deactivate 弹出）；4. 唯一重建通道
+    ``rebuild_runtime(runtime, active_modes=sorted(active), mode_context=ctx)``
+    （clock.py:151-158；**M-INV-5** 其余字段位级不变 + 别名断裂由 model_dump/
+    model_validate roundtrip 保证，A6 断言）；5. 组装 resolution（M-INV-4
+    effects=()）；6. 返回 (new_runtime, resolution)。
+    零世界状态效果、零事件、零事务、零队列变更（INV-P4-5）。
+    """
+    # 1. 原子预校验（M-INV-2 查找点，D-P4-15 原子性）：全部校验先于任何变更。
+    overlays: dict[str, ModeOverlay] = {}
+    for op in request.operations:
+        overlay = registry.get(op.mode_id)
+        if overlay is None:
+            raise UnknownModeError(
+                f"mode_id {op.mode_id!r} 不在注册表"
+                "（M-INV-2 解析期 mode 存在性原子预校验）"
+            )
+        overlays.setdefault(op.mode_id, overlay)
+
+    # 2. 本地工作副本（不原地修改旧 runtime；M-INV-5 其余字段位级不变）。
+    active: set[str] = set(runtime.active_modes)
+    ctx: dict[str, JsonValue] = dict(runtime.mode_context)
+
+    # 3. 按请求序执行操作（applied/ignored 字符串请求序，形态
+    #    f"{operation_kind.value}:{mode_id}"，如 "activate:dialogue"）。
+    applied: list[str] = []
+    ignored: list[str] = []
+    for op in request.operations:
+        label = f"{op.operation_kind.value}:{op.mode_id}"
+        if op.operation_kind is ModeOperationKind.ACTIVATE:
+            if op.mode_id in active:
+                ignored.append(label)
+            else:
+                active.add(op.mode_id)
+                # 引用赋值；别名断裂由第 4 步 roundtrip 保证（A6 断言面）。
+                ctx[op.mode_id] = overlays[op.mode_id].context
+                applied.append(label)
+        else:  # DEACTIVATE
+            if op.mode_id not in active:
+                ignored.append(label)
+            else:
+                active.remove(op.mode_id)
+                ctx.pop(op.mode_id, None)
+                applied.append(label)
+
+    # 4. 唯一重建通道（clock.py:151-158）：model_dump→dict update→
+    #    model_validate 往返，容器别名天然断裂（M-INV-5）；rng_state /
+    #    backend_refs / scheduler_queue / active_actions / pending_proposals
+    #    位级不变由 rebuild_runtime 语义保证（INV-P4-5：零世界状态效果、
+    #    零事件、零事务、零队列变更）。
+    new_runtime = rebuild_runtime(
+        runtime, active_modes=sorted(active), mode_context=ctx
+    )
+
+    # 5. 组装 resolution（M-INV-4：effects 恒 ()）。
+    resolution = ModeChangeResolution(
+        effects=(),
+        new_active_modes=tuple(sorted(active)),
+        new_mode_context=ctx,
+        applied=tuple(applied),
+        ignored=tuple(ignored),
+    )
+
+    # 6. 返回 (new_runtime, resolution)。
+    return new_runtime, resolution
+
+
+class UnknownModeError(LookupError):
+    """LookupError 族（D-P4-17）：M-INV-2 查找点——解析期 mode 存在性原子
+    预校验（:func:`apply_mode_change` 第 1 步：任一 op.mode_id ∉ registry →
+    本错误，先于任何簿记变更，原子性）。测试按族断言基类。
+    """
