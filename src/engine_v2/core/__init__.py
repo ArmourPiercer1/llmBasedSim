@@ -39,8 +39,37 @@ P2 行为模块 re-export（D-P2-19 / P2 设计规范 §10.2/§10.3）：各 P2 
 （P2-T01）、``transaction_executor``（P2-T06）、``validation``（P2-T04）、
 ``conflicts``（P2-T05）与 ``cascade``（P2-T07/T08：级联执行器 + 触发器 +
 深度/环路熔断）六个导出块。
+P3 编排层模块 re-export（P3 设计规范 §3.11 / D-P3-12 机械同步）：新增
+7 个模块 action_lifecycle / action_registry / clock / event_queue /
+interrupt / revalidation / scheduler 的 re-export 块与 __all__ 条目按
+字母序插入（53 项，196 → 249）；test_closeout.py 的
+_CORE_SUBMODULE_NAMES（19 → 26）与规模锚点（249）、
+test_import_boundary.py 的 CORE_SUBMODULES（26）已同步。
+
 """
 
+from src.engine_v2.core.action_lifecycle import (
+    abort_action,
+    apply_checkpoint,
+    complete_action,
+    fail_action,
+    IllegalTransitionError,
+    LIFECYCLE_TRANSITIONS,
+    LifecycleEvent,
+    LifecycleTransition,
+    progress_of,
+    resume_action,
+    transition_action,
+)
+from src.engine_v2.core.action_registry import (
+    ActionRegistry,
+    ActionSpec,
+    DurationPolicy,
+    PARAMETER_TYPES,
+    ParameterSpec,
+    UnknownActionError,
+    validate_timing,
+)
 from src.engine_v2.core.actions import (
     ACTION_TYPE_ID_PATTERN,
     ActionLifecycleStatus,
@@ -65,6 +94,14 @@ from src.engine_v2.core.authority import (
     ProducerRegistry,
     check_authority,
     match_selector,
+)
+from src.engine_v2.core.clock import (
+    ClockRollbackError,
+    LogicalClock,
+    next_due_tick,
+    rebuild_runtime,
+    SchedulerError,
+    set_logical_tick,
 )
 from src.engine_v2.core.components import (
     COMPONENT_TYPE_ID_PATTERN,
@@ -133,6 +170,13 @@ from src.engine_v2.core.effects import (
     parse_state_domain_id,
 )
 from src.engine_v2.core.entity import ContractModel, EntityRecord, EntityRef, EntityView
+from src.engine_v2.core.event_queue import (
+    enqueue_scheduled_event,
+    make_scheduled_event,
+    QueueInvariantError,
+    SCHEDULED_EVENT_KINDS,
+    take_due,
+)
 from src.engine_v2.core.events import (
     EVENT_TYPE_ID_PATTERN,
     DomainEvent,
@@ -164,6 +208,18 @@ from src.engine_v2.core.ids import (
     new_trace_record_id,
     new_transaction_id,
     parse_id,
+)
+from src.engine_v2.core.interrupt import (
+    BoundaryReport,
+    BUILTIN_CONDITION_RESOLVERS,
+    CONDITION_KINDS,
+    ConditionResolver,
+    ConditionResolverRegistry,
+    DecisionBoundary,
+    evaluate_boundaries,
+    evaluate_condition,
+    InterruptCondition,
+    UnknownConditionError,
 )
 from src.engine_v2.core.provenance import (
     CascadeContext,
@@ -211,12 +267,30 @@ from src.engine_v2.core.reducer import (
     write_barrier_exempt,
     write_barrier_installed,
 )
+from src.engine_v2.core.revalidation import (
+    rebase_proposal,
+    revalidate_proposal,
+    RevalidationDecision,
+)
 from src.engine_v2.core.revision import (
     INITIAL_WORLD_REVISION,
     RevalidationOutcome,
     Revision,
     is_stale,
     next_revision,
+)
+from src.engine_v2.core.scheduler import (
+    enqueue_actor_wakeup,
+    PauseReason,
+    Scheduler,
+    scheduler_fingerprint,
+    SchedulerConfigurationError,
+    SchedulerOutcome,
+    SchedulerWakeupError,
+    start_action,
+    TimePolicy,
+    WakeupHook,
+    WakeupHookRegistry,
 )
 from src.engine_v2.core.serialization import (
     assert_json_clean,
@@ -269,14 +343,18 @@ from src.engine_v2.core.validation import (
 )
 
 __all__ = [
+    'abort_action',
     'ACTION_TYPE_ID_PATTERN',
     'ActionInstanceId',
     'ActionLifecycleStatus',
     'ActionProposal',
+    'ActionRegistry',
+    'ActionSpec',
     'ActionTiming',
     'ActionTypeId',
     'ActiveAction',
     'ActorWakeup',
+    'apply_checkpoint',
     'AUTHORITY_REASON_CODES',
     'AuthorityDecision',
     'AuthorityError',
@@ -286,8 +364,15 @@ __all__ = [
     'AuthorityRule',
     'AuthoritySelector',
     'BackendStateRef',
+    'BoundaryReport',
+    'BUILTIN_CONDITION_RESOLVERS',
     'CASCADE_DIAGNOSTIC_KINDS',
+    'ClockRollbackError',
+    'complete_action',
     'COMPONENT_TYPE_ID_PATTERN',
+    'CONDITION_KINDS',
+    'ConditionResolver',
+    'ConditionResolverRegistry',
     'CONTRACT_SCHEMA_VERSION',
     'CascadeConfig',
     'CascadeContext',
@@ -322,11 +407,13 @@ __all__ = [
     'CycleDetector',
     'CycleHit',
     'DECISION_PAYLOAD_KEYS',
+    'DecisionBoundary',
     'DEFAULT_MAX_CASCADE_DEPTH',
     'DEFAULT_STRATEGIES',
     'DefaultConflictResolver',
     'DomainEvent',
     'DomainResolverFactory',
+    'DurationPolicy',
     'EFFECT_CREATE_ENTITY',
     'EFFECT_REMOVE_COMPONENT',
     'EFFECT_REMOVE_ENTITY',
@@ -335,6 +422,10 @@ __all__ = [
     'EFFECT_SET_SCENARIO_DATA',
     'EFFECT_SET_WORLD_VARIABLE',
     'EFFECT_TYPE_ID_PATTERN',
+    'enqueue_actor_wakeup',
+    'enqueue_scheduled_event',
+    'evaluate_boundaries',
+    'evaluate_condition',
     'EVENT_TYPE_ID_PATTERN',
     'EffectApplicationError',
     'EffectHandler',
@@ -353,14 +444,26 @@ __all__ = [
     'EventId',
     'EventTypeId',
     'FACTORY_BODY_PATTERN',
+    'fail_action',
     'FallbackSpec',
     'GuardedWorldState',
     'HandlerConflictError',
+    'IllegalTransitionError',
     'INITIAL_WORLD_REVISION',
+    'InterruptCondition',
     'KERNEL_STATE_DOMAINS',
+    'LIFECYCLE_TRANSITIONS',
+    'LifecycleEvent',
+    'LifecycleTransition',
     'LLM_CALL_PAYLOAD_KEYS',
+    'LogicalClock',
+    'make_scheduled_event',
+    'next_due_tick',
     'ObservationId',
     'OriginKind',
+    'PARAMETER_TYPES',
+    'ParameterSpec',
+    'PauseReason',
     'PAYLOAD_RECORD_KEY',
     'PREFIX_BODY_PATTERN',
     'PREFIX_TO_KIND',
@@ -370,22 +473,44 @@ __all__ = [
     'ProducerInfo',
     'ProducerPriorityStrategy',
     'ProducerRegistry',
+    'progress_of',
     'ProposedEffect',
     'Provenance',
+    'QueueInvariantError',
+    'rebase_proposal',
+    'rebuild_runtime',
     'ReducerError',
     'RemoveWorldVariablePayload',
     'ResolutionContext',
+    'resume_action',
+    'revalidate_proposal',
+    'RevalidationDecision',
     'RevalidationOutcome',
     'Revision',
     'RngState',
     'RuntimeLifecycle',
     'RuntimeState',
+    'SCHEDULED_EVENT_KINDS',
+    'Scheduler',
+    'scheduler_fingerprint',
+    'SchedulerConfigurationError',
+    'SchedulerError',
+    'SchedulerOutcome',
+    'SchedulerWakeupError',
+    'set_logical_tick',
     'SNAPSHOT_FORMAT_VERSION',
+    'start_action',
     'STATE_DOMAIN_ID_PATTERN',
     'STRUCTURAL_EFFECT_TYPES',
+    'take_due',
+    'TimePolicy',
     'TIMESTAMP_METADATA_KEY',
     'TimestampStrategy',
     'TRANSACTION_REFERENCE_ISSUE_KINDS',
+    'transition_action',
+    'UnknownActionError',
+    'UnknownConditionError',
+    'validate_timing',
     'VALIDATION_ISSUE_KINDS',
     'ScenarioState',
     'ScheduledEntryId',
@@ -409,6 +534,8 @@ __all__ = [
     'ValidationIssue',
     'ValidationPipeline',
     'ValidationReport',
+    'WakeupHook',
+    'WakeupHookRegistry',
     'WorldState',
     'WriteBarrier',
     'WriteBarrierError',

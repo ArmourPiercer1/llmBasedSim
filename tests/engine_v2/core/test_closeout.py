@@ -86,22 +86,31 @@ from src.engine_v2.core import (
 )
 from src.engine_v2.core.snapshot import snapshot as take_snapshot
 
-#: 19 个 core 模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 + 6 个 P2
+#: 26 个 core 模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 + 6 个 P2
 #: 行为模块——authority / cascade / conflicts / reducer /
-#: transaction_executor / validation；re-export 的唯一来源集合）。
+#: transaction_executor / validation；P3 设计规范 §3.1：7 个 P3 编排层
+#: 模块——action_lifecycle / action_registry / clock / event_queue /
+#: interrupt / revalidation / scheduler；re-export 的唯一来源集合）。
 _CORE_SUBMODULE_NAMES: tuple[str, ...] = (
     "actions",
+    "action_lifecycle",
+    "action_registry",
     "authority",
     "cascade",
+    "clock",
     "components",
     "conflicts",
     "effects",
     "entity",
+    "event_queue",
     "events",
     "ids",
+    "interrupt",
     "provenance",
     "reducer",
+    "revalidation",
     "revision",
+    "scheduler",
     "serialization",
     "snapshot",
     "state",
@@ -161,7 +170,7 @@ class TestCorePackageReexports:
     def test_package_all_no_private_no_duplicates(self) -> None:
         assert len(core_pkg.__all__) == len(set(core_pkg.__all__)), "__all__ 存在重复项"
         assert not any(name.startswith("_") for name in core_pkg.__all__), "__all__ 泄漏私有名称"
-        # 规模锚点：196 个唯一名称（13 个契约模块 __all__ 共 95 项，
+        # 规模锚点：249 个唯一名称（13 个契约模块 __all__ 共 95 项，
         # CONTRACT_SCHEMA_VERSION 在 state/snapshot 双模块同名、同一对象，
         # 去重后 94；再减去同名遮蔽豁免的 snapshot 函数 = 93；再加 P2 行为
         # 模块导出——authority 13 项（P2-T02/T03：T03 新增
@@ -180,8 +189,29 @@ class TestCorePackageReexports:
         # （CycleDetector / CycleHit / CascadeDiagnostic /
         # CASCADE_DIAGNOSTIC_KINDS / DEFAULT_MAX_CASCADE_DEPTH /
         # CascadeError / CascadeDepthExceededError / CascadeCycleError））
-        # = 196
-        assert len(core_pkg.__all__) == 196
+        # = 196；再加 P3 编排层 7 模块（P3 设计规范 §3.11 / D-P3-12）——
+        # action_lifecycle 11 项（T03/T04：迁移表 + transition_action +
+        # progress/checkpoint/resume/abort/complete/fail；start_action
+        # 经 Leader 裁定落位 scheduler.py，偏差登记 D6）
+        # + action_registry 7 项（T02：ActionSpec / ParameterSpec /
+        # DurationPolicy / ActionRegistry / 参数类型词表 /
+        # UnknownActionError / validate_timing）+ clock 6 项（T01：
+        # LogicalClock / set_logical_tick / next_due_tick /
+        # rebuild_runtime / SchedulerError / ClockRollbackError）
+        # + event_queue 5 项（T01：kind 词表 / make_scheduled_event /
+        # enqueue_scheduled_event / take_due / QueueInvariantError）
+        # + interrupt 10 项（T05：CONDITION_KINDS / InterruptCondition /
+        # DecisionBoundary / ConditionResolver / ConditionResolverRegistry /
+        # BUILTIN_CONDITION_RESOLVERS / BoundaryReport /
+        # evaluate_condition / evaluate_boundaries / UnknownConditionError）
+        # + revalidation 3 项（T07：RevalidationDecision /
+        # revalidate_proposal / rebase_proposal）+ scheduler 11 项
+        # （T04/T05/T06：TimePolicy / PauseReason / SchedulerOutcome /
+        # WakeupHook / WakeupHookRegistry / enqueue_actor_wakeup /
+        # scheduler_fingerprint / Scheduler / SchedulerConfigurationError /
+        # SchedulerWakeupError / start_action）= 53
+        # = 249
+        assert len(core_pkg.__all__) == 249
 
     def test_every_reexport_is_same_object_as_source_module(self) -> None:
         """每个包级 re-export 名称与定义来源模块的属性同一对象（无第二副本）。"""

@@ -35,12 +35,17 @@
   条目（boundary_id 去重；时钟推进过其刻后不重播）；
 - **因果根（Leader 裁定 (C)）**：同刻批提交事务 ``cascade.causal_root_id``
   = 批首条 entry_id 字符串；
-- **revalidation 占位**（§3.9 / Leader 裁定 (F)）：is_stale → REJECT
+- **revalidation**（§3.9 / Leader 裁定 (F)，``_revalidate`` 委托
+  ``revalidation.revalidate_proposal``）：is_stale → REJECT
   （F2-05 过期优先：valid_until_expired > stale_revision）/ actor_missing /
   actor_state_revision 仅诊断 / ACCEPT；submit_proposal REJECT 路径（FAILED
   终态记录 + 提案留 pending_proposals + 世界/队列零变更，A5 口径）；
-- **T05/T06 接线点现状**（Leader 裁定 (B)）：decision_boundary 条目 = 时钟
-  停靠点 no-op；wakeup 条目被消费但 hook 不执行（_drain_wakeup 属 T06）；
+- **接线点**（Leader 裁定 (B)/(C)）：decision_boundary 条目 = 时钟停靠点
+  no-op（D-P3-22 播种，裁定 (C) 不动）；wakeup 条目经 ``_drain_wakeup``
+  消费（T06 已接线，D-P3-14：无 hook → SYSTEM 诊断；hook → ``on_wakeup``
+  求值 + 提案经 ``submit_proposal`` 全管道；hook 异常 →
+  ``SchedulerWakeupError`` → 原子刻错误路径；actor_wakeups 记录随条目
+  消费同步移除，F5-02）；
 - **边界与聚合**：max_tick 批还队 + bounded 暂停 / step 单批强制暂停 /
   空队列 terminal / outcome 按调用聚合（D-P3-18）/ 原子刻错误路径
   （F2-03/D-P3-24④：刻前状态对 + 四空元组 + 非空 errors）。
@@ -49,7 +54,9 @@
 （边界 fired 记录 / trace 留痕 / 玩家边界中断行为 / ``pause_on_player_boundary=
 False`` 的 fired 留痕面）属 T05 接线，本文件只覆盖 T04b 落地的机制面
 （入口首检、播种、五 kind 分支、原子刻、聚合、装配、契约、指纹）；wakeup
-hook 执行属 T06，本文件断言"条目被消费、hook 不被调用"的现状行为。
+hook 执行已由 T06 接线（D-P3-14），本文件 ``TestWakeupWiring`` /
+``TestWakeupDrain`` 断言接线后行为（无 hook 诊断、全管道、错误路径、
+reason 实参、记录移除、同刻序）。
 §6.1 R1 负例的"新进程未武装环境"以 ``uninstall_write_barrier()`` 前置复原
 达成（写屏障为进程全局态，P2 套件同款 autouse 隔离纪律，test_cascade.py
 口径），断言时刻 ``write_barrier_installed() is False`` 与"未武装环境"等价。
@@ -82,6 +89,7 @@ from src.engine_v2.core.authority import (
     AuthoritySelector,
 )
 from src.engine_v2.core.cascade import CascadeTriggerRegistry, SyncTrigger
+from src.engine_v2.core.clock import SchedulerError
 from src.engine_v2.core.entity import ContractModel, EntityRecord
 from src.engine_v2.core.effects import (
     ProposedEffect,
@@ -116,7 +124,9 @@ from src.engine_v2.core.scheduler import (
     Scheduler,
     SchedulerConfigurationError,
     SchedulerOutcome,
+    SchedulerWakeupError,
     TimePolicy,
+    WakeupHook,
     WakeupHookRegistry,
     enqueue_actor_wakeup,
     scheduler_fingerprint,
@@ -1294,23 +1304,35 @@ class TestDecisionBoundaryStub:
         assert oc.pause_reason == PauseReason(kind="terminal", tick=8)
 
 
-class TestWakeupStub:
-    def test_wakeup_entry_consumed_hook_not_invoked(self) -> None:
-        """T06 接线点现状（Leader 裁定 (B)）：wakeup 条目被 take_due 消费，
-        但 _drain_wakeup 未接线 → hook 不被调用、零簿记影响。"""
+class TestWakeupWiring:
+    def test_wakeup_entry_consumed_hook_invoked(self) -> None:
+        """T06 已接线（D-P3-14）：wakeup 条目被 take_due 消费 →
+        ``_drain_wakeup`` 求值注册的 hook——调用实参 (actor_id, view, clock,
+        reason)，reason 经 (actor_id, due_tick) 记录查得（payload 不含
+        reason，F5-02）；hook 返回空列表 → 零提案；actor_wakeups 记录随
+        条目消费同步移除（F5-02）；世界零变更、terminal 停靠。"""
         hook = _Hook("player_1")
         s = _scheduler()
         registry = WakeupHookRegistry()
         registry.register(hook)
-        s._wakeup_hooks = registry  # 即便注册了 hook，T04b 也不执行
+        s._wakeup_hooks = registry  # T06 已接线：hook 被求值
         world, rt = _world(), RuntimeState(logical_tick=0)
         rt = enqueue_actor_wakeup(rt, _PLAYER, 7, reason="r")
         world2, rt2, oc = s.fast_forward(world, rt)
-        assert hook.calls == []  # T06 前 hook 不被调用
+        assert len(hook.calls) == 1  # T06 已接线：hook 被调用恰好一次
+        call = hook.calls[0]
+        assert call[0] == _PLAYER
+        assert call[3] == "r"  # reason = actor_wakeups 记录实参
+        assert call[2].tick == 7  # clock = LogicalClock 当前刻
         assert rt2.logical_tick == 7
+        assert rt2.actor_wakeups == []  # 记录随消费移除（F5-02）
         assert rt2.scheduler_queue == []
+        assert rt2.pending_proposals == []
         assert oc.transactions == () and oc.events == ()
+        assert oc.trace_records == () and oc.transitions == ()
         assert oc.errors == ()
+        assert oc.pause_reason == PauseReason(kind="terminal", tick=7)
+        assert world2 is world  # 零提交 → 同一对象
 
 
 # —— 10. max_tick / step / terminal / 聚合 / 原子刻 ——
@@ -1440,7 +1462,8 @@ class TestOutcomeAggregation:
         assert world2.world_variables == {"a": 1, "b": 2}
 
 
-# —— 11. submit_proposal revalidation 占位（§3.9 / Leader 裁定 (F)）——
+# —— 11. submit_proposal revalidation（§3.9 / Leader 裁定 (F)，委托
+#    revalidation.revalidate_proposal）——
 
 
 class TestSubmitProposalRevalidation:
@@ -1929,8 +1952,9 @@ class TestPostTickBoundaryWiring:
         assert oc2.paused is False
         assert oc2.pause_reason == PauseReason(kind="terminal", tick=20)
         assert rt3.scheduler_queue == []
-        # 双记录唯一：无重复 wakeup 记录、无二次迁移（重入求值被守卫跳过）
-        assert rt3.actor_wakeups == [ActorWakeup(actor_id=_NPC, due_tick=12, reason="B1")]
+        # 记录随条目消费同步移除（F5-02，T06 接线）：wakeup@12 记录随条目
+        # 消费移除；未再 fired → 无新记录（重入求值被守卫跳过、无二次迁移）
+        assert rt3.actor_wakeups == []
         assert oc2.transitions == ()
         assert rt3.active_actions["act_n1"].status is ActionLifecycleStatus.INTERRUPTED
         diags = [
@@ -1940,6 +1964,7 @@ class TestPostTickBoundaryWiring:
         ]
         assert "checkpoint_skipped_interrupted" in diags
         assert "decision_boundary_fired" not in diags  # 同刻重入不二次 fired 留痕
+        assert "wakeup_no_hook" in diags  # T06 接线：无 hook 命中 → 仅诊断
         assert oc2.errors == ()
 
     def test_player_blocking_interrupt_false_fires_and_pauses_only(self) -> None:
@@ -2031,3 +2056,286 @@ class TestPostTickBoundaryWiring:
         assert oc.transitions == ()
         assert len(oc.errors) == 1
         assert "moon_phase" in str(oc.errors[0])
+
+
+# —— 14. _drain_wakeup 接线（T06，D-P3-14 / E-P3-35 / F5-02 / E-P3-39⑤）——
+
+
+class _WakeupHookDuck:
+    """WakeupHook 鸭子替身（注册键 = actor_id 字符串属性；T06 接线断言
+    口径）：命中返回预置提案列表（可空）、记录调用实参（actor_id / view /
+    clock / reason）、向共享序日志追加 actor_id（同刻序钉死）。"""
+
+    def __init__(self, actor_id: str, *, order_log: list[str] | None = None) -> None:
+        self.actor_id = actor_id
+        self._order_log = order_log
+        self.proposals: list = []
+        self.calls: list[dict[str, object]] = []
+
+    def on_wakeup(
+        self,
+        actor_id: EntityId,
+        view: object,
+        clock: object,
+        reason: str | None,
+    ) -> list:
+        self.calls.append(
+            {"actor_id": actor_id, "view": view, "clock": clock, "reason": reason}
+        )
+        if self._order_log is not None:
+            self._order_log.append(str(actor_id))
+        return list(self.proposals)
+
+
+class _RaisingHook:
+    """WakeupHook 鸭子替身：命中即抛异常（D-P3-14 失败处置 → 包装
+    SchedulerWakeupError → 原子刻错误路径）。"""
+
+    def __init__(self, actor_id: str) -> None:
+        self.actor_id = actor_id
+        self.calls = 0
+
+    def on_wakeup(
+        self,
+        actor_id: EntityId,
+        view: object,
+        clock: object,
+        reason: str | None,
+    ) -> list:
+        self.calls += 1
+        raise ValueError("boom")
+
+
+def _scheduler_with_hooks(*hooks: WakeupHook) -> Scheduler:
+    """T06 接线测试装配：先武装写屏障（R1 正例路径），再构造携带
+    wakeup_hooks 注册表的 Scheduler（无 hook → 空注册表；E-P3-39⑤ 缺省
+    None → 空注册表由 test_no_hook_… 直构覆盖）。"""
+    install_write_barrier()
+    registry = WakeupHookRegistry()
+    for hook in hooks:
+        registry.register(hook)
+    return Scheduler(
+        _registry(),
+        authority_policy=_allow_policy(),
+        origin=_ORIGIN_PROVENANCE,
+        time_policy=TimePolicy(),
+        boundaries=(),
+        named_triggers=frozenset(),
+        player_actor_ids=frozenset(),
+        trigger_registry=None,
+        assert_barrier_armed=True,
+        wakeup_hooks=registry,
+    )
+
+
+class TestWakeupDrain:
+    """``_drain_wakeup`` 接线（T06，D-P3-14）：§6.1 六口径 + REJECT 穿透
+    口径（提案经既有 submit_proposal 全管道，不绕过、不内联重实现，
+    Leader 裁定 (B)）。"""
+
+    def test_no_hook_diagnostic_zero_bookkeeping(self) -> None:
+        """无 hook 命中（E-P3-39⑤，wakeup_hooks=None 缺省）→ 仅 SYSTEM
+        诊断 trace、不崩溃、簿记零影响：条目消费 + (actor_id, due_tick)
+        记录移除（F5-02）；世界零变更、terminal 停靠。"""
+        install_write_barrier()
+        s = Scheduler(
+            _registry(),
+            authority_policy=_allow_policy(),
+            origin=_ORIGIN_PROVENANCE,
+            time_policy=TimePolicy(),
+            boundaries=(),
+            named_triggers=frozenset(),
+            player_actor_ids=frozenset(),
+            trigger_registry=None,
+            assert_barrier_armed=True,
+            wakeup_hooks=None,  # E-P3-39⑤：None 缺省 → 空注册表
+        )
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="B1")
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.errors == ()
+        assert rt2.logical_tick == 10
+        assert rt2.actor_wakeups == []  # 记录随消费移除（F5-02）
+        assert rt2.scheduler_queue == []  # 条目消费
+        assert rt2.active_actions == {} and rt2.pending_proposals == []
+        assert oc.transactions == () and oc.events == () and oc.transitions == ()
+        assert oc.ticks_processed == 10
+        assert oc.pause_reason == PauseReason(kind="terminal", tick=10)
+        assert world2 is world  # 零提交 → 同一对象
+        diags = [r for r in oc.trace_records if r.kind is TraceKind.SYSTEM]
+        assert len(diags) == 1
+        assert diags[0].payload == {
+            "diagnostic": "wakeup_no_hook",
+            "actor_id": "npc_1",
+        }
+        assert diags[0].logical_tick == 10
+
+    def test_hook_hit_full_submit_pipeline(self) -> None:
+        """hook 命中 → 提案经 ``submit_proposal`` 全管道（D-P3-14 /
+        Leader 裁定 (B)）：ACCEPT → 立即 start_action 两跳复合（D-P3-19）
+        → ACTIVE（start_tick = 消费刻）+ pending 移除（F2-12）+ action_end
+        @40 入队（walk 固定 30 tick）；hook 恰调一次、实参正确（view =
+        当刻 guard 视图、clock = 当刻 LogicalClock、reason = 记录 reason）；
+        start 复合迁移不入 ff outcome（F2-16）；续推 → 到点 complete。"""
+        hook = _WakeupHookDuck("npc_1")
+        hook.proposals = [_proposal(actor=_NPC, pid="act_h1")]
+        s = _scheduler_with_hooks(hook)
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="B1")
+        # 段 1：停到消费刻（max_tick=10）——观察 start 后的当刻簿记
+        world2, rt2, oc = s.fast_forward(world, rt, max_tick=10)
+        assert oc.errors == ()
+        assert oc.paused is True
+        assert oc.pause_reason == PauseReason(kind="bounded", tick=10)
+        assert len(hook.calls) == 1
+        call = hook.calls[0]
+        assert call["actor_id"] == _NPC
+        assert call["reason"] == "B1"
+        assert call["clock"].tick == 10  # LogicalClock 当前刻（D-P3-02）
+        assert call["view"].world_revision == world.world_revision  # 当刻 guard 视图
+        act = rt2.active_actions.get("act_h1")
+        assert act is not None
+        assert act.status is ActionLifecycleStatus.ACTIVE
+        assert act.start_tick == 10  # 立即开跑（timing 无 earliest）
+        assert act.expected_end_tick == 40  # walk 固定 30 tick
+        assert rt2.pending_proposals == []  # F2-12：start 成功移除
+        end_entries = [e for e in rt2.scheduler_queue if e.kind == "action_end"]
+        assert len(end_entries) == 1
+        assert end_entries[0].due_tick == 40
+        assert end_entries[0].payload == {"instance_id": "act_h1"}
+        assert oc.transitions == ()  # 复合迁移仅 start_action 直调可见（F2-16）
+        assert rt2.actor_wakeups == []  # 记录随消费移除（F5-02）
+        # 段 2：续推 → action_end @40 到点 complete、terminal
+        world3, rt3, oc2 = s.fast_forward(world2, rt2)
+        assert oc2.errors == ()
+        assert oc2.pause_reason == PauseReason(kind="terminal", tick=40)
+        assert rt3.active_actions["act_h1"].status is ActionLifecycleStatus.COMPLETED
+        assert rt3.scheduler_queue == []
+
+    def test_hook_raises_atomic_error_path(self) -> None:
+        """hook 抛异常（D-P3-14 失败处置）→ 包装 SchedulerWakeupError
+        （携带 actor_id + cause）→ 单刻原子错误路径（D-P3-24④）：刻前
+        状态对 + 错误 outcome、不崩溃、部分提交不可见。"""
+        hook = _RaisingHook("npc_1")
+        s = _scheduler_with_hooks(hook)
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="B1")
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert hook.calls == 1
+        # 刻前状态对（take_due 已把 due 批移出队列、时钟未跳变、记录未移除
+        # ——移除发生于 _drain_wakeup 内、错误之后不可达）
+        assert world2 is world
+        assert rt2.logical_tick == 0
+        assert rt2.scheduler_queue == []
+        assert rt2.actor_wakeups == [
+            ActorWakeup(actor_id=_NPC, due_tick=10, reason="B1")
+        ]
+        assert oc.paused is False
+        assert oc.pause_reason is None
+        assert oc.ticks_processed == 0
+        assert oc.transactions == () and oc.events == ()
+        assert oc.trace_records == () and oc.transitions == ()
+        assert len(oc.errors) == 1
+        assert oc.errors[0].startswith("SchedulerWakeupError:")
+        assert "npc_1" in oc.errors[0]
+        assert "ValueError: boom" in oc.errors[0]
+
+    def test_scheduler_wakeup_error_carries_actor_and_cause(self) -> None:
+        """D-P3-16 错误族：SchedulerWakeupError 继承 SchedulerError、携带
+        actor_id + cause，消息可检查不静默。"""
+        cause = ValueError("boom")
+        err = SchedulerWakeupError(_NPC, cause=cause)
+        assert isinstance(err, SchedulerError)
+        assert err.actor_id == _NPC
+        assert err.cause is cause
+        assert "npc_1" in str(err)
+        assert "ValueError: boom" in str(err)
+
+    def test_reason_arg_from_record_not_payload(self) -> None:
+        """reason 实参 = (actor_id, due_tick) 记录的 reason（F5-02：payload
+        仅 actor_id、不含 reason）：带 reason 入队 → hook 收到该 reason；
+        无 reason 入队 → hook 收到 None；payload 键集机械口径。"""
+        player_hook = _WakeupHookDuck("player_1")
+        npc_hook = _WakeupHookDuck("npc_1")
+        s = _scheduler_with_hooks(player_hook, npc_hook)
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="B1")
+        rt = enqueue_actor_wakeup(rt, _PLAYER, 10)  # 无 reason → None
+        # 机械口径（F5-02 / §2.5 尾注）：payload 键集恰为 {"actor_id"}
+        entries = [e for e in rt.scheduler_queue if e.kind == "wakeup"]
+        assert len(entries) == 2
+        for e in entries:
+            assert set(e.payload) == {"actor_id"}
+            assert "reason" not in e.payload
+        assert [e.payload["actor_id"] for e in entries] == ["npc_1", "player_1"]
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.errors == ()
+        assert npc_hook.calls[0]["reason"] == "B1"
+        assert player_hook.calls[0]["reason"] is None
+
+    def test_consumption_removes_only_consumed_record(self) -> None:
+        """记录消费即移除（F5-02）：同 actor 多刻 wakeup（@10 / @20）→
+        仅被消费条目的 (actor_id, due_tick) 记录移除；未消费记录（@20）
+        原样保留（条目经批还队保留、记录不动）。"""
+        s = _scheduler_with_hooks()  # 无 hook → 诊断路径
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="r1")
+        rt = enqueue_actor_wakeup(rt, _NPC, 20, reason="r2")
+        world2, rt2, oc = s.fast_forward(world, rt, max_tick=10)
+        assert oc.errors == ()
+        assert oc.paused is True
+        assert oc.pause_reason == PauseReason(kind="bounded", tick=10)
+        assert rt2.logical_tick == 10
+        # @10 记录随条目消费移除；@20 记录未消费 → 保留
+        assert rt2.actor_wakeups == [
+            ActorWakeup(actor_id=_NPC, due_tick=20, reason="r2")
+        ]
+        # @10 条目已消费；@20 条目经批还队保留（§6.1"队列保留"）
+        wakeups = [e for e in rt2.scheduler_queue if e.kind == "wakeup"]
+        assert len(wakeups) == 1
+        assert wakeups[0].due_tick == 20
+
+    def test_same_tick_wakeups_follow_queue_order(self) -> None:
+        """同刻多条 wakeup：确定序 = 队列序（take_due 同刻批序 = 插入序
+        FIFO，D-P3-05 / D-P3-14），不按 actor_id 排序、不重排。"""
+        order_log: list[str] = []
+        player_hook = _WakeupHookDuck("player_1", order_log=order_log)
+        npc_hook = _WakeupHookDuck("npc_1", order_log=order_log)
+        s = _scheduler_with_hooks(player_hook, npc_hook)
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        # 插入序：player 先、npc 后（字母序 npc < player——若按 actor_id
+        # 排序将得到相反序，故该断言区分队列序与排序序）
+        rt = enqueue_actor_wakeup(rt, _PLAYER, 10, reason="B1")
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="B2")
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.errors == ()
+        assert order_log == ["player_1", "npc_1"]  # 队列序、非 actor_id 序
+        assert rt2.actor_wakeups == []  # 两条记录均随消费移除
+        assert rt2.scheduler_queue == []
+
+    def test_hook_proposal_reject_stays_in_pipeline(self) -> None:
+        """REJECT 穿透口径（Leader 裁定 (B)：不绕过、不内联重实现）：hook
+        提案经既有 submit_proposal → _revalidate（委托
+        revalidation.revalidate_proposal）——同刻 event 先提交
+        （world_revision 1）→ base=0 提案 stale → REJECT stale_revision：
+        FAILED 终态记录 + 提案留 pending_proposals（A5 口径）+ 无 error
+        （REJECT 为正常裁决、非刻错误）+ 运行继续至 terminal。"""
+        hook = _WakeupHookDuck("npc_1")
+        hook.proposals = [_proposal(actor=_NPC, base=0, pid="act_r1")]
+        s = _scheduler_with_hooks(hook)
+        world, rt = _world(), RuntimeState(logical_tick=0)
+        rt = enqueue_scheduled_event(rt, _event_entry(10))  # 同刻先入队 → 先提交
+        rt = enqueue_actor_wakeup(rt, _NPC, 10, reason="B1")
+        world2, rt2, oc = s.fast_forward(world, rt)
+        assert oc.errors == ()  # REJECT 非原子刻错误
+        assert world2.world_revision == 1  # event 提交发生
+        assert len(hook.calls) == 1
+        assert hook.calls[0]["reason"] == "B1"
+        # REJECT：FAILED 终态记录 + 提案留 pending（A5 口径）
+        assert rt2.active_actions["act_r1"].status is ActionLifecycleStatus.FAILED
+        assert rt2.active_actions["act_r1"].result_summary["reason"] == "stale_revision"
+        assert [p.proposal_id for p in rt2.pending_proposals] == ["act_r1"]
+        # 无开跑：无 action_end 条目
+        assert not [e for e in rt2.scheduler_queue if e.kind == "action_end"]
+        assert rt2.actor_wakeups == []  # 记录随消费移除（REJECT 不改变口径）
+        assert oc.pause_reason == PauseReason(kind="terminal", tick=10)

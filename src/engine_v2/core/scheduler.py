@@ -1,4 +1,5 @@
-"""engine_v2 core 层 Scheduler 门面、TimePolicy 与编排层纯函数（P3-T04b）。
+"""engine_v2 core 层 Scheduler 门面、TimePolicy 与编排层纯函数（P3-T04b/T05/T06：
+§3.10 同文件单 Owner 串行交付）。
 
 依据 ``docs/v2/contracts/P3-scheduler-time-action-design.md``（下称"设计文档"）：
 
@@ -21,10 +22,10 @@
   迁移记录（D-P3-19）；Leader 裁定本函数归 T04b（``action_lifecycle.py``
   同任务窗口冻结，本模块为落位）；观察出口 = 模块级直调返回元组第 3 位
   （F2-16/E-P3-23④）；
-- **§3.9（revalidation 口径）**：``Scheduler._revalidate`` 为接线点——
-  占位实现按 §3.9 口径内联（is_stale + REJECT 原因优先级 F2-05 过期优先 +
-  has_entity/actor 检查）；T07 落 ``revalidation.py`` 后接线替换为 import
-  （Leader 裁定 (F)）；
+- **§3.9（revalidation 口径）**：``Scheduler._revalidate`` 委托
+  ``revalidation.revalidate_proposal``（T07 落位，Leader 裁定 (F) 接线替换）——
+  任意 producer 单一实现（G2 移交 3）；``allow_rebase`` 缺省关（调用方
+  ``submit_proposal`` 决定何时允许 REBASE，§3.9 ``rebase_proposal`` 注记）；
 - **§4 决策**：D-P3-16（错误双轨：7 异常型 + 数据结果型）、D-P3-18
   （SchedulerOutcome 按调用聚合、承载级联管道完整产出）、D-P3-19（start 两跳
   2 记录）、D-P3-20（事务/事件不打戳逻辑时刻）、D-P3-21（条件求值 tick 入参，
@@ -48,8 +49,7 @@ Leader 预裁定（T04b，按裁定实现、报告 notes 标注"Leader 裁定"�
   等类型用字符串前向注解 + ``if TYPE_CHECKING`` 块（运行时零 import）；D-P3-24
   入口首检完整实现（纯派生、对边界对象仅鸭子式属性读
   ``blocking`` / ``actor_id`` / ``boundary_id``，与 T05 实际
-  ``DecisionBoundary`` 兼容）；``kind="wakeup"`` 的 ``_drain_wakeup``
-  处理仍留 T06。**T05 已接线**：``interrupt.py`` 交付
+  ``DecisionBoundary`` 兼容）。**T05 已接线**：``interrupt.py`` 交付
   （§3.7 全量），刻后边界求值段（§2.4 "边界求值"块）落位于
   ``_maybe_evaluate_boundaries``（返回 5 元组：new_runtime / paused /
   pause_reason / report / trace 记录）——全部中断经
@@ -58,6 +58,16 @@ Leader 预裁定（T04b，按裁定实现、报告 notes 标注"Leader 裁定"�
   ``pause_on_player_boundary`` 辖制）、fired 报告两路（record-only 与正常）
   均经 ``TraceKind.SYSTEM`` 记录留痕；``condition_resolvers`` 缺省落位
   ``BUILTIN_CONDITION_RESOLVERS`` 共享缺省实例（E-P3-39④）。
+  **T06 已接线**：``kind="wakeup"`` 分支经 ``_drain_wakeup`` 消费（D-P3-14）——
+  payload 仅 ``actor_id``，hook 的 ``reason`` 实参经 ``runtime.actor_wakeups``
+  的 ``(actor_id, due_tick)`` 记录查得（F5-02 双记录口径）；无 hook 命中 →
+  仅诊断 TraceRecord（SYSTEM）、不崩溃、簿记零影响（E-P3-39⑤）；hook 存在 →
+  ``on_wakeup(actor_id, guard(world), LogicalClock.of(runtime), reason)``，抛
+  任何异常 → :class:`SchedulerWakeupError`（携带 actor_id）→ 单刻原子错误
+  路径；hook 返回提案逐条经 ``submit_proposal`` 全管道（含 ``_revalidate``
+  revalidation，不绕过）；条目消费即同步移除该 ``(actor_id, due_tick)`` 记录
+  （无论有无 hook 命中，条目消费是唯一移除触发）；同刻多条 wakeup 确定序
+  = 队列序（take_due 同刻批序，不重排）。
 - **(C)** ``run()`` 提交参数：``causal_root_id`` = 驱动该批的队列条目
   ``entry_id`` 字符串（本刻批首条 entry，F2-15/E-P3-38）；提交后
   ``CascadeResult`` 的 transactions（含 ABORTED，commit 序）/ events /
@@ -73,13 +83,15 @@ Leader 预裁定（T04b，按裁定实现、报告 notes 标注"Leader 裁定"�
   → stub 产出 ProposedEffect 序列经 ``CascadeExecutor.run(initial_proposals=…)``
   提交——空注册表 → 级联再求值面为空，D-P3-27）；``decision_boundary`` 分支
   为时钟停靠点（no payload effect，fired 判定属刻后求值——T05 已接线）、
-  ``wakeup`` 留 T06；
+  ``wakeup``（T06 已接线：``_drain_wakeup`` → WakeupHook 求值 + 提案经
+  ``submit_proposal`` 全管道，D-P3-14；见 (B) 尾段）；
 - **(E)** 循环前播种（D-P3-22）：``kind="scheduled"`` 边界中 ``due_tick``
   大于当前刻者幂等补入 ``kind="decision_boundary"`` 队列条目
   （``boundary_id`` 去重，条目只是时钟停靠点，无 payload effect）；
 - **(F)** ``submit_proposal`` 次序（E-P3-39⑧）：1) registry 查找（未注册 →
   ``UnknownActionError`` → FAILED 轨迹 reason="unknown_action"，不创建
-  PROPOSED 记录）；2) ``_revalidate(proposal)``（占位实现，见上）；
+  PROPOSED 记录）；2) ``_revalidate(proposal)``（委托
+  ``revalidation.revalidate_proposal``，§3.9 口径）；
   3) ACCEPT → PROPOSED 记录 + pending_proposals + start_action 复合 2 迁移
   （成功时移出 pending，F2-12）；
 - **(G)** :func:`scheduler_fingerprint(registry, time_policy, boundaries)`：
@@ -165,7 +177,8 @@ from src.engine_v2.core.interrupt import (
 )
 from src.engine_v2.core.provenance import Provenance
 from src.engine_v2.core.reducer import guard, write_barrier_installed
-from src.engine_v2.core.revision import RevalidationOutcome, Revision, is_stale
+from src.engine_v2.core.revalidation import RevalidationDecision, revalidate_proposal
+from src.engine_v2.core.revision import RevalidationOutcome
 from src.engine_v2.core.state import (
     ActorWakeup,
     RuntimeState,
@@ -175,9 +188,8 @@ from src.engine_v2.core.state import (
 from src.engine_v2.core.trace import TraceKind, TraceRecord
 from src.engine_v2.core.transaction import Transaction
 
-if TYPE_CHECKING:  # 仅注解用（revalidation.py 为 T07 交付，运行时零 import）
+if TYPE_CHECKING:  # 仅注解用（GuardedWorldState 为 P2 只读视图类型，本模块运行时零 import）
     from src.engine_v2.core.reducer import GuardedWorldState
-    from src.engine_v2.core.revalidation import RevalidationDecision
 
 __all__ = [
     "TimePolicy",
@@ -190,6 +202,7 @@ __all__ = [
     "Scheduler",
     "SchedulerConfigurationError",
     "SchedulerWakeupError",
+    "start_action",  # Leader 裁定归 T04b 落位于本模块（设计 §3.6 落点偏离，偏差登记 D6）
 ]
 
 
@@ -213,13 +226,21 @@ class SchedulerConfigurationError(SchedulerError):
 
 
 class SchedulerWakeupError(SchedulerError):
-    """WakeupHook 求值错误（设计文档 §3.8 / D-P3-16；T06 接线点）。
+    """WakeupHook 求值错误（设计文档 §3.8 / D-P3-16 / D-P3-14；T06 已接线）。
 
-    hook 在 ``kind="wakeup"`` 条目处理中抛错 → 包装为本错误（携带
-    ``actor_id`` + 原因），经原子刻错误路径返回刻前状态对（D-P3-24④，
-    伴随整刻原子回退）。本任务（T04b）只定义类型；``_drain_wakeup`` 接线
-    属 T06（Leader 裁定 (B)）。
+    hook 在 ``kind="wakeup"`` 条目处理中抛任何异常 → ``_drain_wakeup`` 包装
+    为本错误（携带 ``actor_id`` + 原始异常 ``cause``）→ 经单刻原子错误路径
+    返回刻前状态对（D-P3-24④，伴随整刻原子回退、部分提交不可见，G3-4 顺序
+    一致性不被污染；§6.1 对抗口径）。
     """
+
+    def __init__(self, actor_id: EntityId, *, cause: Exception) -> None:
+        self.actor_id = EntityId(actor_id)
+        self.cause: Exception = cause
+        super().__init__(
+            f"WakeupHook 求值错误：actor_id={str(self.actor_id)!r}，"
+            f"cause={type(cause).__name__}: {cause}"
+        )
 
 
 # —— §3.8 值类型（D-P3-13 / D-P3-18 / D-P3-14）——
@@ -297,8 +318,11 @@ class WakeupHook(Protocol):
     同步纯函数：只读 guard 视图（``GuardedWorldState``），返回新提案（不写
     世界、不直接调度）；确定性顺序由调用方（队列序）保证，hook 本体无内部
     时钟/随机。hook 实例须携带 ``actor_id`` 属性（注册键——
-    :meth:`WakeupHookRegistry.register` 读取，鸭子式契约）。T04b 只定义协议
-    与注册表；``_drain_wakeup`` 接线属 T06（Leader 裁定 (B)）。
+    :meth:`WakeupHookRegistry.register` 读取，鸭子式契约）。接线（T06）：
+    ``_drain_wakeup`` 在 ``kind="wakeup"`` 条目消费时以
+    ``(actor_id, view=guard(world), clock=LogicalClock.of(runtime),
+    reason=actor_wakeups 记录 reason)`` 调用，抛错包装
+    :class:`SchedulerWakeupError`（D-P3-14）。
     """
 
     def on_wakeup(
@@ -318,7 +342,7 @@ class WakeupHookRegistry:
       重复注册 → 本错误（确定性配置面，不静默覆盖）；
     - :meth:`hook_for`：按 actor 查找；无 → ``None``（wakeup 条目命中时无
       hook 可调 → 仅输出诊断（TraceRecord，SYSTEM）、不崩溃、不影响簿记，
-      E-P3-39⑤——该诊断点属 T06 接线）。
+      E-P3-39⑤——诊断点在 ``_drain_wakeup``，T06 已接线）。
     """
 
     __slots__ = ("_hooks",)
@@ -518,27 +542,6 @@ def start_action(
     return world, new_runtime, (transition_1, transition_2)
 
 
-# —— submit_proposal revalidation 接线点（§3.9；T07 落位前占位）——
-
-
-class _RevalidationDecisionPlaceholder(ContractModel):
-    """``revalidation.RevalidationDecision`` 的 T07 落位前占位（Leader 裁定 (F)）。
-
-    字段面与 §3.9 钉死签名逐字一致（``proposal_id`` / ``outcome`` /
-    ``reason`` / ``details`` / ``at_revision`` / ``rebased_proposal``）——
-    T07 落 ``revalidation.py`` 后 ``Scheduler._revalidate`` 接线替换为
-    ``from src.engine_v2.core.revalidation import revalidate_proposal``，
-    本占位移除；调用侧只依赖字段面（duck 可断言），替换零断言改动。
-    """
-
-    proposal_id: ActionInstanceId
-    outcome: RevalidationOutcome
-    reason: str
-    details: tuple[str, ...] = ()
-    at_revision: Revision
-    rebased_proposal: ActionProposal | None = None
-
-
 # —— 门面（K7：不是真相——编排层，全部状态在 (WorldState, RuntimeState)）——
 
 
@@ -578,7 +581,11 @@ class Scheduler:
     ``_maybe_evaluate_boundaries`` 于每刻提交后以当刻新 ``guard()`` 视图求值
     （G2 移交 2）——INTERRUPTED 迁移经 :func:`transition_action` 唯一入口、
     npc wakeup 双记录、玩家 blocking 暂停（受 ``pause_on_player_boundary``
-    门控）；``kind="wakeup"`` 处理仍留 T06（Leader 裁定 (B)）。
+    门控）。``kind="wakeup"`` 已接线（T06，D-P3-14）：``_drain_wakeup`` 消费
+    条目——无 hook → 诊断 TraceRecord（SYSTEM）；hook → ``on_wakeup`` 求值 +
+    提案经 ``submit_proposal`` 全管道；hook 异常 →
+    :class:`SchedulerWakeupError` → 单刻原子错误路径；actor_wakeups 记录随
+    条目消费同步移除（F5-02）。
     """
 
     __slots__ = (
@@ -1134,6 +1141,91 @@ class Scheduler:
         world = self._commit_into_outcome(world, effects, batch, txs, events, traces)
         return world
 
+    def _drain_wakeup(
+        self,
+        world: WorldState,
+        runtime: RuntimeState,
+        entry: ScheduledEvent,
+        t: int,
+        traces: list[TraceRecord],
+    ) -> tuple[WorldState, RuntimeState]:
+        """``kind="wakeup"`` 条目消费（设计文档 §2.4 主循环 / §3.8 / D-P3-14；
+        T06 接线）。
+
+        次序钉死：
+
+        1. payload 仅携带 ``actor_id``（§2.5 表，``make_scheduled_event`` 入队
+           点已强制必填键）；hook 的 ``reason`` 实参经 ``runtime.actor_wakeups``
+           的 ``(actor_id, due_tick=t)`` 记录查得（``ActorWakeup.reason``，
+           state.py:166，可空）——双记录口径：两条记录 ``(actor_id, due_tick)``
+           一致、``reason`` 仅存 actor_wakeups 记录侧、不入 payload（E-P3-35）；
+        2. 簿记：条目消费即从 ``runtime.actor_wakeups`` 同步移除该
+           ``(actor_id, due_tick=t)`` 记录（首个匹配；F5-02 双记录一致——
+           无论有无 hook 命中，条目消费是唯一移除触发；队列侧条目已由
+           ``take_due`` 移除，列表侧同步移除）；
+        3. :meth:`WakeupHookRegistry.hook_for` 为 ``None`` → 输出诊断
+           :class:`TraceRecord`（``TraceKind.SYSTEM``，
+           ``diagnostic="wakeup_no_hook"``）、不崩溃、簿记零影响（E-P3-39⑤）；
+        4. hook 存在 → ``hook.on_wakeup(actor_id, view, clock, reason)``，其中
+           ``view = guard(world)``（当刻 guard 视图，G2 移交 2）、
+           ``clock = LogicalClock.of(runtime)``（当刻逻辑刻值类型，D-P3-02），
+           以 :class:`WakeupHook` 协议签名为准；hook 抛任何异常 → 包装
+           :class:`SchedulerWakeupError`（携带 actor_id）→ 单刻原子错误路径
+           （调用点位于主循环既有 try/except 内，D-P3-24④：返回刻前状态对 +
+           错误 outcome，不崩溃、部分提交不可见）；
+        5. hook 返回的提案逐条经既有 :meth:`submit_proposal` 全管道
+           （D-P3-14：含 ``_revalidate``（委托
+           ``revalidation.revalidate_proposal``），不绕过、不内联重实现
+           revalidation 逻辑）。
+
+        同刻多条 wakeup 的确定序 = 队列序（``take_due`` 同刻批序，D-P3-05；
+        D-P3-14"确定性顺序 = actor_wakeups 队列序"）——调用方按批序逐条处理，
+        本方法不重排。纯函数簿记：返回新 ``(WorldState, RuntimeState)``；
+        诊断记录 append 进 ``traces``（outcome.trace_records 按调用聚合通道，
+        D-P3-18）。
+        """
+        actor_id = EntityId(str(entry.payload["actor_id"]))
+        reason: str | None = None
+        for record in runtime.actor_wakeups:
+            if record.actor_id == actor_id and record.due_tick == t:
+                reason = record.reason
+                break
+        # —— 簿记：条目消费即同步移除 (actor_id, due_tick) 记录（F5-02）——
+        remaining = list(runtime.actor_wakeups)
+        for index, record in enumerate(remaining):
+            if record.actor_id == actor_id and record.due_tick == t:
+                del remaining[index]
+                break
+        runtime = rebuild_runtime(runtime, actor_wakeups=remaining)
+        hook = self._wakeup_hooks.hook_for(actor_id)
+        if hook is None:
+            # 无 hook 命中 → 仅诊断（TraceRecord，SYSTEM）、不崩溃、簿记零影响
+            # （E-P3-39⑤）
+            traces.append(
+                TraceRecord(
+                    record_id=new_trace_record_id(),
+                    kind=TraceKind.SYSTEM,
+                    world_revision=world.world_revision,
+                    logical_tick=t,
+                    payload={
+                        "diagnostic": "wakeup_no_hook",
+                        "actor_id": str(actor_id),
+                    },
+                )
+            )
+            return world, runtime
+        view = guard(world)  # 当刻 guard 视图（G2 移交 2）
+        clock = LogicalClock.of(runtime)  # 当刻逻辑刻值类型（D-P3-02）
+        try:
+            proposals = hook.on_wakeup(actor_id, view, clock, reason)
+        except Exception as exc:  # 任何异常 → 包装（D-P3-14 失败处置）
+            raise SchedulerWakeupError(actor_id, cause=exc) from exc
+        for proposal in proposals:
+            world, runtime, _decision = self.submit_proposal(
+                world, runtime, proposal
+            )
+        return world, runtime
+
     # —— 主循环（§2.4 权威伪代码）——
 
     @staticmethod
@@ -1280,11 +1372,14 @@ class Scheduler:
                             world, runtime, entry, batch, t, tick_events, txs, events, traces
                         )
                     elif entry.kind == "wakeup":
-                        # T06 接线（Leader 裁定 (B)）：_drain_wakeup →
-                        # WakeupHook.on_wakeup（§3.8/D-P3-14）；条目已由
-                        # take_due 消费，T04b 不执行 hook（无 hook 命中 = 无
-                        # 提案，簿记零影响）
-                        pass
+                        # _drain_wakeup（WakeupHook，§3.8/D-P3-14）：payload 仅
+                        # actor_id、reason 经 (actor_id, due_tick) 记录查得；
+                        # 无 hook → 诊断；hook 异常 → SchedulerWakeupError →
+                        # 本 try 的原子刻错误路径；提案经 submit_proposal 全
+                        # 管道；actor_wakeups 记录随条目消费同步移除（F5-02）
+                        world, runtime = self._drain_wakeup(
+                            world, runtime, entry, t, traces
+                        )
                     elif entry.kind == "decision_boundary":
                         # 预注册边界（刻到即视为候选，参与刻后求值；条目由循环前
                         # 播种入队，D-P3-22）——条目本身无 payload effect（no-op）
@@ -1436,8 +1531,9 @@ class Scheduler:
            （``result_summary.reason="unknown_action"``，诊断串含
            action_id，A5 口径）——该错误路径**不创建 PROPOSED ActiveAction
            记录**（无悬空 PROPOSED，F2-12 纪律）；世界/队列零变更；
-        2. :meth:`_revalidate`（§3.9 口径；T07 接线点占位）→ 非 ACCEPT
-           （REJECT）：FAILED 生命周期轨迹 + 诊断（``decision.details``）；
+        2. :meth:`_revalidate`（委托 ``revalidation.revalidate_proposal``，
+           §3.9 口径）→ 非 ACCEPT（REJECT）：FAILED 生命周期轨迹 + 诊断
+           （``decision.details``）；
            pending_proposals 簿记（F2-12）：提案留在列表（移除仅发生于
            start_action 成功时）；
         3. ACCEPT → 创建 PROPOSED ActiveAction 记录 + 入 pending_proposals +
@@ -1460,7 +1556,7 @@ class Scheduler:
             runtime = self._record_failed(
                 runtime, proposal, "unknown_action", tick, extra={"action_id": str(proposal.action_id)}
             )
-            decision = _RevalidationDecisionPlaceholder(
+            decision = RevalidationDecision(
                 proposal_id=proposal.proposal_id,
                 outcome=RevalidationOutcome.REJECT,
                 reason="unknown_action",
@@ -1537,83 +1633,31 @@ class Scheduler:
 
     def _revalidate(
         self, world: WorldState, proposal: ActionProposal
-    ) -> "RevalidationDecision":
-        """revalidation 接线点（设计文档 §3.9；Leader 裁定 (F)）。
+    ) -> RevalidationDecision:
+        """revalidation 接线（设计文档 §3.9；T07 落位、Leader 裁定 (F)）。
 
-        **占位实现**（T07 落 ``revalidation.py`` 后本方法体替换为
-        ``from src.engine_v2.core.revalidation import revalidate_proposal``
-        接线）——按 §3.9 口径内联：
+        委托 :func:`revalidation.revalidate_proposal`（任意 producer 单一
+        实现，G2 移交 3）——5 步判定顺序与原因词表见其 docstring：
+        1) ``is_stale`` 陈旧 → REJECT（**REJECT 原因优先级钉死（F2-05，
+        过期优先）**：``valid_until_expired`` > ``stale_revision``）；
+        2) actor 存在性 → REJECT ``actor_missing``；3) ``actor_alive_check``
+        （P4/P5 钩子；缺省恒真——本门面未接线钩子）→ REJECT
+        ``actor_not_alive``；4) 仅 details 诊断（``actor_state_revision``
+        陈旧 D-12 口径 / ``observation_id`` 记录，不作 REJECT 依据）；
+        5) 全过 → ACCEPT。
 
-        1. ``is_stale(proposal.base_world_revision, current,
-           proposal.valid_until)``（revision.py:78 口径；``current`` 缺省
-           ``state.world_revision``）→ True：``allow_rebase`` 缺省关（调用方
-           决定何时允许 REBASE，默认关闭）→ REJECT——**REJECT 原因优先级钉死
-           （F2-05，过期优先）**：``valid_until`` 非 None 且
-           ``current > valid_until`` → ``valid_until_expired``；否则 →
-           ``stale_revision``（两条件同时满足时不随实现顺序漂移）；
-        2. actor 存在性：``world.has_entity(proposal.actor_id)`` 否 → REJECT
-           ``actor_missing``；
-        3. ``actor_alive_check``（P4/P5 钩子；缺省恒真——本任务未接线）；
-        4. ``actor_state_revision`` 非空且 is_stale → 仅 details 诊断（D-12
-           口径：记录"读取时"revision，不作 REJECT 依据）；
-        5. 全过 → ACCEPT。
+        接线参数（§3.9 口径钉死）：``current`` = 当前世界 revision
+        （``world.world_revision``，即 §3.9 ``current`` 缺省
+        ``state.world_revision`` 的显式传参）；``allow_rebase=False``——
+        调用方 :meth:`submit_proposal` 决定何时允许 REBASE，缺省关闭
+        （§3.9 ``rebase_proposal`` 注记）；``actor_alive_check`` 缺省
+        （恒真，P4/P5 钩子未接线）。
 
         P3 结果域 = {ACCEPT, REBASE, REJECT}（REBASE 在 allow_rebase 关闭时
-        不可达；REPAIR 不产生于 P3 同步 tick 循环，R4/E-P3-26）。返回占位
-        :class:`_RevalidationDecisionPlaceholder`（字段面与
-        ``RevalidationDecision`` 逐字一致，T07 替换零断言改动）。
+        不可达；REPAIR 不产生于 P3 同步 tick 循环，R4/E-P3-26）。
         """
-        current = world.world_revision
-        details: list[str] = []
-        if is_stale(proposal.base_world_revision, current, proposal.valid_until):
-            if proposal.valid_until is not None and current > proposal.valid_until:
-                return _RevalidationDecisionPlaceholder(
-                    proposal_id=proposal.proposal_id,
-                    outcome=RevalidationOutcome.REJECT,
-                    reason="valid_until_expired",
-                    details=(
-                        f"valid_until_expired: current={current} > "
-                        f"valid_until={proposal.valid_until}（F2-05 过期优先）",
-                    ),
-                    at_revision=current,
-                )
-            return _RevalidationDecisionPlaceholder(
-                proposal_id=proposal.proposal_id,
-                outcome=RevalidationOutcome.REJECT,
-                reason="stale_revision",
-                details=(
-                    f"stale_revision: base={proposal.base_world_revision} < "
-                    f"current={current}",
-                ),
-                at_revision=current,
-            )
-        if not world.has_entity(proposal.actor_id):
-            return _RevalidationDecisionPlaceholder(
-                proposal_id=proposal.proposal_id,
-                outcome=RevalidationOutcome.REJECT,
-                reason="actor_missing",
-                details=(f"actor_missing: {str(proposal.actor_id)!r} 不存在于世界",),
-                at_revision=current,
-            )
-        if proposal.actor_state_revision is not None and is_stale(
-            proposal.actor_state_revision, current
-        ):
-            details.append(
-                f"actor_state_revision_stale: base={proposal.actor_state_revision} "
-                f"current={current}（仅诊断，不作 REJECT 依据，D-12）"
-            )
-            # §3.9 步骤 4：observation_id 仅词法在 P1 构造期已校验，P3 记录
-            # details（内容级一致性检查属 P4 观察管线，扩展位）
-            details.append(
-                f"observation_id={proposal.observation_id!r}（P1 构造期词法已校验，"
-                "P3 仅记录，§3.9-4）"
-            )
-        return _RevalidationDecisionPlaceholder(
-            proposal_id=proposal.proposal_id,
-            outcome=RevalidationOutcome.ACCEPT,
-            reason="accept",
-            details=tuple(details),
-            at_revision=current,
+        return revalidate_proposal(
+            world, proposal, current=world.world_revision, allow_rebase=False
         )
 
     @staticmethod

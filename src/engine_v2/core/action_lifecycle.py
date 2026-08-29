@@ -36,9 +36,11 @@
   SchedulerError` 基类族，宿主置依赖叶 ``clock.py``，§3.2/§3.3，依赖无环）。
 
 **T03/T04 分工**（§3.10 同文件单 Owner 纪律）：§3.6 下半（``progress_of`` /
-``apply_checkpoint`` / ``start_action`` / ``resume_action`` / ``abort_action``
-/ ``complete_action`` / ``fail_action``）由 P3-T04 于本文件**末尾追加**；
-:data:`__all__` 最终由 P3-T04 补全至 12 项（本任务仅落本范围 5 符号）。
+``apply_checkpoint`` / ``resume_action`` / ``abort_action`` / ``complete_action`` /
+``fail_action``）由 P3-T04 于本文件**末尾追加**；``start_action``（设计 §3.6
+落点）经 Leader 裁定归 T04b 落位于 ``scheduler.py``（见该模块注释；P3 门
+偏差登记 D6）。
+:data:`__all__` 最终由 P3-T04 补全至 11 项（本任务仅落本范围 5 符号）。
 
 纪律（设计文档 §0.3 继承 / §8.3 P3 专项）：
 
@@ -81,11 +83,10 @@ __all__ = [
     "LifecycleTransition",
     "transition_action",
     "IllegalTransitionError",
-    # —— §3.6 下半（P3-T04 同文件串行追加，§3.10）：Leader 裁定补全至设计全量 12 项 ——
+    # —— §3.6 下半（P3-T04 同文件串行追加，§3.10）：Leader 裁定补全至 11 项 ——
+    # （start_action 经 Leader 裁定归 T04b 落位 scheduler.py——偏差登记 D6）
     "progress_of",
     "apply_checkpoint",  # T04a2 已落（Leader 裁定 E-P3-40：checkpoint_interval 间隔通道）
-    # T04a 未落：Leader 裁定范围划归 T04b
-    "start_action",  # noqa: F822
     "resume_action",
     "abort_action",
     "complete_action",
