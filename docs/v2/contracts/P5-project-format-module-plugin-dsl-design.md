@@ -142,7 +142,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | `LLMSIM_FILE_MISSING` | error | 必需文件缺失（`game.yaml`）或项目根不存在 |
 | `LLMSIM_YAML_PARSE` | error | YAML 解析失败 / 根非 dict |
 | `LLMSIM_PROJECT_FORMAT_V1` | error | 检出 v1 项目形状（无 `manifest.schema_version="2"`，D-P5-04） |
-| `LLMSIM_SCHEMA` | error | 字段类型/约束违例（pydantic 路径转写） |
+| `LLMSIM_SCHEMA` | error | 字段类型/约束违例（pydantic 路径转写）或节文件集合约束违例（world 节单值 ≥2 文件） |
 | `LLMSIM_UNKNOWN_KEY` | error | 未知字段（`extra="forbid"` 命中，D-P5-05） |
 | `LLMSIM_DUPLICATE_ID` | error | ID 重复（池内，§3.6 check_duplicate_ids） |
 | `LLMSIM_UNRESOLVED_REF` | error | 引用指向不存在的实体 |
@@ -187,7 +187,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | project_id | str | pattern `^[a-z][a-z0-9_]{0,63}$` |
 | name | str | 1..200 字符 |
 | description | str | 默认 `""` |
-| engine_version | str | 默认 `""`（= 任意）；文法 `""` \| `X.Y.Z` \| `>=X.Y.Z`（D-P5-06 版本文法） |
+| engine_version | str | 默认 `""`（= 任意）；文法 `""` \| V \| `>=V`（V = 点分数字串 1+ 分量，D-P5-06 版本文法） |
 
 - **ProjectIR**（frozen，根聚合，**16 字段** ↔ 十二类映射见 §3.1 ProjectIR 字段表第 4 列（Spec 十二类归属，Spec:460-474））：
 
@@ -195,7 +195,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 |---|---|---|---|
 | manifest | ProjectManifest | 必需 | ① manifest |
 | scenario | ScenarioSpec | 必需 | ⑫ scenario definitions（默认场景，来自 game.yaml） |
-| world | WorldSpec | 必需 | ② entity definitions |
+| world | WorldSpec | None（world 节文件缺失 = 合法空 → None，D-P5-05；单值语义见 §3.2 build_ir 步 3） | ② entity definitions |
 | player | PlayerSpec | 必需 | ② entity definitions |
 | items | tuple[ObjectSpec, ...] | () | ② entity definitions |
 | characters | tuple[CharacterSpec, ...] | () | ② entity definitions |
@@ -225,6 +225,8 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | properties | dict[str, Any] | `{}`（**开放 dict**，JSON-clean 即可，D-P5-05） |
 
 - **WorldSpec**（frozen）：
+
+**单值字段，至多 1 文件**：0 文件 → `ProjectIR.world = None`（合法空，D-P5-05）；恰好 1 → 下方 `WorldSpec`（该文件顶层键必为 `world`）；≥2 → 取 sorted 路径序首文件 + 每余文件一条 `LLMSIM_SCHEMA`（path=文件相对路径，refs=["world 节为单值 WorldSpec，多余文件不合并"]）——不 raise。
 
 | 字段 | 类型 | 约束/默认 |
 |---|---|---|
@@ -299,7 +301,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **build_ir(raw: RawProject) -> IRBuildResult**：
   1. `game.yaml` 缺失（loader 已报 FILE_MISSING，此处 raw.files 无该键）→ 直接返回 (None, [LLMSIM_FILE_MISSING path="game.yaml"])（双保险）。
   2. game.yaml 顶层键封闭集（8 键）= {`manifest`, `scenario`, `player`, `component_schemas`, `authority`, `gameplay_modes`, `capabilities`, `plugin_descriptors`}；逐节 `model_validate`（`extra="forbid"`）：pydantic `ValidationError` → `LLMSIM_SCHEMA`（path = 文件路径，refs = `[e['loc'] 点分串, e['type']]`，每条 error 一条诊断，按 loc 序）；`extra` 键 → `LLMSIM_UNKNOWN_KEY`（path = 文件路径，refs = `[键名]`）。player 节 → PlayerSpec（单值，非 tuple；extra=forbid，未知键 → LLMSIM_UNKNOWN_KEY，同其他节）。
-  3. 各节文件（world/*.yaml 顶层键必为 `world`；characters/items/rules/actions/prompts/scenarios/modules/*.yaml 顶层键必为同名复数键；plugins/*/plugin.yaml 由 plugins 面消费，build_ir 不解析）：同 2 的校验；节文件缺 = 合法空（D-P5-05）。
+  3. 各节文件（world/*.yaml 顶层键必为 `world`；characters/items/rules/actions/prompts/scenarios/modules/*.yaml 顶层键必为同名复数键；plugins/*/plugin.yaml 由 plugins 面消费，build_ir 不解析）：同 2 的校验；节文件缺 = 合法空（D-P5-05）。world 节为单值字段（0 文件 → ir.world = None；1 文件 → WorldSpec；≥2 文件 → sorted 首文件 + 每余文件一条 LLMSIM_SCHEMA，定义见 §3.1 WorldSpec）。
   4. 成功 → IR（各节文件按 sorted 路径序合并进对应 tuple）；失败 → (None, 诊断集)。**永不 raise** 内容级异常（K2/P5-INV-2 纯产新值）。
 - **flatten_entities(ir: ProjectIR) -> dict[str, Any]**：ID → 实体 spec 映射（locations ∪ items ∪ characters ∪ player by player_id）；重复键后者覆盖（重复本身由 check_duplicate_ids 诊断，本函数不判重）。
 - **iter_entity_refs(ir: ProjectIR) -> Iterator[tuple[str, str, str]]**：`(holder_id, ref_kind, ref_value)`；ref_kind ∈ {`connection`, `relationship`, `inventory`}（connections.values / relationships.keys / inventory+starting_inventory 元素）。
@@ -337,7 +339,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **ENGINE_VERSION**：自 `content/schemas` 导入（单点权威 = `schemas.ENGINE_VERSION`，私有 `Final[str]`，值 `"0.5.0"`，D-P5-08；本模块不另定义、不入 `__all__`）；导入面仍 = `schemas` + 仅 stdlib（§3.4 定位）；`check_module_versions` 节点面与 `validate_project` manifest 面共用的 `engine_version` 约束检查比较目标（`LLMSIM_ENGINE_VERSION` 消费面）。
 
 - **RequirementKind**（enum, str）：`REQUIRED="required"`, `OPTIONAL="optional"`。
-- **Requirement**（frozen）：`module_id: str`, `version_range: str = ""`（`""` 或 `>=V`；V = 点分数字串 1+ 分量，与 parse_requirement 文法同；裸 V = 精确）。
+- **Requirement**（frozen）：`module_id: str`, `version_range: str = ""`（`""` 或 `>=V`；V = 点分数字串 1+ 分量，与 parse_requirement 文法同——parse_requirement 仅能产此二值，裸 V 不可产；exact 形为节点/manifest engine_version 字段专属）。
 - **ModuleEdge**（frozen）：`source: str`, `target: str`, `kind: RequirementKind`。
 - **ModuleGraph**（frozen）：`nodes: dict[str, ModuleGraphNode]`, `edges: tuple[ModuleEdge, ...]`（构造序 = 节点 casefold 序 × 声明序，确定性）。
 - **parse_requirement(entry: str, owner_id: str) -> tuple[Requirement, Diagnostic | None]**：文法 = 去空白后 `id` \| `id >= V`；`id` pattern `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`（点分，族.模块）、`V` = `\d+(\.\d+)*`（Spec §41:1980 例子 `standard.attributes >= 2` 中版本 `2` 为合法 token）；非法 → (Requirement(entry 原样, ""), LLMSIM_MODULE_VERSION path=owner_id, refs=[entry])。
@@ -345,7 +347,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **topological_order(graph: ModuleGraph) -> list[str]**：Kahn 入度拓扑；**平局 = casefold 序**（取当前最小 casefold 节点出队，D-P5-06 钉死唯一确定序）；存在环 → 返回 `[]`（**不 raise**，G5-4 诊断面）。
 - **find_cycles(graph: ModuleGraph) -> list[list[str]]**：Tarjan SCC；size>1 或自环的 SCC 各一；每个 SCC 输出 = 其节点 **casefold 排序列表**（旋转归一化的确定性形态，信息无损，D-P5-06）。
 - **check_unsatisfied_requires(graph) -> list[Diagnostic]**：REQUIRED 边 target ∉ nodes → LLMSIM_MODULE_REQUIRES_MISSING（path=source，refs=[target]）；OPTIONAL 缺失 = 合法（无诊断）。
-- **check_module_versions(graph) -> list[Diagnostic]**：对每条带 version_range 的边：target ∉ nodes → 跳过（归 check_unsatisfied_requires 报，防双报）；∈ nodes：版本比较 = 点分数字逐位（短者补 0）；`>=V` 不满足或精确不等 → LLMSIM_MODULE_VERSION（path=source，refs=[f"{target}:{requirement}", f"have {node.version}"]）。**节点 engine_version 面**：对每个 `engine_version` 非空的节点（casefold 序）：按 D-P5-06 版本文法解析（空 = 任意；exact `X.Y[.Z]`；`>=X.Y[.Z]`）；与 `ENGINE_VERSION` 用与边面相同的点分数字逐位比较（短者补 0）（exact 形 = 元组相等，`>=` 形 = 不小于）；不满足 → `LLMSIM_ENGINE_VERSION`（path=node.id，refs=[声明值, `ENGINE_VERSION`]）。
+- **check_module_versions(graph) -> list[Diagnostic]**：对每条带 version_range 的边：target ∉ nodes → 跳过（归 check_unsatisfied_requires 报，防双报）；∈ nodes：版本比较 = 点分数字逐位（短者补 0）；`>=V` 不满足或精确不等 → LLMSIM_MODULE_VERSION（path=source，refs=[f"{target}:{requirement}", f"have {node.version}"]）。**节点 engine_version 面**：对每个 `engine_version` 非空的节点（casefold 序）：按 D-P5-06 版本文法解析（空 = 任意；`>=V` 比较——version_range 生产者 parse_requirement 仅产 ""/`>=V`，exact 形在边面不可达，exact 为节点/manifest engine_version 字段专属）；与 `ENGINE_VERSION` 用与边面相同的点分数字逐位比较（短者补 0）（exact 形 = 元组相等，`>=` 形 = 不小于）；不满足 → `LLMSIM_ENGINE_VERSION`（path=node.id，refs=[声明值, `ENGINE_VERSION`]）。
 - **detect_conflicts(graph) -> list[Diagnostic]**：节点 A 的 conflicts 含 c 且 c ∈ nodes → 无序对 {A,c} 一条 LLMSIM_MODULE_CONFLICT（path=min(casefold)，refs=[A.id, c] casefold 序；对称去重，每对一条）。
 
 ### 3.5 `content/rule_module.py`（43 导出）
@@ -367,10 +369,10 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 
 | 类 | kind | 字段 | v1 依据 |
 |---|---|---|---|
-| IfChainNode | if_chain | branches: tuple[tuple[DslNode, DslNode], ...]；trailing: DslNode（outcome 槽 parse 期约束 kind ∈ {feasibility, if_chain}——v1 :281-283 嵌套 if 递归口径；其余 21 种类落 outcome 位 = parse 错误） | parse_if :72-93（`;` 分隔分支 + 尾裸 outcome 必需） |
+| IfChainNode | if_chain | branches: tuple[tuple[DslNode, DslNode], ...]；trailing: DslNode（outcome 槽 parse 期约束 kind ∈ {feasibility, if_chain}——v1 :281-283 嵌套 if 递归口径；其余 21 种类落 outcome 位 = parse 错误） | parse_if :72-93（`;` 分隔分支；分支/尾判别 = `_looks_like_condition` :307-330 深度 0 前瞻）；v1 尾 outcome 仅全假路径必需——matched 分支走 `_skip_until_if_end` :332-341 仅消费 `)`，无 trailing 也合法（:82-85）；全假且无 trailing → 消费 `)` 后 raise「if(...) 缺少 else 输出」（:88-89）；**v2 两阶段 parse/evaluate 分离，parse 期不知分支真假 → 尾 outcome parse 期无条件必需（v1 严格超集，§8.4 D-P5-DEV-6）** |
 | ComparisonNode | comparison | op: Literal["<",">","=","<=",">=","!="]；left/right: DslNode | :119-143（任一侧 str → 仅 `=`/`!=`，否则 `ConditionEvalError("字符串不支持 …")`） |
 | InTestNode / NotInTestNode | in / not_in | left/right: DslNode | :147-168（右可为列表或字符串：str → `str(left) in right`；list/tuple/set → `left in set(right)`；否则（v1 :154-156 / :166-168 直接 raise；`_to_set` :353-360 仅被四个集合关键字 subset/superset/intersects/disjoint 调用 :184-185）） |
-| ContainsNode | contains | left: DslNode（容器）, right: DslNode（元素；右槽 parse 生产 = 裸 name 字面：name token → StringNode 字面值，非变量解析；非 name token 落右槽 = parse 错误） | :169-180；求值语义 = v1 :172-176（dict → 键成员；list/tuple/set → str(v)==name 或 v==name） |
+| ContainsNode | contains | left: DslNode（容器）, right: DslNode（元素；右槽 parse 生产 = 裸 name 字面：name token → StringNode 字面值，非变量解析；非 name token 落右槽 = parse 错误） | :169-180；求值语义 = v1 :172-177（dict → 键成员 :172-173；list/tuple/set → str(v)==name 或 v==name :174-175；str 左操作数 → 子串成员 `right_name in left` :176-177） |
 | SubsetNode / SupersetNode / IntersectsNode / DisjointNode | subset / superset / intersects / disjoint | left/right: DslNode | :181-193（`_SET_KEYWORDS` :62） |
 | AndNode / OrNode | and / or | left/right: DslNode | :100-112（`_CONDITION_KEYWORDS` :63） |
 | NotNode | not | operand: DslNode | :114-117 |
@@ -382,7 +384,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | StringNode | string | value: str | tokenizer string 组（去引号） |
 | VariableNode | variable | name: str | :343-351 |
 | FunctionCallNode | function_call | name: Literal["rand","randint","min","max","len"]；args: tuple[DslNode, ...]（rand 0 或 2 参；randint/min/max 2 参；len 1 参——parse 期 arity 校验，v1 :243-273 口径） | :243-273（rand→_random.random()/uniform；randint→_random.randint；len 需 list/str :260-267；min/max 双参 :268-273） |
-| FeasibilityNode | feasibility | feasibility: Feasibility；probability: float \| None（仅 uncertain 可带；**parse 期**校验 0<p<1，v1 :296-299 口径；allowed/blocked 带 prob = parse 错误，对齐 v1 :293 前文分支） | _parse_outcome :279-299（嵌套 if 在 outcome 位 → IfChainNode 递归，:281-283） |
+| FeasibilityNode | feasibility | feasibility: Feasibility；probability: float \| None（仅 uncertain 可带；**parse 期**校验 0<p<1，v1 :296-299 口径；allowed/blocked 带 prob = parse 错误，对齐 v1 :293 前文分支；probability 槽 parse 生产 = NumberNode 数字字面（`:0.4` 形）唯一；表达式/变量/其他 token（如 `uncertain : 0.5+0.1`）= parse 错误——v1 :296-298 接受表达式（parse_add_sub，0<p<1 查求值后值）为 v2 不可表达形态（v2 严格超集，§8.4 D-P5-DEV-7）；66 例集仅字面形（grep 核 test_condition_eval.py 全 uncertain 用例全为字面）） | _parse_outcome :279-299（嵌套 if 在 outcome 位 → IfChainNode 递归，:281-283） |
 
 - **DslParseResult**（frozen）：`ast: DslNode | None`, `diagnostics: tuple[Diagnostic, ...]`（code=LLMSIM_DSL_PARSE, path=入参 path_label）。
 - **parse_dsl(expression: str, path_label: str) -> DslParseResult**：结构解析（tokenize → 文法树；**全部 if 分支结构解析**——比 v1 急进跳过更严，§8.4 D-P5-DEV-3 披露）。结构检查面 = v1 parser 的 parse 时检查全集：if 形状（:72-93）、比较/集合 op 存在性（:119-146 的 token 判定）、函数名/arity（:243-273）、outcome 关键字 ∈ {allowed,blocked,uncertain}（:285-290，lowercase 化）+ uncertain prob 范围（:296-299）、末尾多余 token（expect_end :303-305）。**不做**变量解析/值求值（validate 期无上下文可跑 = G5-6 的机械前提）。
@@ -401,7 +403,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **FeasibilityResult**（frozen）：`feasibility: Feasibility`, `reason: str`, `matched_rule: str`, `success_probability: float | None = None`, `requires_roll: bool = False`（v1 结果 dict 五键全映射，rules.py:85-91）。
 - **check_action_feasibility(rules: Sequence[RuleSpec], action: ActionInput, context: DslContext, objects: Mapping[str, Any], locations: Mapping[str, Any], disabled: frozenset[str] = frozenset(), rng: DslRng | None = None) -> FeasibilityResult | None**：
   1. `text = action_text(action)`；`target_ref = resolve_target(action, objects, locations)`。
-  2. **项目规则**：`[r for r in rules if not r.disabled]` 按 `(priority, id.casefold())` 排序（D-P5-06）；逐条：`r.match` 非空且 `re.search(r.match, text, re.IGNORECASE)` 不中 → skip（v1 rules.py:140-141 口径）；`r.condition` 非空 → `parse_dsl`（结构错 = 配置级错误，validate 已拦；运行期若再遇 → 记 warn + skip 本条）→ `evaluate_condition(ast, context, rng)`；`DslEvalError` → **warn + skip 本条**（v1 rules.py:102-104 逐字口径）→ 命中返回 `FeasibilityResult(outcome.feasibility, f"系统规则预判（{r.id}）：{r.description}", f"custom:{r.id}", outcome.probability, outcome.feasibility is Feasibility.UNCERTAIN)`（v1 :105-111 五字段口径）。`r.condition` 空 → `FeasibilityResult(r.feasibility or ALLOWED, 同 reason, f"custom:{r.id}", r.probability, (r.feasibility or "allowed") == "uncertain")`（v1 :113-119 口径）。
+  2. **项目规则**：`[r for r in rules if not r.disabled]` 按 `(priority, id.casefold())` 排序（D-P5-06）；逐条：`r.match` 非空时先 `re.compile(r.match, re.IGNORECASE)`——抛 re.error → skip 本条（不求值、无诊断；v1 deterministic_rules.py:122-133 `_parse_match_pattern` warning+None 口径；66 例集含此形 = test_rules.py:343-357 `test_invalid_regex_is_skipped_and_builtin_rules_continue`）；编译成功且 `re.search(compiled, text)` 不中 → skip（v1 rules.py:140-141 口径）；`r.condition` 非空 → `parse_dsl`（结构错 = 配置级错误，validate 已拦；运行期若再遇 → 记 warn + skip 本条）→ `evaluate_condition(ast, context, rng)`；`DslEvalError` → **warn + skip 本条**（v1 rules.py:102-104 逐字口径）→ 命中返回 `FeasibilityResult(outcome.feasibility, f"系统规则预判（{r.id}）：{r.description}", f"custom:{r.id}", outcome.probability, outcome.feasibility is Feasibility.UNCERTAIN)`（v1 :105-111 五字段口径）。`r.condition` 空 → `FeasibilityResult(r.feasibility or ALLOWED, 同 reason, f"custom:{r.id}", r.probability, (r.feasibility or "allowed") == "uncertain")`（v1 :113-119 口径）。（RuleSpec match 与 condition 双缺省 = schema 合法〔无跨字段约束，D-P5-05 可选性口径〕→ 落此分支 = 恒匹配 `r.feasibility or ALLOWED`，无诊断；v1 加载期 warning+skip 形（deterministic_rules.py:97-99）在 v2 无对应诊断通道〔18 码闭集无对应码〕——§8.4 D-P5-DEV-8；66 例集不含此形）
   3. **内建规则 1..5**（`id not in disabled` 门控，固定序，阈值常量冻结于实现）：
      - 1 `blocked_common`（rules.py:146-153）：遍历 `context.player["capabilities"]["blocked_common_actions"]`，`_text_matches_rule` 等价（:13-30：全串子串 ∨ 逗号/、分段子串 ∨ **15 词表** {道歉,感谢,不会跳舞,秘密通道,暗门,命令,仆人,开锁,门锁,撬锁,推,搬,拿起,穿过,通过} 中 rule 串所含词命中 text）→ blocked，reason `系统规则预判：玩家人设限制不允许执行该行动（{rule}）。`。
      - 2 `extraordinary`（:155-162）：同法对 `allowed_extraordinary_actions` → allowed，reason `系统规则预判：玩家具备可执行该行动的特殊能力（{rule}）。`。
@@ -412,7 +414,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
   4. 全不中 → `None`（v1 :225 口径）。
 - **BUILTIN_RULE_IDS**（`Final[tuple[str, ...]]`）：`("blocked_common", "extraordinary", "strength_vs_weight", "skill_vs_lock", "body_width_vs_passage")`（= v1 matched_rule 名 = v2 disable 用 ID，D-P5-10 映射表：v1 disable 数字 1..5 ↔ 本 tuple 下标）。
 
-**等价性契约（G5-5 机械面）**：对任意 (expression, context)：v1 `evaluate_condition`（condition_eval.py:35-39）成功且不含"未达分支含垃圾"形态（§8.4 D-P5-DEV-3）⟺ v2 `parse_dsl` + `evaluate_condition` 同值（feasibility + probability 逐位相等，float 按 `==`）；v1 raise `ConditionEvalError` ⟺ v2 在 parse_dsl（结构错）或 evaluate_condition（语义错）raise/产诊断。66 例 characterization 集验证（§6.2，断言 #11）。
+**等价性契约（G5-5 机械面）**：对任意 (expression, context)：v1 `evaluate_condition`（condition_eval.py:35-39）成功且不含"未达分支含垃圾"形态（§8.4 D-P5-DEV-3）与「单分支无 trailing `if(cond, outcome)`」形（v1 仅 cond 真时合法，v2 parse 错误——§8.4 D-P5-DEV-6）与「uncertain 表达式概率」形（v1 接受表达式，v2 仅字面——§8.4 D-P5-DEV-7）；后两形 66 例集均不含（tests/test_condition_eval.py 全扫描核验）→ 无门禁影响 ⟺ v2 `parse_dsl` + `evaluate_condition` 同值（feasibility + probability 逐位相等，float 按 `==`）；v1 raise `ConditionEvalError` ⟺ v2 在 parse_dsl（结构错）或 evaluate_condition（语义错）raise/产诊断。66 例 characterization 集验证（§6.2，断言 #11）。
 
 ### 3.6 `content/validator.py`（8 导出）
 
@@ -423,7 +425,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **ValidationResult**（frozen）：`ok: bool`（无 error 级诊断）, `diagnostics: tuple[Diagnostic, ...]`（**已排序**）, `ir: ProjectIR | None`。
 - **validate_project(ir: ProjectIR, raw: RawProject | None = None) -> ValidationResult**：诊断 = check_duplicate_ids ∪ check_references ∪ check_authority_conflicts ∪ check_dsl_parses ∪ module 面（build_module_graph + check_unsatisfied_requires + check_module_versions + detect_conflicts + 对 find_cycles 每环一条 LLMSIM_MODULE_CYCLE path=min(node) refs=节点序）∪ manifest 面（ir 非 None 且 `ir.manifest.engine_version` 非空且对 `ENGINE_VERSION`（单点权威 = `schemas.ENGINE_VERSION`，节点面/插件面共用同一常量）不满足（与 `check_module_versions` 节点面同比较裁定）→ 一条 `LLMSIM_ENGINE_VERSION` path=manifest refs=[声明值, `ENGINE_VERSION`]）∪（raw 非 None 时）check_deployment_leakage(raw) ∪（解包 (local_registry, discovery_diags) = plugins.registry.discover_local_plugins(raw)，discovery_diags = 发现期诊断（manifest 解析失败 / 本地 manifest id 重复，§3.10）不丢弃）discovery_diags ∪ plugins.registry.validate_plugins(local_registry, ir, raw)；最后 `sort_diagnostics`。**永不 raise**（内容级）。raw=None → 仅 IR 面（K8 文本面与插件面跳过，文档披露）。
 - **check_duplicate_ids(ir) -> list[Diagnostic]**：池内判重（LLMSIM_DUPLICATE_ID，path=池名，refs=[id, 首次出现文件, 重复出现文件]）：池 = locations / items（ObjectSpec）/ characters / player 单值（对 location/object/character id 撞名 = 合法，v1 独立命名空间口径）；**全局唯一池** = rules / actions / modules / prompts / scenarios（含默认 scenario id）/ component_schemas / authority / gameplay_modes / capabilities / plugin_descriptors（path=池名）。
-- **check_references(ir) -> list[Diagnostic]**（LLMSIM_UNRESOLVED_REF，path=holder id，refs=[ref_kind, ref_value]）：`connection` 值 → location id 池；`relationship` 键 → character 池 ∪ {player_id}；`inventory`/`starting_inventory` 元素 → object 池（含 items）。
+- **check_references(ir) -> list[Diagnostic]**（LLMSIM_UNRESOLVED_REF，path=holder id，refs=[ref_kind, ref_value]）：`connection` 值 → location id 池；`relationship` 键 → character 池 ∪ {player_id}；`inventory`/`starting_inventory` 元素 → object 池（含 items）。（ir.world = None → locations 池空，location 型引用（connection / player position）跳过，不产 UNRESOLVED_REF——合法空语义）
 - **check_authority_conflicts(ir) -> list[Diagnostic]**：两两同 domain ∧ 双 exclusive → LLMSIM_AUTHORITY_CONFLICT（path=domain，refs=[owner_a, owner_b] casefold 序，每对一条）（D-P5-03 声明域重叠级）。
 - **check_deployment_leakage(raw) -> list[Diagnostic]**：**DEPLOYMENT_FORBIDDEN_KEYS = 12 名封闭集，构造 = 字符串拼接自证豁免**（`{"open"+"ai","anthro"+"pic","lang"+"chain","lite"+"llm","ol"+"lama","gem"+"ini","g"+"pt","cla"+"ude","ll"+"m","prov"+"ider","api_"+"key","base_"+"url"}`——与 test_import_boundary.py:225-240 集逐名相等，#19 附注核验）；扫描面 = raw.texts 全部 key ∪（raw.pyproject_text 非 None 时，path = pyproject.toml）；对每 (文件, 名)：`re.finditer(rf"\b{name}\b", text.casefold())` ≥1 命中 → 一条 LLMSIM_DEPLOYMENT_FIELD（path=文件，refs=[name] 仅，无上下文片段，每对去重）。**口径（唯一一致版本）**：`llmsim` 不命中（`s` 是 `llm` 之后的 word char，无词边界）；`api_key_env` 不命中（下划线是 word char，`y` 与下划线之间无词边界）；`model: x` 不命中（model 不在 12 名集，§2 line 97 裁定）；项目任一文件中字面完整词的 12 名成员（键名 OR 值文本）命中。**裸 token 纪律**：任一 P5 .py 文件（src + test，含 docstring/注释/字符串字面量）不得出现 12 名裸形；全部实现与测试探针字符串以串拼接构造（自豁免；§6.4 `test_p5_12_name_blacklist` 核验）；本设计文档（markdown）与 fixture YAML 数据文件不在 .py 扫描面（fixture 数据是扫描目标，非扫描面）。（D-P5-11）。
 **K8 探针表（断言 #19a / test_validator / test_assert_19 实现依据）**：
@@ -598,7 +600,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **问题**：YAML 顶层/节级未知键与缺失目录的处置？
 - **备选**：(a) pydantic `extra="allow"` 宽容；(b) 全部 `extra="forbid"`；(c) 顶层 `forbid` + 五个开放 dict 豁免。
 - **选择**：(c)。全 schema `extra="forbid"`，豁免 5 处：`ObjectSpec.properties`、`PlayerSpec.capabilities`、`CharacterSpec.personality`、`LocationSpec.properties`、`PlayerSpec.physical_profile`（v1 自由 dict 语义面，`condition_eval.py:343-351` 变量解析依赖任意键）。
-- **理由与一致性**：(a) 拼写错误静默吞没（Plan §22.3 "duplicated ID" 同族风险）；(b) 卡死 v1 兼容数据形状。缺失可选目录 = 合法空（Spec §5.1 `#optional` 语义；`game.yaml` 必需，Spec §5.1:351-366 首行）。
+- **理由与一致性**：(a) 拼写错误静默吞没（Plan §22.3 "duplicated ID" 同族风险）；(b) 卡死 v1 兼容数据形状。缺失节目录 = 合法空——本文档设计选择：Spec §5.1:351-366 布局树仅 plugins/（L363）与 pyproject.toml（L365）标 `# optional`，其余目录未标注（Spec 未声明其必需性）；本文档取 game.yaml 为唯一必需文件（LAYOUT_REQUIRED），其余 8 个节目录（world/characters/items/rules/actions/prompts/scenarios/modules）缺失 = 合法空（world 缺失 → ProjectIR.world = None，§3.1 字段表）。
 
 ### D-P5-06 模块图确定性（Kahn + casefold 平手唯一序）
 - **问题**：拓扑序在多入度 0 并存时如何选？
@@ -854,7 +856,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | `src/config/loader.py` `_load_yaml`/`model_validate`（:42-46） | `loader.read_yaml_file`（`yaml.safe_load` 同底层）+ pydantic `model_validate` 同模式 |
 | `condition_eval.py` tokenizer 正则（:25-30）/ 文法产生式（:35-340） | `tokenize_dsl` 正则逐字符对齐 + 23 种 AST（§3.5）；`and/or/not` 在 v1 关键字表（:63）内 → v2 同 |
 | `condition_eval.py` 函数族 `rand/randint/min/max/len`（:243-273） | 同白名单 + `DslRng` 注入（唯一语义差：确定性） |
-| `deterministic_rules.py` `DeterministicRule`（:11-18）+ 解析（:71-119） | `RuleSpec`（§3.1）；warnings-not-exceptions 口径保留（非法规则 = warning 诊断 + 跳过） |
+| `deterministic_rules.py` `DeterministicRule`（:11-18）+ 解析（:71-119） | `RuleSpec`（§3.1）；warnings-not-exceptions 口径保留（非法规则 = warning 诊断 + 跳过（限 DSL parse/eval 错误形——DslEvalError / LLMSIM_DSL_PARSE warn+skip；match/condition 双缺省规则 = schema 合法恒匹配，§8.4 D-P5-DEV-8）） |
 | `rules.py` 5 内建规则（:146-223）+ `_text_matches_rule` 15 键表（:13-30） | 引擎内 5 handler（D-P5-10）+ `BUILTIN_RULE_IDS` 逐字对齐 |
 | `state_apply.py` roll `or 0.5`（:98）+ `random.random()`（:101） | **P6 移交**：DSL 层 `uncertain` 缺省 0.5 保留（condition_eval.py:294 等价）；roll 掷骰 + 缺省归 P6 runtime（§7.5） |
 | v1 `world_rules` 自由键（whisperheads/murder 形态） | `rules/` 目录 `RuleSpec` 列表（D-P5-05 严格化：未知键 error） |
@@ -914,7 +916,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | 等价集 | 66 | §6.2 两名单 41+25（pytest collect-only 权威计数核验） |
 | 对抗项 | 13 | §6.3 表 A1-A13（3 项 N/A 带理由） |
 | S-step | 10 | §5.1 S0-S9 |
-| 偏差 | 5 | §8.4 D-P5-DEV-1..5 |
+| 偏差 | 8 | §8.4 D-P5-DEV-1..8 |
 | 开放问题 | 3 | §10 OI-P5-1..3（1 项 S2 标记）〔该行已被 ERR-P5-1 取代〕 |
 
 ### 8.4 偏差登记
@@ -926,6 +928,9 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | D-P5-DEV-3 | DSL 两阶段比 v1 更严：matched 分支后尾随垃圾 v1 容忍（`_skip_until_if_end` condition_eval.py:332-341）→ v2 `LLMSIM_DSL_PARSE` | 两阶段使 parse 可独立审计（G5-6 machine-readable 面）；未达分支垃圾是数据缺陷非语义 | 66 例等价集若含该形态用例，映射表逐例披露（§6.2 DEV-3 披露义务）；等价契约限定于"不含该形态"（§3.5） |
 | D-P5-DEV-4 | G4 §6-2 `scheduler_fingerprint` 输入面扩展 = 维持披露分支（不扩展） | core 冻结（32/308）禁止 P5 触碰 scheduler 输入面；扩展需动 core | 下一触碰 core/scheduler 的阶段（P6+）承接扩展或正式关闭披露 |
 | D-P5-DEV-5 | G4 §6-3/§6-4 LLM 策略内容层（BehaviorPolicy/ModePolicy 内容）调度已裁定（移交 P6） | 内容层属 LLM 面，P5 模块按 K8 机械零 LLM 面；ERR-P5-1 已裁定：OI-P5-3 移交 P6，本条不再待裁 | OI-P5-3（已裁定）；P5 结构面（`InferenceCapabilityProfile`/`PromptPolicy` schema）已就位，内容填充归后续 |
+| D-P5-DEV-6 | DSL 单分支无 trailing 形 `if(cond, outcome)`：v1 仅 cond 真时合法（matched 分支 `_skip_until_if_end` 仅消费 `)`），v2 parse 错误 | v2 两阶段 parse/evaluate 分离，parse 期不知分支真假，尾 outcome 无条件必需（§3.5 IfChainNode 行 / parse_dsl 结构检查面） | 66 例集不含（核验）→ 无门禁影响；§3.5 等价性契约已披露 |
+| D-P5-DEV-7 | uncertain 表达式概率形（`uncertain : 0.5+0.1`）：v1 接受（parse_add_sub，0<p<1 查求值后值），v2 parse 错误 | v2 `FeasibilityNode.probability = float \| None` AST 不可表达表达式概率（§3.5 FeasibilityNode 行仅 NumberNode 字面） | 66 例集不含（核验）→ 无门禁影响；§3.5 等价性契约已披露 |
+| D-P5-DEV-8 | RuleSpec match 与 condition 双缺省：v1 加载期拒绝（warning+skip，永不生效），v2 = schema 合法恒匹配（`r.feasibility or ALLOWED`）无诊断 | v2 RuleSpec 两字段均可选（D-P5-05）；18 码闭集无对应 warning 码、无诊断通道 | 66 例集不含（核验）→ 无门禁影响；§3.5 步 2 与 §7.4 已披露 |
 
 ---
 
@@ -952,6 +957,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 
 **ERR-P5-5**（2026-08-30）：症状 → 设计盲审 R4（2 通过 + 2 补充内容、0 BLOCK）产出 4 条 SUPPLEMENT：(1) §3.9 plugins/api.py 导入条款（仅 stdlib+pydantic）与 from_string 返回 Diagnostic 及 L122 DAG 三方冲突；(2) §3.6 validate_project 对 discover_local_plugins 元组返回取 .registry 属性（类型不成立）且发现期诊断静默丢弃；(3) §3.7 cli.py 契约缺 __main__ 守卫，-m 三态冒烟面（§6.5/gate ⑥）按文不可达；(4) §3.3 load_project 步序未把 game.yaml 赋入 raw.files/raw.texts，与 L174/L175/L298/L426 数据契约自相矛盾（字面实现 = 每合法项目伪 FILE_MISSING + K8 漏扫 game.yaml）。另有 10 条 DOC 级引用漂移/措辞（R4 四报告去重）。勘误自记录例外：ERR-P5-4 症状段 DOC 计数（13）与裁定段（12）口径不一致，经 Leader 授权就地更正为「合计 13 条，去重后 12 条」（append-only 纪律的唯一例外，记录于此）。→ 裁定与修正（Leader 2026-08-30 裁定；fixer E 应用）：G-1 §3.9 导入条款补 schemas（仅 Diagnostic 类型）；G-2 validate_project 解包 (local_registry, discovery_diags) 并把 discovery_diags 并入并集（发现期诊断不丢弃）；G-3 §3.7 补 __main__ 守卫 bullet（raise SystemExit(main())，不入 __all__）；G-4 load_project 步 2 补原文读取 + raw.files/raw.texts 赋值（build_ir 双保险与 K8 扫描面数据源落定）。DOC：应用 9 条（fixer）、跳过 0 条；第 10 条（D-P5-07 选择句 plugins/ 非空口径，R5-2 同族第 4 处）= Leader 直接一致性修正（commit 10916db 记录）。→ 影响面：20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 5 偏差 / 17 决策全部不变；无 gate 面变化（无新文件、无新导出、无新码）；ERR-P5-1/2/3 文本未动；ERR-P5-4 仅症状段计数句就地更正（本条授权并记录）。
 **ERR-P5-6**（2026-08-30）：症状 → 设计盲审 R5（2 通过 + 2 补充内容、0 BLOCK）产出 4 条 SUPPLEMENT：(1) broken 项目 fixture #38 缺 scenario/player 必需节且顶层 api_key = 未知键 → build_ir 必失败 → validate_project 全链不执行 → A1/A2/A12/#19a/#17 靶不可达；(2) plugin fixture #35 缺 manifest/scenario 必需节 → S2 与 #20 不可达；(3) ContainsNode 右侧未钉 v1 :171-175 裸 name 字面生产式（66 parity 集 test_contains_operator 分歧）；(4) evaluate_condition 的 if_chain「假 → 下一分支」未规定未匹配分支 outcome 求值，与 v1 parse_if :78-93（未匹配分支 outcome 亦解析求值）及 L413 ∀ raise-parity 矛盾（反例 10/0 嵌套 if）。另有 11 条 DOC 级（R5 四报告去重，含探针表放置语境归入 G-5）。勘误自记录例外：ERR-P5-5 裁定段 DOC 计数句经 Leader 授权就地更正（fixer 9 条 + Leader 直接修正 1 条，合计 10 条），记录于此。→ 裁定与修正（Leader 2026-08-30 裁定；fixer F 应用）：G-5 broken 项目重定为「结构合法但语义损坏」（#38 四节齐全 + player.capabilities 开放 dict 承载 K8 探针 P1-P3 + 未注册插件 descriptor；探针表补开放 dict 放置语境条款 + P4 单元级构造；#19 P4 补注；A12 对齐）；G-6 #35 补 manifest+scenario+player 齐全；G-7 ContainsNode 右槽钉裸 name 字面生产式（v1 :171-176 求值语义）；G-8 if_chain 求值语义重写（未匹配分支 outcome 亦求值、匹配后跳过、全假求值 trailing，v1 :78-93/:82/:84/:91-93 逐分支等价）。DOC：应用 10 条、跳过 0 条。→ 影响面：20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 5 偏差 / 17 决策全部不变；无 gate 面变化（无新文件、无新导出、无新码）；ERR-P5-1..4 文本未动；ERR-P5-5 仅裁定段计数句就地更正（本条授权并记录）。
+**ERR-P5-7**（2026-08-30）：症状 → 设计盲审 R6（1 通过 + 2 补充内容 + 1 阻塞）产出 1 BLOCK / 5 SUPPLEMENT / 5 DOC / 7 INFO：(1) BLOCK：ProjectIR.world 必需（字段表）vs world 节文件缺失=合法空（build_ir 步 3 / LAYOUT / 零诊断测试面）自相矛盾，且封闭 18 码无「world 缺失」可报码，盲实现者无满足全部条款的字段级行为；(2) 4 族 SUPPLEMENT：ContainsNode 求值语义遗漏 v1 str-left 子串分支（:176-177，三报告同族）；单分支无 trailing if 形 v2 严格超集未披露（等价契约仅排 DEV-3）；uncertain 表达式概率形 v2 行为未钉且未披露；非法 match 正则 re.error 行为未钉（66 例集含此形）；(3) 5 DOC：版本文法四处记号漂移 + version_range 裸 V 死描述、D-P5-04 可选性过度归因 Spec（Spec 仅 plugins/ 与 pyproject 标 # optional）、内建规则 5 范围锚偏一行（:208→:207）；(4) 7 INFO：双缺省规则形（两报告同族，升格 H-5 裁定）、_looks_like_condition 点名（并入 H-3）、pin SHA 评审环境不可解析（不改文档，Leader 备注：工作树内容与锚点全符，属来源元数据可验证性）。→ 裁定与修正（Leader 2026-08-30 裁定；fixer G 应用）：H-1 world 改 `WorldSpec | None = None`（0 文件→None 合法空 / 恰好 1→WorldSpec / ≥2→sorted 首文件+每余文件 LLMSIM_SCHEMA，SCHEMA 码行扩展「节文件集合约束违例」；check_references 补 world=None 跳过注；D-P5-04 归因更正：其余 8 节目录合法空 = 本文档设计选择，Spec 未声明其必需性）；H-2 ContainsNode 括注补 str-left 分支、行段 :172-176→:172-177；H-3 IfChainNode 依据列钉 v1 trailing 条件性（matched 分支免 trailing / 全假必需）+ _looks_like_condition 点名 + v2 无条件必需（DEV-6），FeasibilityNode probability 生产钉 NumberNode 字面唯一（DEV-7），等价契约并列披露 DEV-6/DEV-7 两形（66 例集均不含，核验）；H-4 步 2 钉 re.compile re.error → skip 本条（v1 deterministic_rules.py:122-133 口径，66 例集 test_rules.py:343-357 含此形）；H-5 双缺省规则 = schema 合法恒匹配无诊断（DEV-8），§7.4「非法规则 = warning 诊断 + 跳过」限 DSL parse/eval 错误形。DOC：应用 4 条（DOC-D 4 条，其中第 4 条 L740 测试矩阵为不动确认）、跳过 1 条（DOC-E 内建规则 5 范围锚：sed 核冻结源 gate 行 = rules.py:208，现文档 :208-223 锚已正确，不改 :207-223，避免引入新锚点错误）。§8.4 新增 D-P5-DEV-6/7/8，§8.3 交叉行偏差 5→8。→ 影响面：八项计数不变（20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 17 决策）；偏差计数 5 → 8（D-P5-DEV-6/7/8 登记，§8.3/§8.4 更新）；无 gate 面变化（无新文件、无新导出、无新码——world 单值 ≥2 复用 LLMSIM_SCHEMA 行文扩展）；ERR-P5-1..6 文本未动。
 
 ---
 
