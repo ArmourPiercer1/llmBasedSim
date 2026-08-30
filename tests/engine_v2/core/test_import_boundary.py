@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import re
 import sys
 from pathlib import Path
 
@@ -47,25 +48,33 @@ CORE_PKG = "src.engine_v2.core"
 CORE_DIR = REPO_ROOT / "src" / "engine_v2" / "core"
 TESTS_ENGINE_DIR = REPO_ROOT / "tests" / "engine_v2"
 
-#: core 包 19 个模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 +
+#: core 包 32 个模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 +
 #: 6 个 P2 行为模块 authority / cascade / conflicts / reducer /
 #: transaction_executor / validation；P1 已全数落盘，P2 模块随各任务包
-#: 填充行为主体）。
+#: 填充行为主体；P3 设计规范 §3.1：7 个 P3 编排层模块 action_lifecycle /
+#: action_registry / clock / event_queue / interrupt / revalidation /
+#: scheduler；P4 设计规范 §3.1：6 个 P4 模块 behavior_policy /
+#: capability / context_provider / gameplay_mode / knowledge / space）。
 CORE_SUBMODULES: tuple[str, ...] = (
     "action_lifecycle",
     "action_registry",
     "actions",
     "authority",
+    "behavior_policy",
+    "capability",
     "cascade",
     "clock",
     "components",
     "conflicts",
+    "context_provider",
     "effects",
     "entity",
     "event_queue",
     "events",
+    "gameplay_mode",
     "ids",
     "interrupt",
+    "knowledge",
     "provenance",
     "reducer",
     "revalidation",
@@ -73,6 +82,7 @@ CORE_SUBMODULES: tuple[str, ...] = (
     "scheduler",
     "serialization",
     "snapshot",
+    "space",
     "state",
     "trace",
     "transaction",
@@ -173,6 +183,60 @@ P3_TEST_FILES: tuple[str, ...] = (
     "test_p3_gate_scenario.py",
     "test_p3_adversarial.py",
     "conftest.py",
+)
+
+# —— P4 扩展（P4 设计规范 §5.5 M1 / §6.4 机械验证面）——
+
+#: P4 六个模块（P4 设计规范 §3.1 文件清单；B1 的 CORE_SUBMODULES
+#: 32 元组已含此 6 项，此处单列以承载 P4 专属谓词的扫描面）。
+P4_SUBMODULES: tuple[str, ...] = (
+    "behavior_policy",
+    "capability",
+    "context_provider",
+    "gameplay_mode",
+    "knowledge",
+    "space",
+)
+
+#: P4 确定性禁入根（M1①，与 P3 同源口径 test_import_boundary.py:159-161）：
+#: 六模块绝对 import 不得触及（AST 扫描实现）。
+P4_NONDETERMINISM_ROOTS: frozenset[str] = frozenset(
+    {"datetime", "time", "random", "asyncio"}
+)
+
+#: P4 测试扫描面（10 文件）：6 个 P4 单元测试文件 + Gate/对抗/集成
+#: 三文件 + 共享 conftest（全位于 ``tests/engine_v2/core/``）。
+P4_TEST_FILES: tuple[str, ...] = (
+    "test_capability.py",
+    "test_knowledge.py",
+    "test_space.py",
+    "test_context_provider.py",
+    "test_behavior_policy.py",
+    "test_gameplay_mode.py",
+    "test_p4_gate_scenario.py",
+    "test_p4_adversarial.py",
+    "test_p4_integration.py",
+    "conftest.py",
+)
+
+#: M1④ 封闭标识符集（封闭枚举，不得增删；§3.4/§5.5 规范要素一致、依
+#: §3.4 引用）：P4 六模块全源文本（含 docstring/注释）casefold 后按词
+#: 边界逐词匹配集合成员 → 0 命中（"仍不接实际云模型"的机械像，Plan:556）。
+P4_LLM_PROVIDER_BLACKLIST: frozenset[str] = frozenset(
+    {
+        "openai",
+        "anthropic",
+        "langchain",
+        "litellm",
+        "ollama",
+        "gemini",
+        "gpt",
+        "claude",
+        "llm",
+        "provider",
+        "api_key",
+        "base_url",
+    }
 )
 
 
@@ -374,3 +438,68 @@ class TestP3Boundary:
             if bad:
                 violations[name] = bad
         assert not violations, f"P3 测试文件命中全谓词：{violations}"
+
+
+class TestP4Boundary:
+    """P4（T01–T06 + T10）import 边界强化（P4 设计规范 §5.5 M1 /
+    §6.4，机械验证）。
+
+    - ``P4_SUBMODULES`` 六个 P4 模块：绝对 import 不得触及
+      ``datetime``/``time``/``random``/``asyncio``（M1①：确定性纪律
+      与 P3 同源；墙钟/随机/异步不进 P4 核心）；
+    - M1④：``P4_LLM_PROVIDER_BLACKLIST`` 封闭标识符集对六模块全源文本
+      （含 docstring/注释）casefold 词边界匹配 → 0 命中（"形成 Runtime
+      世界语义层，但仍不接实际云模型"的机械像，Plan:556）；
+    - ``P4_TEST_FILES`` 十个 P4 测试文件：全谓词（§0.3 黑名单 ∪ 非确定
+      性根）——测试侧同样不接 provider/LLM、不引入时间/随机/异步/网络
+      （Spec §47 Phase 1 验收的测试面镜像）。
+    """
+
+    def test_p4_core_modules_no_nondeterminism_imports(self) -> None:
+        """六个 P4 核心模块（src/engine_v2/core/）绝对 import 无
+        datetime/time/random/asyncio 命中（M1①）；且 M1④ 封闭标识符集
+        对全源文本 casefold 词边界匹配 0 命中。"""
+        violations: dict[str, list[str]] = {}
+        llm_hits: dict[str, list[str]] = {}
+        for sub in P4_SUBMODULES:
+            path = CORE_DIR / f"{sub}.py"
+            assert path.exists(), f"P4 核心模块缺失：{sub}"
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if module_name.split(".")[0] in P4_NONDETERMINISM_ROOTS
+            ]
+            if bad:
+                violations[f"src/engine_v2/core/{sub}.py"] = bad
+            text = path.read_text(encoding="utf-8").casefold()
+            hits = [
+                word
+                for word in sorted(P4_LLM_PROVIDER_BLACKLIST)
+                if re.search(rf"\b{re.escape(word)}\b", text)
+            ]
+            if hits:
+                llm_hits[f"src/engine_v2/core/{sub}.py"] = hits
+        assert not violations, (
+            f"P4 核心模块 import 时间/随机/异步非确定性源：{violations}"
+        )
+        assert not llm_hits, (
+            f"P4 核心模块源文本命中 M1④ 封闭标识符集（§3.4）：{llm_hits}"
+        )
+
+    def test_p4_test_files_full_predicate(self) -> None:
+        """十个 P4 测试文件适用全谓词（§0.3 黑名单 ∪ 非确定性根）：
+        无 provider/LLM/v1/网络/进程 IO import，亦无
+        datetime/time/random/asyncio import。"""
+        violations: dict[str, list[str]] = {}
+        p4_tests_dir = TESTS_ENGINE_DIR / "core"
+        for name in P4_TEST_FILES:
+            path = p4_tests_dir / name
+            assert path.exists(), f"P4 测试扫描面文件缺失：{name}"
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if _p3_strict_violation(module_name) is not None
+            ]
+            if bad:
+                violations[name] = bad
+        assert not violations, f"P4 测试文件命中全谓词：{violations}"

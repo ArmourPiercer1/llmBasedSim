@@ -86,26 +86,33 @@ from src.engine_v2.core import (
 )
 from src.engine_v2.core.snapshot import snapshot as take_snapshot
 
-#: 26 个 core 模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 + 6 个 P2
+#: 32 个 core 模块（P2 设计规范 §1.1 / D-P2-19：13 个契约模块 + 6 个 P2
 #: 行为模块——authority / cascade / conflicts / reducer /
 #: transaction_executor / validation；P3 设计规范 §3.1：7 个 P3 编排层
 #: 模块——action_lifecycle / action_registry / clock / event_queue /
-#: interrupt / revalidation / scheduler；re-export 的唯一来源集合）。
+#: interrupt / revalidation / scheduler；P4 设计规范 §3.1：6 个 P4 模块
+#: ——behavior_policy / capability / context_provider / gameplay_mode /
+#: knowledge / space；re-export 的唯一来源集合）。
 _CORE_SUBMODULE_NAMES: tuple[str, ...] = (
     "actions",
     "action_lifecycle",
     "action_registry",
     "authority",
+    "behavior_policy",
+    "capability",
     "cascade",
     "clock",
     "components",
     "conflicts",
+    "context_provider",
     "effects",
     "entity",
     "event_queue",
     "events",
+    "gameplay_mode",
     "ids",
     "interrupt",
+    "knowledge",
     "provenance",
     "reducer",
     "revalidation",
@@ -113,6 +120,7 @@ _CORE_SUBMODULE_NAMES: tuple[str, ...] = (
     "scheduler",
     "serialization",
     "snapshot",
+    "space",
     "state",
     "trace",
     "transaction",
@@ -210,8 +218,12 @@ class TestCorePackageReexports:
         # WakeupHook / WakeupHookRegistry / enqueue_actor_wakeup /
         # scheduler_fingerprint / Scheduler / SchedulerConfigurationError /
         # SchedulerWakeupError / start_action）= 53
-        # = 249
-        assert len(core_pkg.__all__) == 249
+        # = 249；再加 P4 6 模块（P4 设计规范 §3.11 机械同步）——
+        # capability 6 项 + knowledge 11 项 + space 18 项 +
+        # context_provider 6 项 + behavior_policy 4 项 +
+        # gameplay_mode 14 项 = 59
+        # = 308
+        assert len(core_pkg.__all__) == 308
 
     def test_every_reexport_is_same_object_as_source_module(self) -> None:
         """每个包级 re-export 名称与定义来源模块的属性同一对象（无第二副本）。"""
