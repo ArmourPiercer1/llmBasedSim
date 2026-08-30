@@ -1874,6 +1874,78 @@ wakeup@N = actor_wakeups 记录。S3 的 event 条目消费后不占队列（事
   构造冻结语义零变化；TypeError 全文仅此处一处（grep 核验）；不占代码
   补充预算。
 
+**ERR-P4-3**（G4 门禁盲审 Round 1 四独立盲审——判定 4/4 通过/投机通过、
+零补充/零阻塞/零执行失败——所闭 DOC 级 findings，Leader 裁定；按 G3
+DOC-1 先例以文档级闭合补丁应用、不复审、不占代码补充预算）：
+
+- **症状①（三处「列入 deviations」登记缺口）**：P4 模块 docstring 将三处
+  构造期拒绝/记录语义标注为「Leader 扩展裁定，确定性不静默，列入
+  deviations」/「设计文档……有歧义，见报告 deviations」，但 §8.5 偏离
+  登记 D1–D6 未含：
+  1. `GraphSpace` 拒绝重复节点 id（space.py:261,277-280；G-INV 清单
+     §3.7 L374-375 仅含：节点 id 非空串 / 自环边 / 重复无向边 / 未知端点）；
+  2. `GridSpace` 拒绝 bool/非 int 的 width/height（space.py:353-355,
+     368-372；§3.7 L382-386 仅钉死 w/h ≤ 0 → SpaceInvariantError）；
+  3. `merge_modes` 在最终 kind 非 "none" 时 `winner_by_field["action_filter"]`
+     单胜者记录 =「排序首现的 kind 等于最终 kind 的 overlay」
+     （gameplay_mode.py:312-317；§3.10 L686-687 算法步骤 2「单胜者字段 =
+     排序首现非空值」与步骤 3「action_filter 三段判定」在最终 kind 由三段
+     判定（非排序首现非空）决定时的胜者身份存在歧义——规范自身内部张力）。
+- **裁定①**：上列三处 hereby 登记为偏离 **D7 / D8 / D9**（§8.5 正文表
+  D1–D6 不修改，本节勘误为登记载体，与 §9「纯追加节」纪律一致）：
+  - **D7（GraphSpace 重复节点 id 拒绝）**：构造期重复节点 id →
+    `SpaceInvariantError`（确定性不静默；行为比 G-INV 清单更严）。
+  - **D8（GridSpace bool/非 int w/h 拒绝）**：`isinstance(value, bool) or
+    not isinstance(value, int)` → `SpaceInvariantError`（fail-first；
+    行为比「w/h ≤ 0」钉死面更严）。
+  - **D9（merge_modes action_filter 单胜者记录）**：最终 kind 非 "none"
+    时，`winner_by_field["action_filter"]` = (-priority, casefold(mode_id))
+    排序下 action_filter_kind 等于最终 kind 的首个 overlay 的 mode_id；
+    确定性且排列不变（test_gameplay_mode.py:503-519 已钉住；A4 排列不变性
+    对抗面不受影响）。
+- **症状②（错误族总表 vs 字段级规格）**：§3.7 L441（space）与 §3.10
+  L728（gameplay_mode）错误族总表将 S-INV-1~5 / M-INV-1/2 全部归入
+  `SpaceInvariantError` / `ModeInvariantError`，而字段级规格
+  `domain_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")`（§3.7 L351）与
+  `mode_id: str = Field(pattern=...)`（§3.10 L611）在 `model_validate`
+  路径机械产出 pydantic `ValidationError`。实现与测试两侧一致按字段级
+  规格落位：pattern 违例 → `ValidationError`（model_validate 路径）；
+  具名错误仅覆盖该族跨字段/语义不变量（直接构造路径转译的 value_error）。
+- **裁定②**：错误族总表按**族（ValueError 族）分类**解读——字段级
+  pattern 违例记于 ValueError 族内 pydantic `ValidationError` 名下，
+  D-P4-17 族分类不受影响；总表具名错误行指该族跨字段/语义不变量在直接
+  构造路径的拒绝。两解读面（字段级规格 / 族总表）均保留，实现与测试
+  依字段级规格，不替规格单方删除任一面。
+- **症状③（M-INV-6 编号）**：`M-INV-6` 于正文多处引用（L59、L607、
+  L1747、L1892，行内括注「M-INV-6；P4 直通不解释」）但从未获得独立
+  编号定义。
+- **裁定③**：**M-INV-6（input_policy 不透明直通）**：`input_policy` 为
+  不透明 `JsonValue` 直通字段，P4 不解释其内容（P8 表现层为消费方，
+  §10 裁定说明 3）；与 M-INV-5 别名断裂断言（apply 后改 overlay.context
+  → runtime.mode_context 不变）的实现/测试语义一致。
+- **症状④（make_backend 参数缺失错误面）**：§3.7 未钉死 graph/grid
+  backend 的 parameters 参数缺失错误面（未注册 kind → `UnknownBackendError`
+  已钉死）。
+- **裁定④**：实现维持裸 `KeyError`（space.py:235-237，
+  `parameters["nodes"]/["edges"]/["width"]/["height"]` 直接下标）为参数
+  缺失错误面，本勘误注明之。
+- **症状⑤（conftest 逐字 vs ruff 纪律）**：§5.1 规范块（L1042-1422）
+  标签「逐字」，而仓库 conftest P4 段 20 条 import 行携尾随
+  `# noqa: E402` / `# noqa: F401`（commit ac9cbe1 自述「20 noqa 机械
+  偏离」）。剥离这些注释后 `ruff check tests/engine_v2` 失败（E402 自
+  conftest.py:421 起、F401 于重导出名），而 G4 门禁条件含 ruff-clean
+  （V2）。
+- **裁定⑤**：conftest P4 段按「逐字 + 20 条机械 noqa」落地——除尾随
+  注释外与 §5.1 块逐行 diff 为零（盲审 R2 进程替换逐行比对核验）；
+  「逐字」标签读作**机械 lint 注释归一后字节一致**。运行语义不变。
+- **影响面核验**：纯文档登记/解读补丁；代码行为零变化、测试断言零变化
+  （无新增/无修改测试函数）；D8/D9 行为已由既有测试钉住
+  （test_space.py:292、test_gameplay_mode.py:503-519）；D7（重复节点 id
+  拒绝）无专项测试断言（超出 G-INV 清单面的扩展行为，G4-R1 探针已独立
+  验证精确抛 SpaceInvariantError；补覆盖为非阻塞后续项，见 G4 门禁
+  报告 §6）；M-INV-6 编号与正文行内括注语义一致；59→308 账本、19 条
+  编号断言、白名单 20 文件及其余锚点面不受影响；不占代码补充预算。
+
 ---
 
 ## 10. 未决问题
