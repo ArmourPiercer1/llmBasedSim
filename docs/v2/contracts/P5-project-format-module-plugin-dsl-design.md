@@ -42,7 +42,7 @@ P5 = 「项目格式 / 模块 / 插件 / DSL / 校验 CLI」五件，对应 Plan
 
 ### 1.3 输入基线
 
-1. **G4 PASS**（G4:249-250）：G4-R1 最终轮 4/4 盲审通过（G4:152）；全套 **2399 passed / ruff clean** @ HEAD `e5c4db4`（G4:19-22）；core 冻结 32 模块 / `__all__` 308 名（`core/__init__.py:416-725`）。
+1. **G4 PASS**（G4:249-250）：G4-R1 最终轮 4/4 盲审通过（G4:152）；全套 **2399 passed / ruff clean**（G4:19-22 测试基线；`e5c4db4` = 本分支当前 HEAD，见文档头 L6）；core 冻结 32 模块 / `__all__` 308 名（`core/__init__.py:416-725`）。
 2. **P4 移交项（G4 §7 L225-243 六项 + G4 §6-4），P5 接受执行面五条（§7-1~§7-4 + §6-4，见下）**；§7-5 = P9/P8 义务面，非 P5 任务面（未列）；§7-6 = G5 门禁参照，已由 §1.2 承接：
    - §7-1 策略协议入口（D-P4-16）：`BehaviorPolicy.decide` / `ModePolicy.resolve` 两协议 + `ActorDecisionContext` 13 字段 = 既有缝，**P5 不改缝**（P5 白名单不触 core/P4 模块，机械满足）。
    - §7-2 确定性纪律延续：P4 六模块 AST 黑名单面（M1④ 12 名 casefold 词边界扫描，`test_import_boundary.py:474-478` 模式）对 P5 新模块同样适用，import 边界常量块模式 `P5_SUBMODULES`（§3.11）——**本文档已落实为 TestP5Boundary**。
@@ -59,7 +59,7 @@ P5 = 「项目格式 / 模块 / 插件 / DSL / 校验 CLI」五件，对应 Plan
    - `tests/engine_v2/core/test_closeout.py`（517 行）：L96-129 32 模块 tuple；L169 `shadowed == {"snapshot"}`；L181-225 算术注释块（`# = 308` @ L225）；L226 `len(core_pkg.__all__) == 308`。
    - `tests/engine_v2/core/test_import_boundary.py`（505 行）：L58-91 `CORE_SUBMODULES`；L98-151 PROVIDER/V1/NETWORK 根集；L192-199 `P4_SUBMODULES`；L209-220 `P4_TEST_FILES`；L225-240 `P4_LLM_PROVIDER_BLACKLIST`（12 名）；L246 `_collect_absolute_imports`；L263 `_blacklist_category`；L292 `_p3_strict_violation`；L316 `TestB1StaticScan`（:319-324 文件集断言 = CORE_SUBMODULES ∪ {__init__}）；L316 后 `TestB3OfflineRunnable`（递归扫 `tests/engine_v2/**`，**自动覆盖 P5 新测试目录，零修改**）；L443 `TestP4Boundary`；L474-478 12 名 casefold 词边界文本扫描模式。
    - `tests/test_engine_v2_skeleton.py`（207 行）：L27-41 `SUBPACKAGES`（13 子包，含 `plugins` L31 / `content` L37）；L110-142 `_is_core_reexport_node`（**core 专属** re-export 豁免）；L145 `test_engine_v2_init_files_are_docstring_only`（断言 13 子包 + 根包 `__init__.py` docstring-only，仅 core 豁免）。
-   - `src/engine_v2/core/__init__.py`（727 行）：import 块 L51-415；`__all__ = [` L416 … `]` L725（308 名）。
+   - `src/engine_v2/core/__init__.py`（727 行）：import 块 L51-414；`__all__ = [` L416 … `]` L725（308 名）。
    - `src/engine_v2/core/serialization.py`：`dump_json` L54、`load_json` L67、`assert_json_clean` L82。
    - `src/engine_v2/content/__init__.py`（8 行，docstring-only）、`src/engine_v2/plugins/__init__.py`（7 行，docstring-only）——P5 填充标记。
    - `src/engine_v2/README.md`（62 行）：L17 `plugins/` 行（Phase 5）、L23 `content/` 行（Phase 5）、L57 Phase 5 描述行。
@@ -119,7 +119,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 
 **导入纪律（全部 P5 模块，D-P5-15）**：允许 import = stdlib 白名单（`typing` `re` `enum` `pathlib` `json` `argparse` `logging` `sys` `importlib.metadata` `collections.abc`）+ `pydantic` + `yaml` + `src.engine_v2.core.serialization`（仅 `dump_json`/`load_json`/`assert_json_clean`）。禁止：`asyncio` `datetime` `time` `random` 网络族（`socket`/`http`/`urllib`/`requests` 等）、`src.*`（v1，含 `src.game.*`/`src.config.*`/`src.agents.*`）、`langgraph`/`openai`/`langchain*` 族、`importlib.import_module`/`__import__`/`importlib.util.spec_from_file_location`（G5-3 机械面，仅 `importlib.metadata` 允许）。`importlib.metadata` 的使用面被限制在 `plugins/registry.py` 内且**只读 metadata，零 import**（D-P5-08）。机械核验 = TestP5Boundary（§3.11/§6.4）。
 
-模块间依赖（DAG，零环）：`schemas ← {project_ir, module_graph, rule_module, plugins.manifest, plugins.api} ← loader / plugins.registry ← validator ← cli`。`content/*` 之间禁止互导（`project_ir` 可导 `schemas`；`loader` 可导 `schemas`+`project_ir`（RawProject）；`validator` 可导 `schemas`+`project_ir`+`module_graph`+`rule_module`+`plugins.registry`）。
+模块间依赖（DAG，零环）：`schemas ← {project_ir, module_graph, rule_module, plugins.manifest, plugins.api} ← loader / plugins.registry ← validator ← cli`。`content/*` 之间禁止互导（`project_ir` 可导 `schemas`；`loader` 可导 `schemas`（含 `RawProject` 类型）+`project_ir`；`validator` 可导 `schemas`+`project_ir`+`module_graph`+`rule_module`+`plugins.registry`）。
 
 ### 3.1 `content/schemas.py`（25 导出）
 
@@ -269,7 +269,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | condition | str \| None | None；if-chain DSL 字符串 | v1 `condition`（:93-95 存在性检查） |
 | feasibility | Literal["allowed","blocked","uncertain"] \| None | None（缺省 + 无 condition 时 = "allowed"，v1 rules.py:114 口径） | v1 feasibility（:101-110） |
 | probability | float \| None | None；`feasibility="uncertain"` 时**必需**且 0<p<1 | v1 deterministic_rules.py:152-154（必需逻辑）+ :160-162（范围检查） |
-| priority | int | 100；越小越先（同 priority 按 id.casefold 序，D-P5-06） | v2 新增（v1 自定义规则按列表序） |
+| priority | int | 100；越小越先（同 priority 按 id.casefold 序——casefold 平手约定与模块图 D-P5-06 同族，本行公式为准） | v2 新增（v1 自定义规则按列表序） |
 | disabled | bool | False（替代 v1 数字索引 disable 1-5 的 ID 化，D-P5-10） | v1 disable（rules.py:146 等） |
 
 - **AuthorityPolicy**（frozen）：`id: str`, `domain: str`（非空；如 `attributes.sanity`）, `owner: str`（模块/系统 ID）, `exclusive: bool = True`, `description: str = ""`。P5 = 结构 + 重叠静态检查（D-P5-03；运行时语义 P6）。
@@ -383,7 +383,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 | NumberNode | number | value: float | tokenizer number 组 |
 | StringNode | string | value: str | tokenizer string 组（去引号） |
 | VariableNode | variable | name: str | :343-351 |
-| FunctionCallNode | function_call | name: Literal["rand","randint","min","max","len"]；args: tuple[DslNode, ...]（rand 0 或 2 参；randint/min/max 2 参；len 1 参——parse 期 arity 校验，v1 :243-273 口径） | :243-273（rand→_random.random()/uniform；randint→_random.randint；len 需 list/str :260-267；min/max 双参 :268-273） |
+| FunctionCallNode | function_call | name: Literal["rand","randint","min","max","len"]；args: tuple[DslNode, ...]（rand 0 或 2 参；randint/min/max 2 参；len 1 参——parse 期 arity 校验，v1 :243-273 口径） | :243-273（rand→_random.random()/uniform；randint→_random.randint；len 接受 list/tuple/set/str 四形 :263（v1 raise 文案「len() 需要列表或字符串」仅措辞，非类型限制）；min/max 双参 :268-273） |
 | FeasibilityNode | feasibility | feasibility: Feasibility；probability: float \| None（仅 uncertain 可带；**parse 期**校验 0<p<1，v1 :296-299 口径；allowed/blocked 带 prob = parse 错误，对齐 v1 :293 前文分支；probability 槽 parse 生产 = NumberNode 数字字面（`:0.4` 形）唯一；表达式/变量/其他 token（如 `uncertain : 0.5+0.1`）= parse 错误——v1 :296-298 接受表达式（parse_add_sub，0<p<1 查求值后值）为 v2 不可表达形态（v2 严格超集，§8.4 D-P5-DEV-7）；66 例集仅字面形（grep 核 test_condition_eval.py 全 uncertain 用例全为字面）） | _parse_outcome :279-299（嵌套 if 在 outcome 位 → IfChainNode 递归，:281-283） |
 
 - **DslParseResult**（frozen）：`ast: DslNode | None`, `diagnostics: tuple[Diagnostic, ...]`（code=LLMSIM_DSL_PARSE, path=入参 path_label）。
@@ -394,7 +394,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **DslContext**（frozen）：`player: dict[str, Any] = {}`（v1 player dict 原形）, `target: dict[str, Any] | None = None`（v1 target dict 原形，`{"properties": {...}}`）, `variables: dict[str, Any] = {}`（自由名；v1 自定义规则上下文 = {player, target, action}（rules.py:98-101）→ v2 `variables={"action": …}` 映射）。
 - **resolve_variable(name: str, context: DslContext) -> Any**（**查找序逐字对齐 v1**）：
   - `player.X`（condition_eval.py:398-421）：`player.attributes[X].value`（attributes 为 dict 且含 X 且 item 为 dict 含 "value"）→ `player.physical_profile[X]` → `player.capabilities.skill_levels[X]` → `player[X]` → `DslEvalError(f"未知变量 player.{X}")`。
-  - `target.X`（:424-441）：候选键列表 = 别名表 `{weight: (weight_kg, weight), width: (effective_width_cm, width_cm, width)}`（:430-433）命中 tuple，否则 `(name,)`（v1 :430-436 同款 `.get(name, (name,))` 语义）→ 逐键探测 `target.properties` → 顶层 `target[name]` → 均无则 `DslEvalError(f"未知变量 target.{X}")`。
+  - `target.X`（:424-441）：target 非 dict（含 None）→ `DslEvalError("无法读取 target.{name}")`（v1 :425-426 前置 guard）；候选键列表 = 别名表 `{weight: (weight_kg, weight), width: (effective_width_cm, width_cm, width)}`（:430-433）命中 tuple，否则 `(name,)`（v1 :430-436 同款 `.get(name, (name,))` 语义）→ 逐键探测 `target.properties` → 顶层 `target[name]` → 均无则 `DslEvalError(f"未知变量 target.{X}")`。
   - 其他（:343-351）：`name not in context.variables or context.variables[name] is None` → `DslEvalError(f"未知变量 {name!r}")`（**v1 对显式 None 值按缺失处理**，:348-350 口径）→ 返回值。
 - **ActionInput**（frozen）：`raw_input: str = ""`, `interpreted_intent: str = ""`, `action_description: str = ""`, `speech_content: str = ""`, `target_object_id: str | None = None`, `action_type: str | None = None`（v1 player_action dict 键封闭集，rules.py:33-38/41-53/164 用到之全集）。
 - **action_text(action: ActionInput) -> str**：非空 (raw_input, interpreted_intent, action_description, speech_content) 以 `"\n"` 连接（v1 `_action_text` rules.py:33-38 逐字等价）。
@@ -403,7 +403,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **FeasibilityResult**（frozen）：`feasibility: Feasibility`, `reason: str`, `matched_rule: str`, `success_probability: float | None = None`, `requires_roll: bool = False`（v1 结果 dict 五键全映射，rules.py:85-91）。
 - **check_action_feasibility(rules: Sequence[RuleSpec], action: ActionInput, context: DslContext, objects: Mapping[str, Any], locations: Mapping[str, Any], disabled: frozenset[str] = frozenset(), rng: DslRng | None = None) -> FeasibilityResult | None**：
   1. `text = action_text(action)`；`target_ref = resolve_target(action, objects, locations)`。
-  2. **项目规则**：`[r for r in rules if not r.disabled]` 按 `(priority, id.casefold())` 排序（D-P5-06）；逐条：`r.match` 非空时先 `re.compile(r.match, re.IGNORECASE)`——抛 re.error → skip 本条（不求值、无诊断；v1 deterministic_rules.py:122-133 `_parse_match_pattern` warning+None 口径；66 例集含此形 = test_rules.py:343-357 `test_invalid_regex_is_skipped_and_builtin_rules_continue`）；编译成功且 `re.search(compiled, text)` 不中 → skip（v1 rules.py:140-141 口径）；`r.condition` 非空 → `parse_dsl`（结构错 = 配置级错误，validate 已拦；运行期若再遇 → 记 warn + skip 本条）→ `evaluate_condition(ast, context, rng)`；`DslEvalError` → **warn + skip 本条**（v1 rules.py:102-104 逐字口径）→ 命中返回 `FeasibilityResult(outcome.feasibility, f"系统规则预判（{r.id}）：{r.description}", f"custom:{r.id}", outcome.probability, outcome.feasibility is Feasibility.UNCERTAIN)`（v1 :105-111 五字段口径）。`r.condition` 空 → `FeasibilityResult(r.feasibility or ALLOWED, 同 reason, f"custom:{r.id}", r.probability, (r.feasibility or "allowed") == "uncertain")`（v1 :113-119 口径）。（RuleSpec match 与 condition 双缺省 = schema 合法〔无跨字段约束，D-P5-05 可选性口径〕→ 落此分支 = 恒匹配 `r.feasibility or ALLOWED`，无诊断；v1 加载期 warning+skip 形（deterministic_rules.py:97-99）在 v2 无对应诊断通道〔18 码闭集无对应码〕——§8.4 D-P5-DEV-8；66 例集不含此形）
+  2. **项目规则**：`[r for r in rules if not r.disabled]` 按 `(priority, id.casefold())` 排序（casefold 平手约定与模块图 D-P5-06 同族）；逐条：`r.match` 非空时先 `re.compile(r.match, re.IGNORECASE)`——抛 re.error → skip 本条（不求值、无诊断；v1 deterministic_rules.py:122-133 `_parse_match_pattern` warning+None 口径；66 例集含此形 = test_rules.py:343-357 `test_invalid_regex_is_skipped_and_builtin_rules_continue`）；编译成功且 `re.search(compiled, text)` 不中 → skip（v1 rules.py:140-141 口径）；`r.condition` 非空 → `parse_dsl`（结构错 = 配置级错误，validate 已拦；运行期若再遇 → 记 warn + skip 本条）→ `evaluate_condition(ast, context, rng)`；`DslEvalError` → **warn + skip 本条**（v1 rules.py:102-104 逐字口径）→ 命中返回 `FeasibilityResult(outcome.feasibility, f"系统规则预判（{r.id}）：{r.description}", f"custom:{r.id}", outcome.probability, outcome.feasibility is Feasibility.UNCERTAIN)`（v1 :105-111 五字段口径）。`r.condition` 空 → `FeasibilityResult(r.feasibility or ALLOWED, 同 reason, f"custom:{r.id}", r.probability, (r.feasibility or "allowed") == "uncertain")`（v1 :113-119 口径）。（RuleSpec match 与 condition 双缺省 = schema 合法〔无跨字段约束，D-P5-05 可选性口径〕→ 落此分支 = 恒匹配 `r.feasibility or ALLOWED`，无诊断；v1 加载期 warning+skip 形（deterministic_rules.py:97-99）在 v2 无对应诊断通道〔18 码闭集无对应码〕——§8.4 D-P5-DEV-8；66 例集不含此形）
   3. **内建规则 1..5**（`id not in disabled` 门控，固定序，阈值常量冻结于实现）：
      - 1 `blocked_common`（rules.py:146-153）：遍历 `context.player["capabilities"]["blocked_common_actions"]`，`_text_matches_rule` 等价（:13-30：全串子串 ∨ 逗号/、分段子串 ∨ **15 词表** {道歉,感谢,不会跳舞,秘密通道,暗门,命令,仆人,开锁,门锁,撬锁,推,搬,拿起,穿过,通过} 中 rule 串所含词命中 text）→ blocked，reason `系统规则预判：玩家人设限制不允许执行该行动（{rule}）。`。
      - 2 `extraordinary`（:155-162）：同法对 `allowed_extraordinary_actions` → allowed，reason `系统规则预判：玩家具备可执行该行动的特殊能力（{rule}）。`。
@@ -418,7 +418,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 
 ### 3.6 `content/validator.py`（8 导出）
 
-**定位**：IR 语义检查编排 + K8 文本扫描 + 插件检查。导入：`schemas` `project_ir`（RawProject）`module_graph` `rule_module`（parse_dsl）`plugins.registry` `re`。
+**定位**：IR 语义检查编排 + K8 文本扫描 + 插件检查。导入：`schemas`（含 `RawProject` 类型） `project_ir` `module_graph` `rule_module`（parse_dsl）`plugins.registry` `re`。
 
 `__all__`（8）：`ValidationResult`, `validate_project`, `check_duplicate_ids`, `check_references`, `check_authority_conflicts`, `check_deployment_leakage`, `check_dsl_parses`, `sort_diagnostics`
 
@@ -490,7 +490,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 
 ### 3.10 `plugins/registry.py`（7 导出）
 
-**定位**：双路发现（本地 manifest + entry-point）+ 注册校验（G5-2/G5-3）。导入：`schemas` `project_ir`（RawProject）`plugins.manifest` `plugins.api` `importlib.metadata`。**机械面**：本文件 + `content/loader.py` 是 AST 封闭模式扫描对象（断言 #6）：源码中不得出现 `import_module` / `__import__` / `spec_from_file_location` / `module_from_spec` 调用或 `entry.load()` 模式。
+**定位**：双路发现（本地 manifest + entry-point）+ 注册校验（G5-2/G5-3）。导入：`schemas`（含 `RawProject` 类型） `project_ir` `plugins.manifest` `plugins.api` `importlib.metadata`。**机械面**：本文件 + `content/loader.py` 是 AST 封闭模式扫描对象（断言 #6）：源码中不得出现 `import_module` / `__import__` / `spec_from_file_location` / `module_from_spec` 调用或 `entry.load()` 模式。
 
 `__all__`（7）：`ENGINE_VERSION`, `PluginSourceKind`, `RegisteredPlugin`, `PluginRegistry`, `discover_local_plugins`, `discover_entry_point_plugins`, `validate_plugins`
 
@@ -515,7 +515,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 
 | 文件 | 锚点（冻结行号，已核验） | P5 动作 |
 |---|---|---|
-| `src/engine_v2/core/__init__.py` | import 块 L51-415；`__all__ = [` L416 … `]` L725（308 名） | **零修改**（D-P5-01：P5 模块不入 core） |
+| `src/engine_v2/core/__init__.py` | import 块 L51-414；`__all__ = [` L416 … `]` L725（308 名） | **零修改**（D-P5-01：P5 模块不入 core） |
 | `tests/engine_v2/core/test_closeout.py` | L96-129 `_CORE_SUBMODULE_NAMES`（32）；L169 `shadowed == {"snapshot"}`；L181-225 算术注释块（`# = 308` @ L225）；L226 `len(core_pkg.__all__) == 308` | **零修改**（32/308 不变 → 全组断言自然通过） |
 | `tests/engine_v2/core/test_import_boundary.py` | L58-91 `CORE_SUBMODULES`；L98-151 PROVIDER/V1/NETWORK 根集；L192-199 `P4_SUBMODULES`；L209-220 `P4_TEST_FILES`；L225-240 `P4_LLM_PROVIDER_BLACKLIST`（12 名）；L246 `_collect_absolute_imports`；L263 `_blacklist_category`；L292 `_p3_strict_violation`；L316 `TestB1StaticScan`（:319-324 文件集 = CORE_SUBMODULES∪{__init__}）；`TestB3OfflineRunnable`（递归 `tests/engine_v2/**`）；L443 `TestP4Boundary`；L474-478 12 名 casefold 词边界扫描模式 | **唯一锚点变更文件，纯追加**：① L240 后（P4_LLM_PROVIDER_BLACKLIST 块止）插入两个常量块 `P5_SUBMODULES: tuple[str, ...]`（10 茎：`schemas, project_ir, loader, module_graph, rule_module, validator, cli` + `manifest, api, registry`）与 `P5_TEST_FILES: tuple[str, ...]`（15 项，§3.12 测试文件清单，不含 `__init__.py`，P4_TEST_FILES 同款口径）；② 文件尾追加 `class TestP5Boundary`（5 方法，§6.4）。既有行零改动 |
 | `tests/test_engine_v2_skeleton.py` | L27-41 `SUBPACKAGES`（13 子包：`plugins` @ L31、`content` @ L37）；L110-142 `_is_core_reexport_node`（**core 专属豁免**）；L145 `test_engine_v2_init_files_are_docstring_only`（L152 附近 `len(init_files) == len(SUBPACKAGES)+1`；逐文件 body 逐节点 docstring-only 断言，仅 core_init 豁免） | **零修改**（D-P5-02：`content/__init__.py`（8 行）与 `plugins/__init__.py`（7 行）保持 docstring-only → 断言面不变；P5 消费方走子模块路径 import，如 `from src.engine_v2.content.loader import load_project`） |
@@ -636,7 +636,7 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 - **问题**：K8（Spec:330-339：项目 MUST NOT pin provider/模型名/endpoint/credential）的机械实现？
 - **备选**：(a) schema 层字段禁令 + 全文本扫描；(b) 仅 schema 层；(c) LLM 审查。
 - **选择**：(a) 组合面：schema 层 `InferenceCapabilityProfile`/`PromptPolicy` 无 provider/model/endpoint 字段（字段集内省，断言 #19b）；文本层对扫描面 = `raw.texts`（各 YAML 原文）∪ 项目根 `pyproject.toml` 原文（`pyproject_text`；项目 pyproject = 面内，引擎自身 pyproject = 面外，引擎 ≠ 项目）跑 12 名 casefold `\b` 词边界扫描（与 `test_import_boundary.py:225-240` 黑名单同名单：openai/anthropic/langchain/litellm/ollama/gemini/gpt/claude/llm/provider/api_key/base_url），命中 → `LLMSIM_DEPLOYMENT_FIELD`（error，path=文件，refs=[命中名]）。常量以串拼接构造（`"prov"+"ider"` 式）使 TestP5Boundary 自扫描 0 命中。扫描域 = **仅项目文件**（引擎自身 `pyproject.toml` 不在域内——引擎 ≠ 项目）。
-- **理由与一致性**：(b) 漏 YAML 自由文本（`narrative_style: "ask gpt for help"` 形态）；(c) 不可机械验证。边界语义钉死：`llmsim` 不匹配 `\bllm\b`、`api_key_env` 不匹配 `\bapi_key\b`（`\w` 无边界，测试钉两个负例）。
+- **理由与一致性**：(b) 漏 YAML 自由文本（`narrative_style: "ask gpt for help"` 形态）；(c) 不可机械验证。边界语义钉死：`llmsim` 不匹配 `\bllm\b`、`api_key_env` 不匹配 `\bapi_key\b`（`\w` 含下划线与后随词字符，非 `\b` 词边界——`llmsim` / `api_key_env` 不命中，测试钉此两个负例）。
 
 ### D-P5-12 诊断 schema + 排序 + 退出码
 - **问题**：诊断输出形态与 CLI 退出语义？
@@ -958,6 +958,8 @@ K1-K8 全文见 Spec:242-339。P5 是**纯读/纯产新值**阶段（不持有 W
 **ERR-P5-5**（2026-08-30）：症状 → 设计盲审 R4（2 通过 + 2 补充内容、0 BLOCK）产出 4 条 SUPPLEMENT：(1) §3.9 plugins/api.py 导入条款（仅 stdlib+pydantic）与 from_string 返回 Diagnostic 及 L122 DAG 三方冲突；(2) §3.6 validate_project 对 discover_local_plugins 元组返回取 .registry 属性（类型不成立）且发现期诊断静默丢弃；(3) §3.7 cli.py 契约缺 __main__ 守卫，-m 三态冒烟面（§6.5/gate ⑥）按文不可达；(4) §3.3 load_project 步序未把 game.yaml 赋入 raw.files/raw.texts，与 L174/L175/L298/L426 数据契约自相矛盾（字面实现 = 每合法项目伪 FILE_MISSING + K8 漏扫 game.yaml）。另有 10 条 DOC 级引用漂移/措辞（R4 四报告去重）。勘误自记录例外：ERR-P5-4 症状段 DOC 计数（13）与裁定段（12）口径不一致，经 Leader 授权就地更正为「合计 13 条，去重后 12 条」（append-only 纪律的唯一例外，记录于此）。→ 裁定与修正（Leader 2026-08-30 裁定；fixer E 应用）：G-1 §3.9 导入条款补 schemas（仅 Diagnostic 类型）；G-2 validate_project 解包 (local_registry, discovery_diags) 并把 discovery_diags 并入并集（发现期诊断不丢弃）；G-3 §3.7 补 __main__ 守卫 bullet（raise SystemExit(main())，不入 __all__）；G-4 load_project 步 2 补原文读取 + raw.files/raw.texts 赋值（build_ir 双保险与 K8 扫描面数据源落定）。DOC：应用 9 条（fixer）、跳过 0 条；第 10 条（D-P5-07 选择句 plugins/ 非空口径，R5-2 同族第 4 处）= Leader 直接一致性修正（commit 10916db 记录）。→ 影响面：20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 5 偏差 / 17 决策全部不变；无 gate 面变化（无新文件、无新导出、无新码）；ERR-P5-1/2/3 文本未动；ERR-P5-4 仅症状段计数句就地更正（本条授权并记录）。
 **ERR-P5-6**（2026-08-30）：症状 → 设计盲审 R5（2 通过 + 2 补充内容、0 BLOCK）产出 4 条 SUPPLEMENT：(1) broken 项目 fixture #38 缺 scenario/player 必需节且顶层 api_key = 未知键 → build_ir 必失败 → validate_project 全链不执行 → A1/A2/A12/#19a/#17 靶不可达；(2) plugin fixture #35 缺 manifest/scenario 必需节 → S2 与 #20 不可达；(3) ContainsNode 右侧未钉 v1 :171-175 裸 name 字面生产式（66 parity 集 test_contains_operator 分歧）；(4) evaluate_condition 的 if_chain「假 → 下一分支」未规定未匹配分支 outcome 求值，与 v1 parse_if :78-93（未匹配分支 outcome 亦解析求值）及 L413 ∀ raise-parity 矛盾（反例 10/0 嵌套 if）。另有 11 条 DOC 级（R5 四报告去重，含探针表放置语境归入 G-5）。勘误自记录例外：ERR-P5-5 裁定段 DOC 计数句经 Leader 授权就地更正（fixer 9 条 + Leader 直接修正 1 条，合计 10 条），记录于此。→ 裁定与修正（Leader 2026-08-30 裁定；fixer F 应用）：G-5 broken 项目重定为「结构合法但语义损坏」（#38 四节齐全 + player.capabilities 开放 dict 承载 K8 探针 P1-P3 + 未注册插件 descriptor；探针表补开放 dict 放置语境条款 + P4 单元级构造；#19 P4 补注；A12 对齐）；G-6 #35 补 manifest+scenario+player 齐全；G-7 ContainsNode 右槽钉裸 name 字面生产式（v1 :171-176 求值语义）；G-8 if_chain 求值语义重写（未匹配分支 outcome 亦求值、匹配后跳过、全假求值 trailing，v1 :78-93/:82/:84/:91-93 逐分支等价）。DOC：应用 10 条、跳过 0 条。→ 影响面：20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 5 偏差 / 17 决策全部不变；无 gate 面变化（无新文件、无新导出、无新码）；ERR-P5-1..4 文本未动；ERR-P5-5 仅裁定段计数句就地更正（本条授权并记录）。
 **ERR-P5-7**（2026-08-30）：症状 → 设计盲审 R6（1 通过 + 2 补充内容 + 1 阻塞）产出 1 BLOCK / 5 SUPPLEMENT / 5 DOC / 7 INFO：(1) BLOCK：ProjectIR.world 必需（字段表）vs world 节文件缺失=合法空（build_ir 步 3 / LAYOUT / 零诊断测试面）自相矛盾，且封闭 18 码无「world 缺失」可报码，盲实现者无满足全部条款的字段级行为；(2) 4 族 SUPPLEMENT：ContainsNode 求值语义遗漏 v1 str-left 子串分支（:176-177，三报告同族）；单分支无 trailing if 形 v2 严格超集未披露（等价契约仅排 DEV-3）；uncertain 表达式概率形 v2 行为未钉且未披露；非法 match 正则 re.error 行为未钉（66 例集含此形）；(3) 5 DOC：版本文法四处记号漂移 + version_range 裸 V 死描述、D-P5-04 可选性过度归因 Spec（Spec 仅 plugins/ 与 pyproject 标 # optional）、内建规则 5 范围锚偏一行（:208→:207）；(4) 7 INFO：双缺省规则形（两报告同族，升格 H-5 裁定）、_looks_like_condition 点名（并入 H-3）、pin SHA 评审环境不可解析（不改文档，Leader 备注：工作树内容与锚点全符，属来源元数据可验证性）。→ 裁定与修正（Leader 2026-08-30 裁定；fixer G 应用）：H-1 world 改 `WorldSpec | None = None`（0 文件→None 合法空 / 恰好 1→WorldSpec / ≥2→sorted 首文件+每余文件 LLMSIM_SCHEMA，SCHEMA 码行扩展「节文件集合约束违例」；check_references 补 world=None 跳过注；D-P5-04 归因更正：其余 8 节目录合法空 = 本文档设计选择，Spec 未声明其必需性）；H-2 ContainsNode 括注补 str-left 分支、行段 :172-176→:172-177；H-3 IfChainNode 依据列钉 v1 trailing 条件性（matched 分支免 trailing / 全假必需）+ _looks_like_condition 点名 + v2 无条件必需（DEV-6），FeasibilityNode probability 生产钉 NumberNode 字面唯一（DEV-7），等价契约并列披露 DEV-6/DEV-7 两形（66 例集均不含，核验）；H-4 步 2 钉 re.compile re.error → skip 本条（v1 deterministic_rules.py:122-133 口径，66 例集 test_rules.py:343-357 含此形）；H-5 双缺省规则 = schema 合法恒匹配无诊断（DEV-8），§7.4「非法规则 = warning 诊断 + 跳过」限 DSL parse/eval 错误形。DOC：应用 4 条（DOC-D 4 条，其中第 4 条 L740 测试矩阵为不动确认）、跳过 1 条（DOC-E 内建规则 5 范围锚：sed 核冻结源 gate 行 = rules.py:208，现文档 :208-223 锚已正确，不改 :207-223，避免引入新锚点错误）。§8.4 新增 D-P5-DEV-6/7/8，§8.3 交叉行偏差 5→8。→ 影响面：八项计数不变（20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 17 决策）；偏差计数 5 → 8（D-P5-DEV-6/7/8 登记，§8.3/§8.4 更新）；无 gate 面变化（无新文件、无新导出、无新码——world 单值 ≥2 复用 LLMSIM_SCHEMA 行文扩展）；ERR-P5-1..6 文本未动。
+
+**ERR-P5-8**（2026-08-30）：症状 → 设计盲审 R7（3 通过 + 1 补充内容、0 BLOCK）产出 1 SUPPLEMENT / 8 DOC / 6 INFO：(1) SUPPLEMENT：§3.5 FunctionCallNode 行「len 需 list/str」将 v1 :263 isinstance 四形 (list, tuple, set, str) 压缩为二形，同表 in/not_in、contains 行均写全三容器使该省略读似有意收窄，盲实现者可据此写出未披露的 v2-strict len 检查且 66 例集不锁该形态（两报告同族，分级不一致）；(2) 8 DOC：target.X 分支漏 v1 :425-426 非 dict 前置 guard、D-P5-11 括注措辞费解、规则排序两处误引 D-P5-06（该决策仅覆盖模块图面）、头部 e5c4db4 hash 误归属 G4 报告（G4 HEAD = 9baa5b7）、RawProject 归属括注三处错挂 project_ir（实定义于 schemas）、core/__init__.py import 块尾行 off-by-one（L415 空行，实止于 L414）；(3) 6 INFO：改名披露建议、world_rules 转录映射、TestTextMatchesRule 转录面、_skip_until_if_end 措辞等建议性项。→ 裁定与修正（Leader 2026-08-30 裁定；fixer H 应用）：S-1 len 可接受类型集补全为 list/tuple/set/str 四形（:263，raise 文案仅措辞）；DOC：应用 6 条、跳过 0 条（独立项：target.X 前置 guard / D-P5-11 括注 / 规则排序两处 / 头部 hash 归属 / RawProject 三处 / import 块两处）；INFO 6 条 info-noted，不改文档。→ 影响面：十项计数全部不变（20 断言 / 116 导出 / 39 白名单 / 18 码 / 23 节点种类 / 66 parity / 13 对抗项 / 8 偏差 / 17 决策）；无 gate 面变化（无新文件、无新导出、无新码）；ERR-P5-1..7 文本未动。
 
 ---
 
