@@ -1,0 +1,7 @@
+# P6-W6 e2e 参考项目提示策略节（顶层键必为 prompts，值为 PromptPolicy 列表）。
+# template_ref 必带 prompts/ 前缀（ERR-P6-11 F-49 钉死）。
+prompts:
+  - id: cs_alice
+    scope: character_scene
+    template_ref: prompts/character_alice.md
+    variables: []

@@ -1,0 +1,4 @@
+# P6-W6 e2e 参考项目角色节（顶层键必为 characters，值为 CharacterSpec 列表）。
+characters:
+  - id: alice
+    name: Alice

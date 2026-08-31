@@ -1,0 +1,18 @@
+# P6-W6 用户侧部署配置（S5 模型可换面：仅 model_alt，能力位降级到 tier 2；
+# SOT §5.2 #5/#6）。provider 用中性值（零 12 名字面量）。
+models:
+  model_alt:
+    model_id: model_alt
+    tier: 2
+    context_length: 65536
+    max_output: 8192
+    structured_output: true
+    reasoning_class: standard
+inference_profiles:
+  major_character:
+    provider: sim-alt
+    model: model_alt
+    base_url: https://sim.example/v1
+    api_key_env: FAKE_PROBE_KEY
+    temperature: 0.7
+    timeout_seconds: 30.0

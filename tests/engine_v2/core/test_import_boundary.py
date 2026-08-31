@@ -813,3 +813,419 @@ class TestP5Boundary:
             if bad:
                 violations[str(path.relative_to(REPO_ROOT))] = bad
         assert not violations, f"P5 文件命中 v1 包 import（§6.4）：{violations}"
+
+
+# —— P6 扩展（P6 设计规范 §3.12 边界同步面，纯追加 Leader hunk，P5 块同构）——
+
+#: P6 11 模块茎（封闭）：前 8 = llm/，后 3 = prompts/（§3.12）。
+P6_SUBMODULES: tuple[str, ...] = (
+    "profiles",
+    "deployment",
+    "router",
+    "adapter",
+    "structured",
+    "policy",
+    "staleness",
+    "critic",
+    "registry",
+    "assembler",
+    "diagnostic",
+)
+
+#: P6 测试扫描面（15 文件，封闭，不含 ``__init__.py``）：llm/ 10 测试文件 +
+#: llm/ conftest + prompts/ 2 测试文件 + 边界文件自身 + scripts/llm_smoke.py
+#: （smoke 同入边界扫描域，Leader-A10；§3.12）。边界文件自身 = 白名单 #37
+#: 纯追加块宿主：方法 2 字符串字面量面排除，方法 1/3/4/5/6 import/文件集
+#: 面保留（既有冻结内容含 12 名明文常量，不可移除）。
+P6_TEST_FILES: tuple[str, ...] = (
+    "test_profiles.py",
+    "test_deployment.py",
+    "test_router.py",
+    "test_adapter.py",
+    "test_structured.py",
+    "test_policy.py",
+    "test_staleness.py",
+    "test_critic.py",
+    "test_p6_gate_scenario.py",
+    "test_p6_adversarial.py",
+    "conftest.py",
+    "test_registry.py",
+    "test_assembler.py",
+    "test_import_boundary.py",
+    "llm_smoke.py",
+)
+
+#: P6 白名单 37 文件（封闭，§3.13 表波次序 #1-37；gate ③ 的 pytest 内镜像）。
+_P6_WHITELIST_37: tuple[str, ...] = (
+    "src/engine_v2/llm/profiles.py",
+    "src/engine_v2/llm/deployment.py",
+    "src/engine_v2/prompts/diagnostic.py",
+    "tests/engine_v2/llm/test_profiles.py",
+    "tests/engine_v2/llm/test_deployment.py",
+    "src/engine_v2/llm/router.py",
+    "tests/engine_v2/llm/test_router.py",
+    "src/engine_v2/llm/adapter.py",
+    "tests/engine_v2/llm/__init__.py",
+    "tests/engine_v2/llm/test_adapter.py",
+    "src/engine_v2/llm/structured.py",
+    "src/engine_v2/prompts/registry.py",
+    "src/engine_v2/prompts/assembler.py",
+    "tests/engine_v2/llm/test_structured.py",
+    "tests/engine_v2/prompts/__init__.py",
+    "tests/engine_v2/prompts/test_registry.py",
+    "tests/engine_v2/prompts/test_assembler.py",
+    "src/engine_v2/llm/policy.py",
+    "src/engine_v2/llm/staleness.py",
+    "tests/engine_v2/llm/conftest.py",
+    "tests/engine_v2/llm/test_policy.py",
+    "tests/engine_v2/llm/test_staleness.py",
+    "src/engine_v2/llm/critic.py",
+    "pyproject.toml",
+    "tests/engine_v2/llm/test_critic.py",
+    "tests/engine_v2/llm/test_p6_gate_scenario.py",
+    "tests/engine_v2/llm/test_p6_adversarial.py",
+    "tests/fixtures/v2_project_llm/game.yaml",
+    "tests/fixtures/v2_project_llm/characters/alice.yaml",
+    "tests/fixtures/v2_project_llm/prompts/game_policy.yaml",
+    "tests/fixtures/v2_project_llm/prompts/character_alice.yaml",
+    "tests/fixtures/v2_project_llm/prompts/game_policy.md",
+    "tests/fixtures/v2_project_llm/prompts/character_alice.md",
+    "tests/fixtures/v2_deployment/deployment.yaml",
+    "tests/fixtures/v2_deployment/deployment_alt.yaml",
+    "scripts/llm_smoke.py",
+    "tests/engine_v2/core/test_import_boundary.py",
+)
+
+
+def _p6_src_path(stem: str) -> Path:
+    """P6 模块茎 → src 实际路径（llm/ 与 prompts/ 两目录二选一）。"""
+    for sub in ("llm", "prompts"):
+        path = REPO_ROOT / "src" / "engine_v2" / sub / f"{stem}.py"
+        if path.exists():
+            return path
+    raise AssertionError(f"P6 模块缺失：{stem}")
+
+
+def _p6_test_path(name: str) -> Path:
+    """P6 测试扫描面基名 → 实际路径（封闭映射，4 个解析目标：tests llm/ ·
+    prompts/ · core/ 与 scripts/）。
+
+    ``conftest.py`` 基名在 llm/ 与 core/ 两目录各一（core/ 侧 = P4/P5 世界
+    夹具，非 P6 面），故不做目录探测，映射封闭钉死（实现面裁定，SOT 未钉
+    解析目录）。
+    """
+    if name == "llm_smoke.py":
+        path = REPO_ROOT / "scripts" / name
+    elif name == "test_import_boundary.py":
+        path = TESTS_ENGINE_DIR / "core" / name
+    elif name in ("test_registry.py", "test_assembler.py"):
+        path = TESTS_ENGINE_DIR / "prompts" / name
+    else:
+        path = TESTS_ENGINE_DIR / "llm" / name
+    assert path.exists(), f"P6 测试扫描面文件缺失：{name}"
+    return path
+
+
+def _p6_test_paths() -> list[Path]:
+    """P6 测试扫描面 15 文件 → 实际路径（P6_TEST_FILES 逐一封闭映射）。"""
+    paths = [_p6_test_path(name) for name in P6_TEST_FILES]
+    assert len(paths) == 15, f"P6 测试扫描面应为 15 文件：{len(paths)}"
+    return paths
+
+
+def _p6_ast_face() -> list[Path]:
+    """P6 AST/import 扫描面（28 文件）：11 模块 + 15 测试扫描面文件 + 测试
+    侧 2 个包 ``__init__.py``（§3.12 方法 1/3/4/5/6 import/文件集面域；
+    边界文件自身在此保留；2 个既有骨架 src ``__init__.py`` P0 冻结、
+    不在白名单、不入本面）。"""
+    return (
+        [_p6_src_path(stem) for stem in P6_SUBMODULES]
+        + _p6_test_paths()
+        + [
+            TESTS_ENGINE_DIR / "llm" / "__init__.py",
+            TESTS_ENGINE_DIR / "prompts" / "__init__.py",
+        ]
+    )
+
+
+def _p6_string_literal_face() -> list[Path]:
+    """P6 方法 2 字符串字面量扫描面（27 文件）：AST/import 扫描面扣减边界
+    文件自身（SOT §3.12 方法 2；其既有冻结内容含 12 名明文常量）。本块
+    追加内容同样以拼接构造自豁免，不做单独块级扫描（与 P5 完全同构）。"""
+    boundary = TESTS_ENGINE_DIR / "core" / "test_import_boundary.py"
+    return [p for p in _p6_ast_face() if p != boundary]
+
+
+class TestP6Boundary:
+    """P6 import 边界强化（P6 设计规范 §3.12 / §6.4，机械验证；纯追加
+    Leader hunk，TestP5Boundary 同构）。
+
+    - ``P6_SUBMODULES`` 11 模块（llm 8 + prompts 3）：asyncio 零出现
+      （方法 4）；random/datetime = 0 命中；``time`` 与 httpx import 仅
+      llm/adapter.py + test_adapter.py MockTransport 面（D-P6-13 两处
+      文档化例外 + B3 受控偏离 ERR-P6-6；ERR-P6-12）；socket/urllib/
+      requests/http.client = 0；动态加载面 = 0（边界文件自身 P4 冻结
+      harness 自豁免，ERR-P6-12；方法 5）；v1 根集绝对 import（含
+      src.llm.*/src.prompts.*）= 0（方法 3）；
+    - 12 名 casefold 词边界扫描 AST 字符串字面量面 → 0 命中（方法 2；较
+      P5 全文口径收紧为 ``ast.Constant`` str 域（含 docstring）；27 文件
+      域 = 11 新建 src 模块 + 15 测试扫描面文件 − 边界文件自身 + 2 测试
+      侧包 ``__init__.py``；探针串拼接构造，拼接集与
+      ``P4_LLM_PROVIDER_BLACKLIST`` 断言相等；负例锚 ``llmsim``/
+      ``api_key_env``）；
+    - ``policy.py`` 模块 import ∩ {httpx, time, random, asyncio, datetime,
+      socket, urllib, requests} = ∅；``LLMPolicy`` 类体零具体后端类名
+      （B-CON-4 AST 面，方法 6）；
+    - 白名单 37 文件闭集断言（方法 1，gate ③ 的 pytest 内镜像）。
+    """
+
+    def test_p6_file_set_closed(self) -> None:
+        """白名单 37 文件闭集断言（gate ③ 的 pytest 内镜像；§3.13 表）。
+
+        目录封闭面：src llm/ = 8 新建 + 骨架 __init__（9 .py）；src
+        prompts/ = 3 新建 + 骨架 __init__（4 .py）；tests llm/ = 10 测试
+        + conftest + __init__（12 .py）；tests prompts/ = 2 测试 +
+        __init__（3 .py）；fixture 树 = 8 文件；pyproject.toml 与本文件
+        修改面在位。
+        """
+        for rel in _P6_WHITELIST_37:
+            assert (REPO_ROOT / rel).exists(), f"白名单文件缺失：{rel}"
+        llm_src = sorted(
+            p.name for p in (REPO_ROOT / "src" / "engine_v2" / "llm").glob("*.py")
+        )
+        assert llm_src == sorted(
+            [f"{s}.py" for s in P6_SUBMODULES[:8]] + ["__init__.py"]
+        ), f"src llm/ 文件集非封闭：{llm_src}"
+        prompts_src = sorted(
+            p.name for p in (REPO_ROOT / "src" / "engine_v2" / "prompts").glob("*.py")
+        )
+        assert prompts_src == sorted(
+            [f"{s}.py" for s in P6_SUBMODULES[8:]] + ["__init__.py"]
+        ), f"src prompts/ 文件集非封闭：{prompts_src}"
+        llm_tests = sorted(p.name for p in (TESTS_ENGINE_DIR / "llm").glob("*.py"))
+        assert llm_tests == sorted(
+            [
+                "test_profiles.py",
+                "test_deployment.py",
+                "test_router.py",
+                "test_adapter.py",
+                "test_structured.py",
+                "test_policy.py",
+                "test_staleness.py",
+                "test_critic.py",
+                "test_p6_gate_scenario.py",
+                "test_p6_adversarial.py",
+                "conftest.py",
+                "__init__.py",
+            ]
+        ), f"tests llm/ 文件集非封闭：{llm_tests}"
+        prompts_tests = sorted(
+            p.name for p in (TESTS_ENGINE_DIR / "prompts").glob("*.py")
+        )
+        assert prompts_tests == sorted(
+            ["test_registry.py", "test_assembler.py", "__init__.py"]
+        ), f"tests prompts/ 文件集非封闭：{prompts_tests}"
+        fixtures = sorted(
+            str(p.relative_to(REPO_ROOT))
+            for d in (
+                "tests/fixtures/v2_project_llm",
+                "tests/fixtures/v2_deployment",
+            )
+            for p in (REPO_ROOT / d).rglob("*")
+            if p.is_file()
+        )
+        assert fixtures == sorted(
+            [
+                "tests/fixtures/v2_project_llm/game.yaml",
+                "tests/fixtures/v2_project_llm/characters/alice.yaml",
+                "tests/fixtures/v2_project_llm/prompts/game_policy.yaml",
+                "tests/fixtures/v2_project_llm/prompts/character_alice.yaml",
+                "tests/fixtures/v2_project_llm/prompts/game_policy.md",
+                "tests/fixtures/v2_project_llm/prompts/character_alice.md",
+                "tests/fixtures/v2_deployment/deployment.yaml",
+                "tests/fixtures/v2_deployment/deployment_alt.yaml",
+            ]
+        ), f"fixture 树文件集非封闭：{fixtures}"
+
+    def test_p6_no_12_name_in_string_literals(self) -> None:
+        """AST 字符串字面量域 12 名 casefold 词边界扫描 → 0 命中（§3.12
+        方法 2）。
+
+        较 P5 全文口径收紧为 ``ast.Constant`` str 节点值域（含 docstring）；
+        27 文件域见 ``_p6_string_literal_face``。常量以串拼接构造自豁免
+        （本文件不在方法 2 扫描面；本追加块自身同以拼接构造自豁免——与
+        P5 完全同构）；拼接集与 ``P4_LLM_PROVIDER_BLACKLIST``（既有 12
+        明文常量）断言相等。负例锚：``llmsim``/``api_key_env`` 不命中
+        （``\\w`` 边界语义钉死）。
+        """
+        joined = [
+            "open" + "ai",
+            "anthr" + "opic",
+            "lang" + "chain",
+            "lite" + "llm",
+            "oll" + "ama",
+            "gem" + "ini",
+            "g" + "pt",
+            "cla" + "ude",
+            "l" + "lm",
+            "prov" + "ider",
+            "api_" + "key",
+            "base_" + "url",
+        ]
+        assert set(joined) == P4_LLM_PROVIDER_BLACKLIST, "拼接集与 12 名常量不等"
+        hits: dict[str, list[str]] = {}
+        for path in _p6_string_literal_face():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            matched: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    text = node.value.casefold()
+                    matched.update(
+                        word
+                        for word in joined
+                        if re.search(rf"\b{re.escape(word)}\b", text)
+                    )
+            if matched:
+                hits[str(path.relative_to(REPO_ROOT))] = sorted(matched)
+        assert not hits, f"P6 文件命中 12 名黑名单字符串字面量域（§3.12 方法 2）：{hits}"
+        probe = re.compile(r"\b(?:" + "|".join(joined) + r")\b")
+        assert not probe.search("llmsim"), "负例锚失守：llmsim 不应命中"
+        assert not probe.search("api_key_env"), "负例锚失守：api_key_env 不应命中"
+
+    def test_p6_no_v1_absolute_imports(self) -> None:
+        """v1 根集绝对 import = 0（§3.12 方法 3；D-P6-13 禁止面：
+        src.game.* / src.config.* / src.agents.* / src.llm.* /
+        src.prompts.*；扫描面 = 28 文件 import 面，边界文件自身保留）。"""
+        forbidden = {
+            "src.game",
+            "src.config",
+            "src.agents",
+            "src.llm",
+            "src.prompts",
+        }
+        violations: dict[str, list[str]] = {}
+        for path in _p6_ast_face():
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if module_name in forbidden
+                or any(module_name.startswith(root + ".") for root in forbidden)
+            ]
+            if bad:
+                violations[str(path.relative_to(REPO_ROOT))] = bad
+        assert not violations, f"P6 文件命中 v1 根 import（§3.12 方法 3）：{violations}"
+
+    def test_p6_zero_asyncio(self) -> None:
+        """asyncio import = 0 且 ``ast.AsyncFunctionDef`` = 0（§3.12 方法
+        4；P6 同步面零 asyncio，扫描面 = 28 文件）。"""
+        hits: list[str] = []
+        for path in _p6_ast_face():
+            for module_name in _collect_absolute_imports(path):
+                if module_name.split(".")[0] == "asyncio":
+                    hits.append(f"{path.name}: import {module_name}")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.AsyncFunctionDef):
+                    hits.append(f"{path.name}:L{node.lineno}: async def {node.name}")
+        assert not hits, f"P6 文件命中 asyncio 面（§3.12 方法 4）：{hits}"
+
+    def test_p6_nondeterminism_and_io_surface(self) -> None:
+        """random/datetime = 0 命中；``time`` 与 httpx import 仅
+        llm/adapter.py（+ test_adapter.py MockTransport 进程内面 = B3
+        受控偏离 ERR-P6-6，唯一文档化测试侧 httpx import）；socket/
+        urllib/requests/http.client = 0；动态加载面（importlib/
+        __import__）= 0（§3.12 方法 5；D-P6-13 两处文档化例外 ①httpx
+        ②time 均限定 adapter）。
+
+        边界文件自身 P4 冻结可导入性探针 harness（importlib.import_module）
+        自豁免（同方法 2 排除同型，ERR-P6-12）；经冻结 adapter 模块
+        命名空间取用 in-process 传输替身的属性面（W6 gate 测试面）非
+        import 面——本方法仅扫 AST import 节点。
+        """
+        adapter = _p6_src_path("adapter")
+        mock_transport_test = TESTS_ENGINE_DIR / "llm" / "test_adapter.py"
+        boundary = TESTS_ENGINE_DIR / "core" / "test_import_boundary.py"
+        hits: list[str] = []
+        for path in _p6_ast_face():
+            for module_name in _collect_absolute_imports(path):
+                root = module_name.split(".")[0]
+                if root in ("random", "datetime"):
+                    hits.append(f"{path.name}: import {module_name}")
+                elif root in ("time", "httpx") and path not in (
+                    adapter,
+                    mock_transport_test,
+                ):
+                    hits.append(
+                        f"{path.name}: import {module_name}（仅 llm/adapter.py"
+                        " + test_adapter.py MockTransport 面允许）"
+                    )
+                elif (
+                    module_name in ("socket", "urllib", "requests", "http.client")
+                    or module_name.startswith(
+                        ("socket.", "urllib.", "requests.", "http.client.")
+                    )
+                ):
+                    hits.append(f"{path.name}: import {module_name}")
+                elif root == "importlib" and path != boundary:
+                    hits.append(f"{path.name}: import {module_name}（动态加载面）")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if (
+                    path != boundary
+                    and (
+                        (isinstance(node, ast.Name) and node.id == "__import__")
+                        or (isinstance(node, ast.Attribute) and node.attr == "__import__")
+                    )
+                ):
+                    hits.append(f"{path.name}:L{node.lineno}: __import__（动态加载面）")
+        assert not hits, f"P6 文件命中非确定性/IO 面（§3.12 方法 5）：{hits}"
+
+    def test_p6_policy_strict_face(self) -> None:
+        """policy.py 模块 import ∩ {httpx, time, random, asyncio, datetime,
+        socket, urllib, requests} = ∅；``LLMPolicy`` 类体（含方法体）零
+        具体后端/时钟类名与零网络对象（B-CON-4 AST 面，§3.12 方法 6；
+        协议 Protocol 面 InferenceBackend/MonotonicClock 注解 = 允许面）。
+        """
+        policy = _p6_src_path("policy")
+        forbidden_roots = {
+            "httpx",
+            "time",
+            "random",
+            "asyncio",
+            "datetime",
+            "socket",
+            "urllib",
+            "requests",
+        }
+        bad_imports = [
+            module_name
+            for module_name in _collect_absolute_imports(policy)
+            if module_name.split(".")[0] in forbidden_roots
+        ]
+        assert not bad_imports, (
+            f"policy.py 命中禁止 import 根（§3.12 方法 6）：{bad_imports}"
+        )
+        forbidden_names = {
+            "HttpxInferenceBackend",
+            "FakeInferenceBackend",
+            "SystemMonotonicClock",
+            "FixedMonotonicClock",
+            "random",
+            "httpx",
+            "socket",
+            "urllib",
+            "requests",
+        }
+        tree = ast.parse(policy.read_text(encoding="utf-8"), filename=str(policy))
+        class_body_hits: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == "LLMPolicy":
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Name) and sub.id in forbidden_names:
+                        class_body_hits.append(f"L{sub.lineno}: Name {sub.id}")
+                    elif isinstance(sub, ast.Attribute) and sub.attr in forbidden_names:
+                        class_body_hits.append(f"L{sub.lineno}: Attribute {sub.attr}")
+        assert not class_body_hits, (
+            f"LLMPolicy 类体命中具体后端/时钟/网络面（B-CON-4，§3.12 方法 6）："
+            f"{class_body_hits}"
+        )

@@ -1,0 +1,27 @@
+# P6-W6 用户侧部署配置（SOT §6.4 钉死面；不属于 Game Project，
+# 项目 12 名扫描面之外；K8 27 文件扫描域之外）。
+# 注：provider 值为用户侧数据域（供应商名），是本波唯一有意的 12 名
+# 字符串字面量，已在 dev 报告 ad4_token_disclosure 披露。
+models:
+  model_high:
+    model_id: model_high
+    tier: 3
+    context_length: 131072
+    max_output: 16384
+    structured_output: true
+    reasoning_class: advanced
+  model_alt:
+    model_id: model_alt
+    tier: 2
+    context_length: 65536
+    max_output: 8192
+    structured_output: true
+    reasoning_class: standard
+inference_profiles:
+  major_character:
+    provider: openai
+    model: model_high
+    base_url: https://sim.example/v1
+    api_key_env: FAKE_PROBE_KEY
+    temperature: 0.7
+    timeout_seconds: 30.0
