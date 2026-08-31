@@ -3,8 +3,8 @@
 部署文件 = 用户文件（不属于 Game Project，K8 项目扫描面之外，Spec:405）；
 本模块是 P6 唯一读用户文件的位置。读面仅 os(env) + pathlib + yaml，零网络，
 同步面。确定性：同输入同诊断集，诊断序 = 按 (code, path, refs) 排序（P5
-D-P5-12 口径移植，A-W1-4）。诊断不中断原则全程有效：语义错（
-MODEL_UNDECLARED）不置 profile=None，形状错才置 None（A-W1-5，resolve 期
+D-P5-12 口径移植，SOT §3.2 L211）。诊断不中断原则全程有效：语义错（
+MODEL_UNDECLARED）不置 profile=None，形状错才置 None（SOT §3.2 L207，resolve 期
 二次拦截）。
 """
 
@@ -98,7 +98,7 @@ class DeploymentProfile(BaseModel):
 
 class DeploymentLoadResult(BaseModel):
     """加载结果：path + profile（文件缺失/解析失败/形状错 = None）+
-    diagnostics（按 (code, path, refs) 排序的元组，A-W1-4）。"""
+    diagnostics（按 (code, path, refs) 排序的元组，SOT §3.2 L211）。"""
 
     model_config = ConfigDict(frozen=True)
 
@@ -108,7 +108,7 @@ class DeploymentLoadResult(BaseModel):
 
 
 def _sorted_diagnostics(diagnostics: Iterable[RuntimeDiagnostic]) -> tuple[RuntimeDiagnostic, ...]:
-    """诊断集按 (code, path, refs) 排序（P5 D-P5-12 口径移植，A-W1-4）。"""
+    """诊断集按 (code, path, refs) 排序（P5 D-P5-12 口径移植，SOT §3.2 L211）。"""
     return tuple(sorted(diagnostics, key=lambda d: (d.code, d.path, d.refs)))
 
 
@@ -128,7 +128,7 @@ def load_deployment(path: str | Path) -> DeploymentLoadResult:
       refs=[loc 点分串，空 loc 记 ``<root>``）；
     - 语义引用检查：entry.model 与 fallbacks 各项 ∈ models 键，违例每项一条
       ``LLMSIM_RESOLVER_MODEL_UNDECLARED``（error，path=capability 键，
-      refs=[缺失 model 名]）；语义错不中断 → profile 仍非 None（A-W1-5）。
+      refs=[缺失 model 名]）；语义错不中断 → profile 仍非 None（SOT §3.2 L207）。
     """
     path_str = str(path)
     file = Path(path_str)
