@@ -145,7 +145,7 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 | P7-INV-2 | **kernel 无感**：`core/` 任何文件不引用 P7 类型名/包路径；P7 是 `core/` 之外的消费者包 | Plan §16 逐字条款（§0.2）；K1 | 双向 grep：core/** 对 `engine_v2.dynamics` / P7 类型名零命中（A10 + 边界第 4 法） |
 | P7-INV-3 | **零 asyncio / 零网络**：`dynamics/**` 无 `asyncio`、无 `await`、无 httpx/requests/socket | scheduler.py L105–111 纪律段（datetime/time/random/asyncio 黑名单先例） | 边界第 1 法 import 黑名单 + 第 4 法 await 语法扫描 |
 | P7-INV-4 | **JSON-clean 铁律**：metadata/checkpoint/context 数据面/stimuli/wire/diagnostic 全部 `assert_json_clean` 过 | serialization.py L82 | 每数据类的构造/序列化测试 + 边界扫描面（§6.3 AD-1/AD-2） |
-| P7-INV-5 | **闭集词表**：`determinism ∈ {deterministic, seeded, nondeterministic}`；`implementation_type ∈ {rule, llm, numerical, composite}`；fidelity = 名字型串（Spec §15.4 描述性口径，D-P7-03） | Spec §15.4 | backend.py 构造期校验 + test_backend_metadata.py |
+| P7-INV-5 | **闭集词表**：`determinism ∈ {deterministic, seeded, nondeterministic}`；`implementation_type ∈ {rule, inference, numerical, composite}`；fidelity = 名字型串（Spec §15.4 描述性口径，D-P7-03） | Spec §15.4 | backend.py 构造期校验 + test_backend_metadata.py |
 | P7-INV-6 | **权限 closed-by-default**：P7 producer 必须先入 `ProducerRegistry`（模式校验）且被 `AuthorityRule` 允许；P7 只提供构建器，**最终权限配置属 host** | authority.py L550 `check_authority`（首匹配规则拍板、无 fall-through、L550–600 语义） | test_authority_host.py + A18/A19 |
 | P7-INV-7 | **诊断码闭集**：P7 本地载体 `DynamicsDiagnostic` + 8 码闭集，与 P5 18 码、P6 21 码**机械不相交** | D-P6-21 先例（RuntimeDiagnostic 本地载体，prompts/diagnostic.py L21/L57）；P5 DIAGNOSTIC_CODES L112 | test_diagnostic.py t3–t5 + A20（集合交集断言） |
 | P7-INV-8 | **关键状态可检查 + 确定性（K7 行；确定性双跑 = 扩展面，D-P6-19 先例口径）**：零 `random`、零墙钟、零模块级可变状态；RuleDynamics / toy 双跑 byte-identical；LLM 在 scripted fake 下双跑 byte-identical；metadata 双构造稳定 | K7（Spec L326–328：关键 runtime 状态 MUST NOT 藏于不可序列化 continuation）；P6 SOT §2 K7 行 / D-P6-19 先例 | §5 A15–A17 + §6.3 AD-4（模块级可变状态 AST 扫描）+ test_toy_rigid.py t13（AST 无 random import） |
@@ -282,7 +282,7 @@ src/engine_v2/dynamics/
 
 ```python
 DETERMINISM_CLASSES: Final[tuple[str, ...]] = ("deterministic", "seeded", "nondeterministic")
-IMPLEMENTATION_TYPES: Final[tuple[str, ...]] = ("rule", "llm", "numerical", "composite")
+IMPLEMENTATION_TYPES: Final[tuple[str, ...]] = ("rule", "inference", "numerical", "composite")
 FIDELITY_PATTERN: Final[str] = r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$"   # 名字型（点分）；Spec §15.4 描述性口径（D-P7-03）
 STIMULUS_KINDS: Final[tuple[str, ...]] = ("event", "external")
 ```
@@ -527,7 +527,7 @@ Protocol）, config: LLMWorldDynamicsConfig, clock: MonotonicClock)`。
    ≤ `max_repair_retries`）；再败 → 诊断 `p7.wire_parse_failed`
    （schema 层败 → `p7.wire_schema_invalid`）+ 返回 ()。
 5. 映射 wire → `ProposedEffect`：`effect_id =
-   new_deterministic_effect_id("llm", index, context.base_revision,
+   new_deterministic_effect_id("inference", index, context.base_revision,
    wire.effect_type, wire.entity_id)`；`source=config.producer_id`；
    **`cause_ids = tuple(s.stimulus_id for s in stimuli)`**（K6：
    producer id + cause_ids 溯源链）；`authority_scope=None`（K4：
@@ -536,7 +536,7 @@ Protocol）, config: LLMWorldDynamicsConfig, clock: MonotonicClock)`。
 `metadata()` → `BackendMetadata(backend_id="llm_world_dynamics",
 producer_id=config.producer_id, domains=sorted(config.domains),
 determinism="nondeterministic"（保守声明：对任意注入 backend 成立）,
-implementation_type="llm", fidelity=config.fidelity,
+implementation_type="inference", fidelity=config.fidelity,
 checkpointable=True（无本地状态）, restorable=True,
 replayable=False（真实推理不可重放）)`。
 
@@ -741,7 +741,7 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
 - **问题**：Spec §15.4 metadata 是 SHOULD；载体形态未定。
 - **选择**：frozen dataclass `BackendMetadata`（§3.1）；闭集：
   `determinism ∈ {deterministic, seeded, nondeterministic}`、
-  `implementation_type ∈ {rule, llm, numerical, composite}`（frozen 模块导出
+  `implementation_type ∈ {rule, inference, numerical, composite}`（frozen 模块导出
   常量）；**fidelity = 名字型描述串**（FIDELITY_PATTERN）——Spec 示例
   `rigid_body_2d`/`semantic` 是描述性值，闭集化会锁死 Spec 留白（自裁
   边界，OI 级风险已入 R 表——无，fidelity 不影响判定面）。
@@ -1319,3 +1319,12 @@ capabilities:
      `git diff --name-only e816a64..HEAD -- src tests scripts`（commit-vs-
      commit；标准 gate 流程下与原 commit-vs-worktree 表述等价）。
   12. (F-R1-1-INFO-1/F-R1-2-INFO-3) `DECISION_PAYLOAD_KEYS` ~L72→L71（§2.1）。
+- **ERR-P7-02**（W1 开发期闭合：W1 dev 报告 SOT 内部张力——§3.1 钉死
+  `IMPLEMENTATION_TYPES` 含字符串字面量 `"llm"`，与 §3.9 第 3 法 K8 12 名
+  零命中（冻结 P4/P6 标定，docstring/字符串面含裸词 = 命中）不可同时满足。
+  Leader 裁定：K8 标定不可削弱（P4 黑名单本体 + P6 双口径 0 命中先例）；
+  闭集成员值是 P7 设计选择，设计期可改名。`llm` → `inference`（K8-clean；
+  与 Spec §5.4 `inference_profiles` 域词汇同源）。修正 5 处（P7-INV-5 /
+  §3.1 L285 / §3.5 effect-ID 部件 + 构造示例 / D-P7-03）。W1 波代码按 dev 报告
+  仍物化 `"llm"`（§3.1 旧字面量逐字实现）→ W1 评审按修正后 SOT 验收，
+  代码侧改名走 W1 修正轮。`"inference"` 不含任何 12 名（双 `\b` 正则自验）。
