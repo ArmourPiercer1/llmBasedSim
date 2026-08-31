@@ -806,7 +806,7 @@ K1-K8 全文见 Spec:242-339。P6 是**读世界视图 → 产新值（提案/�
 | 文件 | 函数数 | 覆盖要点 |
 |---|---|---|
 | tests/engine_v2/llm/test_profiles.py | 10 | TIER_SCALE 单调性 2 断言合并 1 函数；REASONING_CLASSES/ORDER 封闭 1；tier_level 正反 2；ModelCapabilityProfile 形状违例（forbid 未知键 / tier 越界 / ctx 低于档下限 / structured_output 档要求缺失 / reasoning_class 低于档下限）5；CAPABILITY_RE 正反 1 → 共 10 |
-| tests/engine_v2/llm/test_deployment.py | 12 | DEPLOYMENT_ENV_POINTER 负例自检 1；resolve_deployment_path 三态 3（显式/env/None）；load_deployment 缺失 1；解析错 1；键≠model_id 1；pattern 违规（api_key_env 小写 / 超长）1；model 未声明 1；fallbacks 未声明 1；load_deployment_auto 三态 1；resolve_api_key 命中/缺失 1；诊断确定性序 1 → 12 |
+| tests/engine_v2/llm/test_deployment.py | 12 | DEPLOYMENT_ENV_POINTER 负例自检 1；resolve_deployment_path 三态 3（显式/env/None）；load_deployment 缺失 1；解析错 1；键≠model_id 1；pattern 违规（api_key_env 小写 / 超长）1；model 未声明 1；fallbacks 未声明 1；load_deployment_auto 三态 1（resolve_api_key 命中/缺失断言并入，W1 实现面，ERR-P6-1）；诊断确定性序 1 → 12 |
 | tests/engine_v2/llm/test_router.py | 12 | 无 capability 1；MODEL_UNDECLARED 跳过 1；TIER_MISMATCH 显式失败 1；BELOW_IDEAL warning 不阻断 1；primary 胜出 1；fallback 序（primary 不达标 → fallback 1 达标，resolved_via="fallback:1"）1；多 fallback 首个满足者胜 1；candidates_for 空/序 1；meets_tier 边界 1；resolved_via 编码 1；诊断序 (code,path,refs) 1；不跨 capability 借用 1 → 12 |
 | tests/engine_v2/llm/test_adapter.py | 12 | FixedMonotonicClock 递增 1；WireMessage 形状 1；InferenceRequest 构造面 1；Httpx：endpoint 缺失 1；credential 缺失 1；成功（MockTransport）1；非 2xx 1；malformed 1；transport 异常 1；credential 值不进异常 message 1；Fake：脚本命中/缺省/calls 序列 1；双 Backend 确定性 1 → 12 |
 | tests/engine_v2/llm/test_structured.py | 12 | extract 三族正例 3；extract 无 JSON 1；extract fence 内非 JSON 1；parse 成功/失败 2；extra="ignore" 容忍 1；confidence 越界 1；repair_instruction 确定性 1；make_action_proposal 全字段映射 1；proposal_id 确定性（同入同出 + 异 tick 异出）1；valid_until 透传 1 → 12 |
@@ -1027,4 +1027,4 @@ K1-K8 全文见 Spec:242-339。P6 是**读世界视图 → 产新值（提案/�
 
 ## §9 勘误
 
-（初始无）
+ERR-P6-1（W1 开发前文档面修正 + 实现边界注）：(a) §6.1 `test_deployment` 行原面列 11 项合计 13 函数却标「→ 12」（行内自相矛盾，§8.3 方程 4 钉死 12）；W1 实现裁定：`resolve_api_key` 命中/缺失断言并入 `test_load_deployment_auto_three_states`（env 语境最近），诊断确定性序保持独立函数 → 函数数恰 12，与表头/方程 4 一致；该行原位修正（原「resolve_api_key 命中/缺失 1」独立项删除）。(b) pydantic 2.13.4 实测：模型级 `model_validator(mode="after")` 违例的 error `loc` = 空元组；`load_deployment` 的 `LLMSIM_RESOLVER_DEPLOYMENT_PARSE` refs 点分串对空 loc 记哨兵 `<root>`（本档未规定该边界，字段级违例 loc 正常点分不受影响）；接受，不复议。
