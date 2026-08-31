@@ -167,12 +167,13 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 | `validation.py` | `EffectValidator` L699（7 阶段固定管道；阶段 3：语义 effect 的 payload "由 handler 约定，本阶段不查"；阶段 7：语义型需 `EffectHandlerRegistry` 已注册，否则 `no_handler` 过滤） | 语义 effect 走公约注册 |
 | `reducer.py` | `EffectHandler` L609（`Callable[[WorldState, ProposedEffect], WorldState]` 纯函数）；`EffectHandlerRegistry` L695（`register` L717 公开，"P5+ 模块"扩展位；`resolve` L730）；`default_handler_registry` L743（7 结构 handler 预注册） | Case A/B 的 `gem.moved`/`gem.fell` handler 由**测试侧**经 `register` 注入 |
 | `snapshot.py` | `Snapshot` L73（frozen ContractModel 信封：snapshot_format_version/contract_schema_version/world_instance_id/world_state/runtime_state/created_logical_tick/**created_wall_time**/project_version/module_versions）；`snapshot()` L110（纯函数，零别名深拷）；`restore_snapshot` L150 | P7 `WorldSnapshot` 的投影源（**丢弃 wall_time**，D-P7-14）。注意：`snapshot` 小写名不在包级 `__all__`（shadowing 豁免）→ 必须 `from src.engine_v2.core.snapshot import snapshot` |
-| `state.py` | `WorldState` L246（schema_version/world_revision/entities/world_variables/scenario_state） | 快照投影 + 纯函数输入 |
-| `ids.py` | `PRODUCER_ID_PATTERN` L77（`[a-z0-9_]+(\.[a-z0-9_]+)*`）；`ProducerId` L189；`EntityId` L108（`ent_`+32 hex）；`new_effect_id` L227（`eff_`+uuid4 —— **K7 禁用**，P7 用确定性工厂，D-P7-04/12） | producer/effect ID 词法 |
+| `state.py` | `WorldState` L246（schema_version/world_revision/entities/world_variables/scenario_state）；`RuntimeState` L192 | 快照投影 + 纯函数输入 |
+| `entity.py` | `EntityRecord` L115 | 实体记录（测试面夹具装配） |
+| `ids.py` | `PRODUCER_ID_PATTERN` L77（`[a-z0-9_]+(\.[a-z0-9_]+)*`）；`EffectId` L119；`ProducerId` L189；`EntityId` L108（`ent_`+32 hex）；`new_effect_id` L227（`eff_`+uuid4 —— **K7 禁用**，P7 用确定性工厂，D-P7-04/12） | producer/effect ID 词法 |
 | `provenance.py` | `OriginKind` L41–55（含 `DYNAMICS_BACKEND`）；`Provenance` L58；`CauseKind` L77；`CauseRef` L97 | K6：事务 origin + effect cause_ids |
 | `serialization.py` | `assert_json_clean` L82 | JSON-clean 机械口 |
 | `trace.py` | `DECISION_PAYLOAD_KEYS` L71；`LLM_CALL_PAYLOAD_KEYS` L76–88（9 键） | LLM 调用 trace 面（P6 约定，P7 不新增键） |
-| `components.py` | `ComponentTypeId` L61 | `rigid` 组件类型 |
+| `components.py` | `ComponentTypeId` L61；`ComponentSchema` L127；`ComponentRegistry` L144 | `rigid` 组件类型 + 注册表（测试面装配） |
 | `scheduler.py` | `Scheduler` L550；`submit_proposal` L1520（**只收 ActionProposal**）；`WakeupHook` L316–336（返回 `Sequence[ActionProposal]`）；纪律段 L105–111 | 扩展点核验（§2.4）：无 dynamics 入口 → host driver 方案 |
 | `clock.py` | `LogicalClock` L77 | 逻辑刻（快照投影携带） |
 | `events.py` | `DomainEvent` L111 | 已提交 effect 1:1 事件面 |
@@ -263,7 +264,10 @@ src/engine_v2/dynamics/
     v1 五根（src.game/src.config/src.agents/src.llm/src.prompts）；
     任何其他 `engine_v2` 模块（core/llm/content 未列符号 = 禁；测试面另受下行扩展面约束）。
   - **测试文件扩展允许面**（仅 `tests/engine_v2/dynamics/**`）：`src.engine_v2.llm.deployment`
-    （`load_deployment`，加载 §6.4 p7_deployment fixture）；其余 P6 模块测试亦不 import
+    （`load_deployment` + `DeploymentProfile`，§6.4 fixture 装载）；`src.engine_v2.prompts.diagnostic`
+    （`P6_RUNTIME_DIAGNOSTIC_CODES`，P7-INV-7/A20 不相交断言强制）；`src.engine_v2.content.loader`
+    （`load_project`，§6.2 p7_game 夹具，§2.3 消费面）；测试 scope stdlib 增补 `ast`/`pathlib`
+    （K7/AD-4 AST 扫描 + fixture 路径）；其余 engine_v2 模块测试不 import
     （fake backend 直接注入，capability→部署解析不属 P7 验收面）。
   - 机械验证：TestP7Boundary 第 1 法（AST import 白名单，闭集）。
 - 命名纪律（K8，§3.9 第 3 法；实现镜像 P6 §3.12 第 2 法，`test_import_boundary.py` L1060–1093）：P7 src + tests 的字符串字面量（**含 docstring**）
@@ -399,7 +403,7 @@ separators=(",", ":"))`。满足 EffectId 词法（`eff_`+32 hex），
 
 **`DynamicsDiagnostic`**（frozen pydantic `extra="forbid"`；ERR-P6-10(a)
 JSON-clean twin 模式，镜像 `prompts/diagnostic.py` L21 RuntimeDiagnostic）：
-字段 `code: str` / `severity: str`（词表 = P5 `DiagnosticSeverity` L102）/
+字段 `code: str` / `severity: DiagnosticSeverity`（str-Enum，P5 `DiagnosticSeverity` L102 复用；pydantic 对字符串输入强制转 enum，越词表值构造期拒）/
 `path: str` / `message: str` / `refs: tuple[str, ...]`；
 `model_validator` 拒 `code ∉ P7_DYNAMICS_DIAGNOSTIC_CODES`；
 `model_dump(mode="json")` 必须 `assert_json_clean` 过。
@@ -1070,7 +1074,7 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
 | AD-1 | JSON-clean 负 | `Stimulus(payload={"k": object()})` → `DynamicsError`（构造期拒绝）；`Stimulus(payload={"k": float("nan")})` → 拒绝（nan 非 JSON-clean 值） |
 | AD-2 | wire 负 | fake 返回含非 JSON 值的 payload wire → `model_validate` 败 → 诊断 `p7.wire_schema_invalid` + 返回 ()（**不抛穿**到 host） |
 | AD-3 | K8 拼接自豁免禁 | AST 扫描 P7 src 8 文件：无 `ast.BinOp(Add)` 之 str 常量对，其拼接结果 casefold 后命中 12 名任一（`"op"+"enai"` 型自豁免 = 红） |
-| AD-4 | 模块级可变状态 | P7 src 8 文件 AST：模块级 `Assign`/`AnnAssign` 目标值**无** list/dict/set/bytearray 字面量（`Final` 常量与 dataclass/函数/Protocol 定义豁免） |
+| AD-4 | 模块级可变状态 | P7 src 8 文件 AST：模块级 `Assign`/`AnnAssign` 目标值**无** list/dict/set/bytearray 字面量（`Final` 常量、`__all__` 模块导出账本与 dataclass/函数/Protocol 定义豁免） |
 | AD-5 | 冻结负 | `WorldSnapshot` 实例字段赋值 → `FrozenInstanceError`；`BackendMetadata` 同 |
 | AD-6 | checkpoint 篡改 | `restore({"version":1,"seed":"not_int"})` / `restore({"version":2,"seed":0})` → `DynamicsError`（+ 运行面诊断 `p7.checkpoint_restore_failed` 可达） |
 | AD-7 | @field 单级解析 | `emit_payload` 值为 `@field:` 引用且目标组件字段本身含 `@field:` 串 → **不递归**（字面透传）；引用不存在 → `DynamicsError` |
@@ -1328,3 +1332,23 @@ capabilities:
   §3.1 L285 / §3.5 effect-ID 部件 + 构造示例 / D-P7-03）。W1 波代码按 dev 报告
   仍物化 `"llm"`（§3.1 旧字面量逐字实现）→ W1 评审按修正后 SOT 验收，
   代码侧改名走 W1 修正轮。`"inference"` 不含任何 12 名（双 `\b` 正则自验）。
+- **ERR-P7-03**（W1 R1 闭合：4/4 SUPPLEMENT、0 BLOCK；唯一实质 = ERR-P7-02
+  待修面，另 6 项 DOC 级 SOT 自洽修正，均零代码影响）：
+  1. (F-W1R1-1-SUP-1 ×4 评审) 唯一 SUPPLEMENT = backend.py L65 旧 `"llm"` 字面量
+     （ERR-P7-02 待修面；4 评审一致：改名 + t9 扩为 4 元组精确等断言以机械钉死
+     第四成员）。代码侧修正走 W1 修正轮（commit 见 git log）。
+  2. (F-W1R1-1-DOC-1/F-W1R1-2-DOC×2) §3.0 测试扩展允许面补全：
+     `llm.deployment` 增 `DeploymentProfile`；增 `prompts.diagnostic`
+     （`P6_RUNTIME_DIAGNOSTIC_CODES`，P7-INV-7/A20 强制消费）；增 `content.loader`
+     （`load_project`，§6.2 p7_game 夹具）；测试 scope stdlib 增补 `ast`/`pathlib`。
+  3. (F-W1R1-2-DOC×1/F-W1R1-3-DOC×1) §2.1 表补 W1 实际消费符号：ids.py
+     `EffectId` L119；components.py `ComponentSchema` L127 / `ComponentRegistry` L144；
+     state.py `RuntimeState` L192；新增 entity.py 行 `EntityRecord` L115。
+  4. (F-W1R1-2-DOC×1/F-W1R1-4-DOC×1) §6.3 AD-4 豁免列补 `__all__` 模块导出账本
+     （SOT 自相矛盾修正：__all__ 为 §3.x/§8.2 强制的模块级 Assign，原豁免列
+     字面落红面）。
+  5. (F-W1R1-1-DOC-2) §3.2 severity 字段口径：`str` → `DiagnosticSeverity`
+     （str-Enum，P5 复用；pydantic 强制转换已探针验证）。
+  6. (F-W1R1-2-DOC×1/F-W1R1-3-DOC×1) 测试文件模块 docstring 全局续编号
+     （t13–t25/t26–t33）与 §6.1 逐文件编号（t1–t13/t1–t8）不一致 → W1 修正轮
+     顺带改 docstring（函数名 33/33 逐字一致，零机械影响）。
