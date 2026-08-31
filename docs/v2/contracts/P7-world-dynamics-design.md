@@ -295,7 +295,13 @@ src/engine_v2/dynamics/
     `src.engine_v2.core.authority`（`AuthorityDecision` + `check_authority`，
     W4 测试面：纯 authority 面（A18/t5）断言，ERR-P7-11）；`src.engine_v2.core.reducer`
     （`uninstall_write_barrier`，W4 测试面：autouse `_barrier_isolation`
-    屏障隔离夹具，ERR-P7-12）；测试 scope stdlib
+    屏障隔离夹具，ERR-P7-12）；`src.engine_v2.core.conflicts`
+    （`detect_conflicts` + `resolve_conflicts` + `ResolutionContext` +
+    `ConflictAction`，W5 测试面：g7 A6/A7 冲突/裁决断言，ERR-P7-13）；
+    `src.engine_v2.core.entity`（`EntityRecord`，W5 测试面：AD-7 本地世界
+    构造，ERR-P7-13）；`tests.engine_v2.core.test_import_boundary`
+    （`P4_LLM_PROVIDER_BLACKLIST`，W5 测试面：AD-3 12 名闭集复用——零字面量
+    自持，锚点模块顶层零副作用，ERR-P7-13）；测试 scope stdlib
     增补 `ast`/`pathlib`
     （K7/AD-4 AST 扫描 + fixture 路径）；其余 engine_v2 模块测试不 import
     （fake backend 直接注入，capability→部署解析不属 P7 验收面）。
@@ -726,7 +732,7 @@ origin: Provenance) -> DynamicsTurn`**（**P7 自持组装点**，§2.4 结论�
 | 2 | `test_p7_test_files_closed` | P7_TEST_FILES | 测试扫描面 == 12 文件（含 conftest + __init__），与磁盘目录双向相等 |
 | 3 | `test_p7_k8_string_literals` | 字符串字面量面 20 文件（8 src + 12 tests，**锚点文件除外**——其含 P4 黑名单字面量本体） | 12 名闭集（复用 `P4_LLM_PROVIDER_BLACKLIST` L225–240）：`ast.parse` → walk `ast.Constant` str（**含 docstring**）→ `casefold()` → `re.search(rf"\b{re.escape(w)}\b")` 零命中；负锚探针 "llmsim"/"api_key_env" 必须不命中（先例 L1060–1093 同款） |
 | 4 | `test_p7_kernel_agnostic_and_sync` | core/** 全量 + P7 src | (a) core 任何文件零命中 `engine_v2.dynamics` / P7 类型名（双向 grep）；(b) P7 src 零 `await` 语法、零 `async def`（`ast.AsyncFunctionDef` 零命中） |
-| 5 | `test_p7_whitelist_diff` | git @ 基线 e816a64（wave 提交后、工作树干净） | wave 提交后 `git diff --name-only e816a64..HEAD -- src tests scripts` == 白名单 23 文件（不多不少；docs/ 依设计不入白名单）；`dynamics/__init__.py` 不在 diff（基线已存在） |
+| 5 | `test_p7_whitelist_diff` | git @ 基线 e816a64（wave 提交后、工作树干净） | wave 提交后 `git diff --name-only e816a64..HEAD -- src tests scripts` == 白名单 23 文件（不多不少；docs/ 依设计不入白名单）；`dynamics/__init__.py` 不在 diff（基线已存在）。**pytest 内镜像口径（ERR-P7-13）**：边界文件零 subprocess 先例（P1–P6 锚点从未起进程）下，方法 5 在 pytest 侧以目录封闭镜像承载（23 文件全存在 + src dynamics/ 封闭 8 + 骨架 `__init__` + tests dynamics/ 封闭 12 + fixtures 2 文件），字面 `git diff --name-only` == 23 由 G7 gate ③ Leader bash 执行（§3.10 步 3）——wave 提交点两口径等价 |
 | 6 | `test_p7_export_ledger` | 8 个 P7 src 模块 | 每模块 `__all__` == §3 各节账本（集合相等 + 顺序相等）；总 35 名 |
 
 ### 3.10 波次计划、封闭白名单与 gate 运行序
@@ -1619,3 +1625,17 @@ capabilities:
      test_host_driver core import——byte-truth = 12 个 core 符号（不含
      ProposedEffect；该符号在 test_authority_host / test_composite 面）——
      brief = Leader scratch 面，仓库面不重开。
+- **ERR-P7-13**（W5 预评审口径（Leader SOT 调整，W5 波 `d598cfb` 交付后、
+  R1 评审派发前；零代码影响）：
+  1. §3.0 测试扩展允许面显式补列 W5 测试面 3 项：`src.engine_v2.core.conflicts`
+     （`detect_conflicts` + `resolve_conflicts` + `ResolutionContext` +
+     `ConflictAction`，g7 A6/A7 冲突/裁决断言）；`src.engine_v2.core.entity`
+     （`EntityRecord`，AD-7 本地世界构造）；`tests.engine_v2.core.test_import_boundary`
+     （`P4_LLM_PROVIDER_BLACKLIST`，AD-3 12 名闭集复用——零字面量自持，锚点
+     模块顶层零副作用已核）——ERR-P7-11/12 同款闭集枚举完整性，R1 前预对齐。
+  2. §3.9 方法 5 pytest 内镜像口径：边界文件零 subprocess 先例（锚点 P1–P6
+     从未起进程）下，方法 5 pytest 侧以目录封闭镜像承载（23 文件全存在 +
+     src dynamics/ 封闭 8 + 骨架 `__init__` + tests dynamics/ 封闭 12 +
+     fixtures 2 文件）；字面 `git diff --name-only e816a64..HEAD -- src tests
+     scripts == 23` 由 G7 gate ③ Leader bash 执行（§3.10 步 3）——wave 提交
+     点两口径等价。
