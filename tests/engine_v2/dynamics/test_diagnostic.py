@@ -20,7 +20,7 @@ from src.engine_v2.prompts.diagnostic import P6_RUNTIME_DIAGNOSTIC_CODES
 
 
 def test_diagnostic_valid_construction() -> None:
-    """t26：合法构造（ERROR 带 refs / WARNING 缺省 refs 空元组）。"""
+    """t1：合法构造（ERROR 带 refs / WARNING 缺省 refs 空元组）。"""
     d = DynamicsDiagnostic(
         code="p7.budget_exhausted",
         severity=DiagnosticSeverity.ERROR,
@@ -39,7 +39,7 @@ def test_diagnostic_valid_construction() -> None:
 
 
 def test_diagnostic_rejects_foreign_code() -> None:
-    """t27：闭集外 code（P8 面 / P5 面 / 拼错 / 空串）→ ValidationError。"""
+    """t2：闭集外 code（P8 面 / P5 面 / 拼错 / 空串）→ ValidationError。"""
     for bad in ("p8.stimulus_rejected", "LLMSIM_INFERENCE_HTTP", "p7.not_a_code", ""):
         with pytest.raises(ValidationError):
             DynamicsDiagnostic(
@@ -51,7 +51,7 @@ def test_diagnostic_rejects_foreign_code() -> None:
 
 
 def test_codes_set_exact_eight() -> None:
-    """t28：P7 码集 = 8 码精确面（SOT 表序成员，无多无缺）。"""
+    """t3：P7 码集 = 8 码精确面（SOT 表序成员，无多无缺）。"""
     assert len(P7_DYNAMICS_DIAGNOSTIC_CODES) == 8
     assert set(P7_DYNAMICS_DIAGNOSTIC_CODES) == frozenset(
         {
@@ -68,18 +68,18 @@ def test_codes_set_exact_eight() -> None:
 
 
 def test_codes_disjoint_from_p5() -> None:
-    """t29：P7 码集与 P5 18 码（``DIAGNOSTIC_CODES``）机械不相交。"""
+    """t4：P7 码集与 P5 18 码（``DIAGNOSTIC_CODES``）机械不相交。"""
     assert P7_DYNAMICS_DIAGNOSTIC_CODES & DIAGNOSTIC_CODES == frozenset()
 
 
 def test_codes_disjoint_from_p5_and_p6() -> None:
-    """t30（A20）：P7 码集与 P5 18 码 + P6 21 码双不相交（机械面）。"""
+    """t5（A20）：P7 码集与 P5 18 码 + P6 21 码双不相交（机械面）。"""
     assert P7_DYNAMICS_DIAGNOSTIC_CODES & P6_RUNTIME_DIAGNOSTIC_CODES == frozenset()
     assert P7_DYNAMICS_DIAGNOSTIC_CODES & DIAGNOSTIC_CODES == frozenset()
 
 
 def test_diagnostic_extra_forbid() -> None:
-    """t31：extra="forbid" + frozen（未知字段 / 赋值均拒绝）。"""
+    """t6：extra="forbid" + frozen（未知字段 / 赋值均拒绝）。"""
     with pytest.raises(ValidationError):
         DynamicsDiagnostic(
             code="p7.budget_exhausted",
@@ -99,7 +99,7 @@ def test_diagnostic_extra_forbid() -> None:
 
 
 def test_diagnostic_dump_json_clean() -> None:
-    """t32：``model_dump(mode="json")`` 面过 JSON-clean 铁律 + 可序列化。"""
+    """t7：``model_dump(mode="json")`` 面过 JSON-clean 铁律 + 可序列化。"""
     d = DynamicsDiagnostic(
         code="p7.checkpoint_restore_failed",
         severity=DiagnosticSeverity.ERROR,
@@ -114,7 +114,7 @@ def test_diagnostic_dump_json_clean() -> None:
 
 
 def test_diagnostic_severity_vocab() -> None:
-    """t33：severity 词表 = {error, warning}；闭集外值拒绝。"""
+    """t8：severity 词表 = {error, warning}；闭集外值拒绝。"""
     assert {s.value for s in DiagnosticSeverity} == {"error", "warning"}
     with pytest.raises(ValidationError):
         DynamicsDiagnostic(

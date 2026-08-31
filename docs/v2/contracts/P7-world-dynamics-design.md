@@ -266,7 +266,9 @@ src/engine_v2/dynamics/
   - **测试文件扩展允许面**（仅 `tests/engine_v2/dynamics/**`）：`src.engine_v2.llm.deployment`
     （`load_deployment` + `DeploymentProfile`，§6.4 fixture 装载）；`src.engine_v2.prompts.diagnostic`
     （`P6_RUNTIME_DIAGNOSTIC_CODES`，P7-INV-7/A20 不相交断言强制）；`src.engine_v2.content.loader`
-    （`load_project`，§6.2 p7_game 夹具，§2.3 消费面）；测试 scope stdlib 增补 `ast`/`pathlib`
+    （`load_project`，§6.2 p7_game 夹具，§2.3 消费面）；`src.engine_v2.content.schemas`
+    （`DIAGNOSTIC_CODES` + `DiagnosticSeverity`，§5.3 A20/t4/t5 P5/P6 码集机械不相交断言，
+    ERR-P7-04）；测试 scope stdlib 增补 `ast`/`pathlib`
     （K7/AD-4 AST 扫描 + fixture 路径）；其余 engine_v2 模块测试不 import
     （fake backend 直接注入，capability→部署解析不属 P7 验收面）。
   - 机械验证：TestP7Boundary 第 1 法（AST import 白名单，闭集）。
@@ -1352,3 +1354,14 @@ capabilities:
   6. (F-W1R1-2-DOC×1/F-W1R1-3-DOC×1) 测试文件模块 docstring 全局续编号
      （t13–t25/t26–t33）与 §6.1 逐文件编号（t1–t13/t1–t8）不一致 → W1 修正轮
      顺带改 docstring（函数名 33/33 逐字一致，零机械影响）。
+- **ERR-P7-04**（W1 R2 闭合：4/4 PASS、0 SUPPLEMENT/BLOCK；2 项 DOC 级，零代码功能影响）：
+  1. (F-W1R2-1-DOC-2/F-W1R2-2-DOC-2/F-W1R2-3-DOC-2) §3.0 测试扩展允许面补
+     `src.engine_v2.content.schemas`（`DIAGNOSTIC_CODES` + `DiagnosticSeverity`，
+     §5.3 A20/t4/t5 P5/P6 码集机械不相交断言）——两个测试文件实际 import
+     （test_diagnostic.py L16 / test_toy_rigid.py L24）未列入原表；不补则 W5
+     TestP7Boundary 第 1 法（AST import 白名单）必红。
+  2. (F-W1R2-1-DOC-1/F-W1R2-2-DOC-1/F-W1R2-3-DOC-1/F-W1R2-4-DOC-1) ERR-P7-03
+     条目 6 修面残留：W1 修正轮仅改 L1 模块 docstring，函数级 docstring 仍为旧
+     全局续编号 → test_toy_rigid.py 13 处 t13–t25 重编 t1–t13；
+     test_diagnostic.py 8 处 t26–t33 重编 t1–t8（纯 docstring 改动，零
+     断言/命名影响；Leader 文档一致性面修正）。

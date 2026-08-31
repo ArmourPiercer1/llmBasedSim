@@ -72,7 +72,7 @@ def _effects_json(ty: ToyRigidDynamics, snap: WorldSnapshot, ctx: DynamicsContex
 
 
 def test_toy_constant_velocity_integration() -> None:
-    """t13：匀速积分（acc=0）——payload 恰含 pos/vel 两键（无 acc）。"""
+    """t1：匀速积分（acc=0）——payload 恰含 pos/vel 两键（无 acc）。"""
     world = _toy_world({"a": {RIGID_COMPONENT: {"pos": 0.0, "vel": 2.0, "acc": 0.0}}})
     ctx = DynamicsContext(base_revision=0, dt=0.5)
     effects = ToyRigidDynamics().simulate(_snapshot(world), (), ctx)
@@ -81,7 +81,7 @@ def test_toy_constant_velocity_integration() -> None:
 
 
 def test_toy_acceleration_integration() -> None:
-    """t14：加速积分（acc=9.8, dt=0.5）——vel 端点取半步值。"""
+    """t2：加速积分（acc=9.8, dt=0.5）——vel 端点取半步值。"""
     world = _toy_world({"a": {RIGID_COMPONENT: {"pos": 0.0, "vel": 0.0, "acc": 9.8}}})
     ctx = DynamicsContext(base_revision=0, dt=0.5)
     effects = ToyRigidDynamics().simulate(_snapshot(world), (), ctx)
@@ -90,7 +90,7 @@ def test_toy_acceleration_integration() -> None:
 
 
 def test_toy_multi_entity_sorted_order() -> None:
-    """t15：多实体 → 效果按 entity_id 字典序（K7 确定性排序面）。"""
+    """t3：多实体 → 效果按 entity_id 字典序（K7 确定性排序面）。"""
     world = _toy_world(
         {
             "b": {RIGID_COMPONENT: {"pos": 1.0, "vel": 1.0, "acc": 0.0}},
@@ -105,14 +105,14 @@ def test_toy_multi_entity_sorted_order() -> None:
 
 
 def test_toy_no_rigid_component_empty() -> None:
-    """t16：无 ``rigid`` 组件实体 / 空世界 → 空效果元组。"""
+    """t4：无 ``rigid`` 组件实体 / 空世界 → 空效果元组。"""
     world = _toy_world({"g": {ComponentTypeId("gem_state"): {"moved": False}}})
     assert ToyRigidDynamics().simulate(_snapshot(world), (), DynamicsContext(base_revision=0)) == ()
     assert ToyRigidDynamics().simulate(_snapshot(WorldState()), (), DynamicsContext(base_revision=0)) == ()
 
 
 def test_toy_effect_shape_set_component() -> None:
-    """t17：效果形状——``core.set_component`` + EntityTarget(rigid) + 2 键 payload。"""
+    """t5：效果形状——``core.set_component`` + EntityTarget(rigid) + 2 键 payload。"""
     world = _toy_world({"a": {RIGID_COMPONENT: {"pos": 0.5, "vel": -1.0, "acc": 0.0}}})
     ctx = DynamicsContext(base_revision=7, dt=1.0)
     effects = ToyRigidDynamics().simulate(_snapshot(world), (), ctx)
@@ -127,7 +127,7 @@ def test_toy_effect_shape_set_component() -> None:
 
 
 def test_toy_effect_id_deterministic() -> None:
-    """t18：效果 id = ``new_deterministic_effect_id("rigid", eid, base_revision)``。"""
+    """t6：效果 id = ``new_deterministic_effect_id("rigid", eid, base_revision)``。"""
     world = _toy_world({"a": {RIGID_COMPONENT: {"pos": 0.0, "vel": 1.0, "acc": 0.0}}})
     ctx = DynamicsContext(base_revision=3, dt=1.0)
     toy = ToyRigidDynamics()
@@ -140,7 +140,7 @@ def test_toy_effect_id_deterministic() -> None:
 
 
 def test_toy_double_run_byte_identical() -> None:
-    """t19：双跑字节一致（K7 铁律：同一上下文两次 simulate 输出规范化同字节）。"""
+    """t7：双跑字节一致（K7 铁律：同一上下文两次 simulate 输出规范化同字节）。"""
     world = _toy_world(
         {
             "a": {RIGID_COMPONENT: {"pos": 0.0, "vel": 2.0, "acc": 1.5}},
@@ -154,7 +154,7 @@ def test_toy_double_run_byte_identical() -> None:
 
 
 def test_toy_metadata() -> None:
-    """t20：元数据 9 字段面（SOT §3.4 钉死值）。"""
+    """t8：元数据 9 字段面（SOT §3.4 钉死值）。"""
     meta = ToyRigidDynamics().metadata()
     assert meta.backend_id == "rigid_body"
     assert meta.producer_id == "rigid_body"
@@ -168,7 +168,7 @@ def test_toy_metadata() -> None:
 
 
 def test_toy_checkpoint_json_clean() -> None:
-    """t21：checkpoint 载荷 = {version, seed}，JSON-clean（版本常量联动）。"""
+    """t9：checkpoint 载荷 = {version, seed}，JSON-clean（版本常量联动）。"""
     default_cp = ToyRigidDynamics().checkpoint()
     assert default_cp == {"version": 1, "seed": 0}
     assert default_cp == {"version": TOY_CHECKPOINT_VERSION, "seed": 0}
@@ -177,7 +177,7 @@ def test_toy_checkpoint_json_clean() -> None:
 
 
 def test_toy_restore_roundtrip_continues() -> None:
-    """t22：restore 返回新实例、保持 checkpoint、双跑输出字节一致。"""
+    """t10：restore 返回新实例、保持 checkpoint、双跑输出字节一致。"""
     original = ToyRigidDynamics(seed=7)
     cp = original.checkpoint()
     restored = original.restore(cp)
@@ -190,7 +190,7 @@ def test_toy_restore_roundtrip_continues() -> None:
 
 
 def test_toy_restore_rejects_wrong_version() -> None:
-    """t23：版本不符 → DynamicsError + 记录 ``p7.checkpoint_restore_failed`` 诊断。"""
+    """t11：版本不符 → DynamicsError + 记录 ``p7.checkpoint_restore_failed`` 诊断。"""
     toy = ToyRigidDynamics()
     with pytest.raises(DynamicsError):
         toy.restore({"version": TOY_CHECKPOINT_VERSION + 1, "seed": 0})
@@ -201,7 +201,7 @@ def test_toy_restore_rejects_wrong_version() -> None:
 
 
 def test_toy_restore_rejects_non_json_clean() -> None:
-    """t24：非 JSON-clean checkpoint → DynamicsError + 诊断记录。"""
+    """t12：非 JSON-clean checkpoint → DynamicsError + 诊断记录。"""
     toy = ToyRigidDynamics()
     with pytest.raises(DynamicsError):
         toy.restore({"version": TOY_CHECKPOINT_VERSION, "seed": float("nan")})
@@ -224,7 +224,7 @@ def _is_final_annotation(annotation: ast.expr) -> bool:
 
 
 def test_toy_no_random_no_module_mutable_state() -> None:
-    """t25：AST 自证——无 ``random`` 导入；无模块级可变字面量（AD-4 豁免面）。"""
+    """t13：AST 自证——无 ``random`` 导入；无模块级可变字面量（AD-4 豁免面）。"""
     src_path = (
         pathlib.Path(__file__).resolve().parents[3] / "src" / "engine_v2" / "dynamics" / "toy_rigid.py"
     )
