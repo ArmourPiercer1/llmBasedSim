@@ -1229,3 +1229,395 @@ class TestP6Boundary:
             f"LLMPolicy 类体命中具体后端/时钟/网络面（B-CON-4，§3.12 方法 6）："
             f"{class_body_hits}"
         )
+
+# —— P7 扩展（P7 SOT §3.9 TestP7Boundary 6 法 / §3.10 白名单 23 文件 / §8.2
+# 导出账本 35 名；纯追加 Leader hunk，TestP6Boundary 同构；本文件进程无操作
+# 纪律：全部 6 法零 subprocess）——
+
+#: P7 src 8 模块（§3.10 白名单 #1-#3/#11/#13/#15-#17；skeleton
+#: ``dynamics/__init__.py`` 占位不在此列，基线 e816a64 已存在，gate ③
+#: ``git diff --stat`` 零）。
+P7_SRC_SUBMODULES: tuple[str, ...] = (
+    "backend",
+    "diagnostic",
+    "rule",
+    "toy_rigid",
+    "llm_world",
+    "composite",
+    "authority",
+    "host",
+)
+
+#: P7 测试扫描面（12 文件，封闭，含 ``__init__.py`` + conftest；SOT
+#: §3.9 方法 2 / E2 的 12 测试面）。
+P7_TEST_FILES: tuple[str, ...] = (
+    "__init__.py",
+    "conftest.py",
+    "test_backend_metadata.py",
+    "test_toy_rigid.py",
+    "test_diagnostic.py",
+    "test_rule_dynamics.py",
+    "test_llm_world.py",
+    "test_composite.py",
+    "test_authority_host.py",
+    "test_host_driver.py",
+    "test_g7_scenarios.py",
+    "test_p7_adversarial.py",
+)
+
+#: P7 白名单 23 文件（封闭，§3.10 表波次序 #1-23；gate ③ 的 pytest 内
+#: 闭集镜像，方法 5；docs/ 依设计不入白名单）。
+_P7_WHITELIST_23: tuple[str, ...] = (
+    "src/engine_v2/dynamics/backend.py",
+    "src/engine_v2/dynamics/diagnostic.py",
+    "src/engine_v2/dynamics/toy_rigid.py",
+    "tests/engine_v2/dynamics/__init__.py",
+    "tests/engine_v2/dynamics/conftest.py",
+    "tests/engine_v2/dynamics/test_backend_metadata.py",
+    "tests/engine_v2/dynamics/test_toy_rigid.py",
+    "tests/engine_v2/dynamics/test_diagnostic.py",
+    "tests/fixtures/v2_deployment_p7/deployment.yaml",
+    "tests/fixtures/v2_project_p7/game.yaml",
+    "src/engine_v2/dynamics/rule.py",
+    "tests/engine_v2/dynamics/test_rule_dynamics.py",
+    "src/engine_v2/dynamics/llm_world.py",
+    "tests/engine_v2/dynamics/test_llm_world.py",
+    "src/engine_v2/dynamics/composite.py",
+    "src/engine_v2/dynamics/authority.py",
+    "src/engine_v2/dynamics/host.py",
+    "tests/engine_v2/dynamics/test_composite.py",
+    "tests/engine_v2/dynamics/test_authority_host.py",
+    "tests/engine_v2/dynamics/test_host_driver.py",
+    "tests/engine_v2/dynamics/test_g7_scenarios.py",
+    "tests/engine_v2/dynamics/test_p7_adversarial.py",
+    "tests/engine_v2/core/test_import_boundary.py",
+)
+
+#: P7 导出账本（§8.2 序钉死；边界方法 6 集合 + 序双等机械核；总 35 名）。
+P7_EXPORT_LEDGER: dict[str, tuple[str, ...]] = {
+    "backend": (
+        "WorldSnapshot",
+        "Stimulus",
+        "STIMULUS_KINDS",
+        "DynamicsContext",
+        "InferenceBudget",
+        "BackendMetadata",
+        "DETERMINISM_CLASSES",
+        "IMPLEMENTATION_TYPES",
+        "FIDELITY_PATTERN",
+        "WorldDynamicsBackend",
+        "new_deterministic_effect_id",
+        "DynamicsError",
+    ),
+    "diagnostic": ("DynamicsDiagnostic", "P7_DYNAMICS_DIAGNOSTIC_CODES"),
+    "rule": ("WorldRule", "RuleDynamics", "RULE_CONDITION_OPERATORS"),
+    "toy_rigid": ("ToyRigidDynamics", "RIGID_COMPONENT", "TOY_CHECKPOINT_VERSION"),
+    "llm_world": (
+        "LLMWorldDynamics",
+        "LLMWorldDynamicsConfig",
+        "DynamicsProposalWire",
+        "DynamicsEffectWire",
+    ),
+    "composite": ("CompositeDynamics", "determinism_join"),
+    "authority": (
+        "P7_PRODUCER_IDS",
+        "RULE_DYNAMICS_PRODUCER",
+        "LLM_WORLD_DYNAMICS_PRODUCER",
+        "RIGID_BODY_PRODUCER",
+        "COMPOSITE_DYNAMICS_PRODUCER",
+        "build_dynamics_producers",
+        "default_dynamics_policy",
+    ),
+    "host": ("run_dynamics_turn", "DynamicsTurn"),
+}
+
+
+def _p7_ast_face() -> list[Path]:
+    """P7 方法 1 AST import 扫描面（21 文件 = 8 src + 12 tests + 1 锚点；
+    SOT §3.9 方法 1 / E6）。"""
+    src = [
+        REPO_ROOT / "src" / "engine_v2" / "dynamics" / f"{stem}.py"
+        for stem in P7_SRC_SUBMODULES
+    ]
+    tests = [TESTS_ENGINE_DIR / "dynamics" / name for name in P7_TEST_FILES]
+    anchor = TESTS_ENGINE_DIR / "core" / "test_import_boundary.py"
+    return src + tests + [anchor]
+
+
+def _p7_string_literal_face() -> list[Path]:
+    """P7 方法 3 字符串字面量扫描面（20 文件 = 21 − 锚点自身；SOT §3.9
+    方法 3 / E6：锚点含 12 名黑名单字面量本体（P4_LLM_PROVIDER_BLACKLIST），
+    P6 同款口径排除）。"""
+    anchor = TESTS_ENGINE_DIR / "core" / "test_import_boundary.py"
+    return [path for path in _p7_ast_face() if path != anchor]
+
+
+class TestP7Boundary:
+    """P7 import 边界强化（P7 SOT §3.9 6 法，机械验证；纯追加 Leader
+    hunk，TestP5Boundary/TestP6Boundary 同构；本文件零 subprocess 纪律）。
+
+    - 方法 1（``test_p7_import_whitelist``）：AST import 面 21 文件（8 src
+      + 12 tests + 1 锚点）全部绝对 import ∈ SOT §3.0 闭集白名单（模块根
+      面）；黑名单（asyncio/httpx/random/datetime/socket/urllib/requests/
+      subprocess + v1 五根 src.game/src.config/src.agents/src.llm/
+      src.prompts）零命中；零相对 import（模块面封闭）；
+    - 方法 2（``test_p7_test_files_closed``）：测试扫描面 == 12 文件（含
+      conftest + __init__），与磁盘目录双向相等；
+    - 方法 3（``test_p7_k8_string_literals``）：字符串字面量面 20 文件（锚
+      点除外）12 名闭集 casefold + 词边界零命中（``ast.Constant`` str 域
+      含 docstring，K8 口径）；探针串拼接构造自豁免，拼接集与
+      ``P4_LLM_PROVIDER_BLACKLIST`` 断言相等；负例锚 ``llmsim``/
+      ``api_key_env`` 不命中；
+    - 方法 4（``test_p7_kernel_agnostic_and_sync``）：(a) kernel 无感——
+      core/** 全量文件零命中 ``engine_v2.dynamics`` 包路径 / if-elif
+      字面 / 35 P7 export 名（35 名运行时自 8 模块 ``__all__`` 派生，与
+      §8.2 自动同步；已知合法面：core/state.py docstring 裸词
+      "dynamics"（backend_kind 词表说明）不在 token 集）；(b) P7 src 8
+      文件零 ``async def`` / ``await``（D-P7-01 同步面）；
+    - 方法 5（``test_p7_whitelist_diff``）：白名单 23 文件闭集断言
+      （gate ③ 的 pytest 内镜像，P6 方法 1 file_set_closed 口径：23 文件
+      全存在 + src dynamics/ 目录封闭 8 + 骨架 __init__ + tests
+      dynamics/ 封闭 12 + fixtures 2 文件；字面
+      ``git diff --name-only e816a64..HEAD -- src tests scripts == 23``
+      由 G7 gate ③ Leader bash 执行，§3.10 步 3——边界文件零 subprocess
+      先例下 pytest 侧以目录封闭镜像承载）；
+    - 方法 6（``test_p7_export_ledger``）：8 模块 ``__all__`` == §8.2
+      账本（集合 + 序双等）；总 35 名。
+    """
+
+    def test_p7_import_whitelist(self) -> None:
+        """方法 1：AST import 面 21 文件——绝对 import ∈ SOT §3.0 闭集
+        白名单（模块根面）；黑名单零命中；零相对 import。"""
+        allowed_roots = (
+            "__future__",
+            "ast",
+            "collections",
+            "dataclasses",
+            "hashlib",
+            "importlib",
+            "json",
+            "pathlib",
+            "re",
+            "sys",
+            "typing",
+            "pydantic",
+            "pytest",
+            "src.engine_v2.core",
+            "src.engine_v2.content.loader",
+            "src.engine_v2.content.schemas",
+            "src.engine_v2.dynamics",
+            "src.engine_v2.llm.adapter",
+            "src.engine_v2.llm.deployment",
+            "src.engine_v2.llm.profiles",
+            "src.engine_v2.llm.structured",
+            "src.engine_v2.prompts.diagnostic",
+            "tests.engine_v2.core.test_import_boundary",
+            "tests.engine_v2.dynamics.conftest",
+        )
+        forbidden = (
+            "asyncio",
+            "httpx",
+            "random",
+            "datetime",
+            "socket",
+            "urllib",
+            "requests",
+            "subprocess",
+            "src.game",
+            "src.config",
+            "src.agents",
+            "src.llm",
+            "src.prompts",
+        )
+
+        def _check(module_name: str) -> str | None:
+            if any(
+                module_name == root or module_name.startswith(root + ".")
+                for root in forbidden
+            ):
+                return f"黑名单命中：{module_name}"
+            if not any(
+                module_name == root or module_name.startswith(root + ".")
+                for root in allowed_roots
+            ):
+                return f"不在闭集白名单：{module_name}"
+            return None
+
+        violations: dict[str, list[str]] = {}
+        for path in _p7_ast_face():
+            rel = str(path.relative_to(REPO_ROOT))
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                modules: list[str] = []
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    if node.level != 0:
+                        violations.setdefault(rel, []).append(
+                            f"L{node.lineno}: 相对 import（模块面封闭，零相对 import）"
+                        )
+                        continue
+                    modules = [node.module or ""]
+                for module_name in modules:
+                    problem = _check(module_name)
+                    if problem is not None:
+                        violations.setdefault(rel, []).append(
+                            f"L{node.lineno}: {problem}"
+                        )
+        assert not violations, f"P7 import 面违规（SOT §3.9 方法 1）：{violations}"
+
+    def test_p7_test_files_closed(self) -> None:
+        """方法 2：测试扫描面 == 12 文件（含 conftest + __init__），与磁盘
+        目录双向相等（SOT §3.9 方法 2）。"""
+        disk = sorted(p.name for p in (TESTS_ENGINE_DIR / "dynamics").glob("*.py"))
+        assert disk == sorted(P7_TEST_FILES), (
+            f"tests/engine_v2/dynamics/ 目录非封闭（P7_TEST_FILES 12 文件）："
+            f"{disk}"
+        )
+
+    def test_p7_k8_string_literals(self) -> None:
+        """方法 3：字符串字面量面 20 文件（8 src + 12 tests，锚点除外）
+        12 名闭集零命中（K8；``ast.Constant`` str 域含 docstring；casefold
+        + 词边界）。探针串拼接构造自豁免（本文件不在方法 3 扫描面；本追加
+        块同以拼接构造自豁免——与 P5/P6 完全同构）；拼接集与
+        ``P4_LLM_PROVIDER_BLACKLIST`` 断言相等。负例锚：``llmsim``/
+        ``api_key_env`` 不命中（``\\w`` 边界语义钉死）。"""
+        joined = [
+            "open" + "ai",
+            "anthr" + "opic",
+            "lang" + "chain",
+            "lite" + "llm",
+            "oll" + "ama",
+            "gem" + "ini",
+            "g" + "pt",
+            "cla" + "ude",
+            "l" + "lm",
+            "prov" + "ider",
+            "api_" + "key",
+            "base_" + "url",
+        ]
+        assert set(joined) == P4_LLM_PROVIDER_BLACKLIST, "拼接集与 12 名常量不等"
+        hits: dict[str, list[str]] = {}
+        for path in _p7_string_literal_face():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            matched: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    text = node.value.casefold()
+                    matched.update(
+                        word
+                        for word in joined
+                        if re.search(rf"{re.escape(word)}", text)
+                    )
+            if matched:
+                hits[str(path.relative_to(REPO_ROOT))] = sorted(matched)
+        assert not hits, (
+            f"P7 文件命中 12 名黑名单字符串字面量域（SOT §3.9 方法 3）：{hits}"
+        )
+        probe = re.compile(r"(?:" + "|".join(joined) + r")")
+        assert not probe.search("llmsim"), "负例锚失守：llmsim 不应命中"
+        assert not probe.search("api_key_env"), "负例锚失守：api_key_env 不应命中"
+
+    def test_p7_kernel_agnostic_and_sync(self) -> None:
+        """方法 4：(a) core/** 全量零命中 ``engine_v2.dynamics`` 包路径 /
+        if-elif 字面 / 35 P7 export 名（运行时自 8 模块 ``__all__`` 派生；
+        已知合法面 core/state.py docstring 裸词 "dynamics" 不在 token
+        集）；(b) P7 src 8 文件零 ``async def`` / ``await``。"""
+        import src.engine_v2.dynamics.authority as _p7_authority
+        import src.engine_v2.dynamics.backend as _p7_backend
+        import src.engine_v2.dynamics.composite as _p7_composite
+        import src.engine_v2.dynamics.diagnostic as _p7_diagnostic
+        import src.engine_v2.dynamics.host as _p7_host
+        import src.engine_v2.dynamics.llm_world as _p7_llm_world
+        import src.engine_v2.dynamics.rule as _p7_rule
+        import src.engine_v2.dynamics.toy_rigid as _p7_toy_rigid
+
+        p7_exports = tuple(
+            name
+            for module in (
+                _p7_backend,
+                _p7_diagnostic,
+                _p7_rule,
+                _p7_toy_rigid,
+                _p7_llm_world,
+                _p7_composite,
+                _p7_authority,
+                _p7_host,
+            )
+            for name in module.__all__
+        )
+        assert len(p7_exports) == 35, f"P7 导出账本应为 35 名：{len(p7_exports)}"
+        tokens = (
+            "engine_v2.dynamics",
+            "if backend is",
+            "elif backend is",
+            *p7_exports,
+        )
+        core_hits: dict[str, list[str]] = {}
+        for path in sorted(CORE_DIR.rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            matched = [token for token in tokens if token in text]
+            if matched:
+                core_hits[str(path.relative_to(REPO_ROOT))] = matched
+        assert not core_hits, (
+            f"kernel（core/）引用 P7 类型名/包路径（SOT §3.9 方法 4 (a)）："
+            f"{core_hits}"
+        )
+        async_hits: dict[str, int] = {}
+        for stem in P7_SRC_SUBMODULES:
+            path = REPO_ROOT / "src" / "engine_v2" / "dynamics" / f"{stem}.py"
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            count = sum(
+                1
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.AsyncFunctionDef, ast.Await))
+            )
+            if count:
+                async_hits[path.name] = count
+        assert not async_hits, f"P7 src 零 async def / await（方法 4 (b)）：{async_hits}"
+
+    def test_p7_whitelist_diff(self) -> None:
+        """方法 5：白名单 23 文件闭集断言——gate ③ 的 pytest 内镜像（P6
+        方法 1 file_set_closed 口径）：23 文件全存在；src dynamics/ 目录
+        封闭（8 新建 + 骨架 __init__ 占位，占位字节不变由 gate ③
+        ``git diff --stat`` 零核验）；tests dynamics/ 封闭（12）；P7
+        fixture 树 = 2 文件。字面 ``git diff --name-only e816a64..HEAD --
+        src tests scripts == 23`` 由 G7 gate ③ Leader bash 执行（§3.10
+        步 3）——边界文件零 subprocess 纪律下 pytest 侧以目录封闭镜像
+        承载。"""
+        for rel in _P7_WHITELIST_23:
+            assert (REPO_ROOT / rel).exists(), f"白名单文件缺失：{rel}"
+        dynamics_src = sorted(
+            p.name for p in (REPO_ROOT / "src" / "engine_v2" / "dynamics").glob("*.py")
+        )
+        assert dynamics_src == sorted(
+            [f"{stem}.py" for stem in P7_SRC_SUBMODULES] + ["__init__.py"]
+        ), f"src dynamics/ 文件集非封闭（8 + 骨架 __init__）：{dynamics_src}"
+        dynamics_tests = sorted(p.name for p in (TESTS_ENGINE_DIR / "dynamics").glob("*.py"))
+        assert dynamics_tests == sorted(P7_TEST_FILES), (
+            f"tests dynamics/ 文件集非封闭（12 文件）：{dynamics_tests}"
+        )
+        fixtures = sorted(
+            str(p.relative_to(REPO_ROOT))
+            for d in ("tests/fixtures/v2_deployment_p7", "tests/fixtures/v2_project_p7")
+            for p in (REPO_ROOT / d).rglob("*")
+            if p.is_file()
+        )
+        assert fixtures == [
+            "tests/fixtures/v2_deployment_p7/deployment.yaml",
+            "tests/fixtures/v2_project_p7/game.yaml",
+        ], f"P7 fixture 树非封闭（2 文件）：{fixtures}"
+
+    def test_p7_export_ledger(self) -> None:
+        """方法 6：8 模块 ``__all__`` == §8.2 账本（集合 + 序双等）；总 35
+        名（SOT §3.9 方法 6 / E4 机械核）。"""
+        total = 0
+        for stem in P7_SRC_SUBMODULES:
+            module = importlib.import_module(f"src.engine_v2.dynamics.{stem}")
+            actual = tuple(module.__all__)
+            expected = P7_EXPORT_LEDGER[stem]
+            assert actual == expected, (
+                f"{stem}.py __all__ 与 §8.2 账本不等（集合 + 序双等）：{actual}"
+            )
+            total += len(actual)
+        assert total == 35, f"导出账本总数应为 35：{total}"
