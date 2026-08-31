@@ -160,7 +160,7 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 
 | 模块 | 符号（行号） | P7 用途 |
 |---|---|---|
-| `effects.py` | `EntityTarget` L163；`StateDomainTarget` L178；`EffectTarget` L191；`ProposedEffect` L197（字段 L217–226：effect_id/effect_type/source/target/payload/base_revision 必填无默认，cause_ids L223 默认 []，authority_scope L224，priority_hint L225，metadata L226）；`CommittedEffect` L229 | backend 产物的唯一类型 |
+| `effects.py` | `EFFECT_TYPE_ID_PATTERN` L67（EffectTypeId 词法正则，ERR-P7-05 补列）；`EntityTarget` L163；`StateDomainTarget` L178；`EffectTarget` L191；`ProposedEffect` L197（字段 L217–226：effect_id/effect_type/source/target/payload/base_revision 必填无默认，cause_ids L223 默认 []，authority_scope L224，priority_hint L225，metadata L226）；`CommittedEffect` L229 | backend 产物的唯一类型 |
 | `conflicts.py` | `ConflictKey` L140；`conflict_key` L201（EntityTarget+component_type → 整组件锁；无 component_type → 整实体锁）；`extract_effect_locks` L244；`conflicts_with` L274（None=通配：整实体锁与同实体任何组件锁相交）；`ConflictGroup` L335；`detect_conflicts` L362；`ResolutionContext` L459（`from_batch`）；`ConflictResolutionReport` L571；`AuthorityPriorityStrategy` L611（rule_priority 最大**唯一**者胜，并列弃权）；`TimestampStrategy` L660；`ProducerPriorityStrategy` L699（`registry.priority_of(source)` + `priority_hint` 字典序最大唯一者胜）；`EntityFifoStrategy` L742；`DefaultConflictResolver` L787 | Case B 冲突/裁决面 |
 | `authority.py` | `AuthoritySelector` L155（5 维，unspecified=wildcard）；`AuthorityRule` L205（allowed_writers≥1 + priority）；`AuthorityPolicy` L242；`ProducerInfo` L276（producer_id/origin/priority/description）；`ProducerRegistry` L295（register 模式 fullmatch 校验；`priority_of` 未注册归 0）；`match_selector` L364；`AuthorityEvaluationResult` L482；`check_authority` L550（规则按 priority 降序/specificity 降序/注册序稳定排序，**首条命中拍板，不 fall-through**；无匹配 → default_decision，缺省 DENY，reason_code=`no_matching_rule`） | P7-INV-6 权限面 |
 | `cascade.py` | `CascadeResult` L678（final_state/transactions/events/trace_records/deferred/diagnostics + `cascade_statistics`）；`CascadeExecutor` L767（构造：`policy` 必填 keyword-only；component_registry/producer_registry/handlers/triggers/resolvers/validator/config/cycle_detector 可注入；构造期武装写屏障）；`run` L867（签名 `run(self, initial_proposals: Sequence[ProposedEffect], state: WorldState, *, causal_root_id: str, origin: Provenance) -> CascadeResult`；state 纯函数不触碰） | **dynamics ProposedEffect 的 K2 入口**（D-P7-09） |
@@ -1365,3 +1365,10 @@ capabilities:
      全局续编号 → test_toy_rigid.py 13 处 t13–t25 重编 t1–t13；
      test_diagnostic.py 8 处 t26–t33 重编 t1–t8（纯 docstring 改动，零
      断言/命名影响；Leader 文档一致性面修正）。
+- **ERR-P7-05**（W2 开发期裁定；§2.1 符号表缺口，docs-only + W2 交付面内
+  2 行 import 一致性修正）：
+  1. §2.1 `effects.py` 行漏列 `EFFECT_TYPE_ID_PATTERN` L67——W2 dev 实现
+     §3.3 L426（`emit_effect_type` = EffectTypeId 词法）时按 W1
+     `FIDELITY_PATTERN` 本地定义先例镜像了该正则（文本逐字同值）；Leader
+     裁定：补 §2.1 表（单一真源纪律，避免"勿单边修改"重复字面量），
+     rule.py 改直接 import core `EFFECT_TYPE_ID_PATTERN`，删本地镜像。
