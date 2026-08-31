@@ -1146,7 +1146,7 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
 | `gem_effect_handlers()` | 函数夹具 | 注册语义 handler（测试侧，D-P7-13）：`gem.moved` → set gem_state {moved:true}；`gem.fell` → set gem_state {moved:true}（**钉死**：两 handler 同落点，区分靠 effect_type 溯源；Case B 中 `gem.fell` 被 REJECT 时其 handler 永不执行——A9 断言 moved 仍为 False 的正反面由此成立）；handler = 纯函数（reducer.py L609 签名 `(WorldState, ProposedEffect) -> WorldState`） |
 | `make_p7_producer_registry()` | 函数夹具 | `build_dynamics_producers()`（§3.7 缺省 priority） |
 | `make_p7_policy()` | 函数夹具 | `default_dynamics_policy(component_types=("rigid", "gem_state"))` |
-| `make_p7_executor()` | 函数夹具 | `CascadeExecutor(policy=make_p7_policy(), component_registry=make_p7_component_registry(), producer_registry=make_p7_producer_registry(), handlers=<default_handler_registry() + gem_effect_handlers()>)` |
+| `make_p7_executor()` | 函数夹具 | `CascadeExecutor(policy=make_p7_policy(), component_registry=make_p7_component_registry(), producer_registry=make_p7_producer_registry(), handlers=gem_effect_handlers())`（W5R3-2-F1 校准：实际装配仅 `gem_effect_handlers()`，无 `default_handler_registry`——W4 t8 / conftest 代码 / g7 同款；conftest L164 docstring 同款 stale 属 W1 冻结面，G7 记录 carryover） |
 | `stim_support_removed` | pytest fixture（单例） | §5.1 刺激常量 |
 | `p7_deployment` | pytest fixture | P6 `load_deployment`（L122）加载 `tests/fixtures/v2_deployment_p7/deployment.yaml` |
 | `p7_game` | pytest fixture | P5 `load_project`（L98）加载 `tests/fixtures/v2_project_p7/game.yaml`（validate 零诊断） |
@@ -1688,3 +1688,9 @@ capabilities:
       |A|=20（A1–A20），正文原仅 19 条 bullet 缺 A10（W5R2-3-F02；W0 SOT
       起即存在的枚举缺口，非 W5 回归）——补后标题/E5/正文/§5.3 四处
       |A|=20 口径一致。
+- **ERR-P7-17**（W5 R3 后 docs 校准（post-closure，W4 ERR-P7-12 先例）；
+   docs-only，不消耗修复预算）：§6.2 `make_p7_executor()` 行 handlers 口径
+   `default_handler_registry() + gem_effect_handlers()` → 仅
+   `gem_effect_handlers()`（W5R3-2-F1：W4 t8 / conftest 代码 / g7 实际装配
+   同款，SOT 行 stale）；conftest.py L164 docstring 同款 stale 属 W1 冻结
+   面（字节冻结纪律，不追溯修改）→ G7 gate 报告 s2 carryover 记录。
