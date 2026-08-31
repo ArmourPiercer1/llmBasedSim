@@ -234,7 +234,7 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 `casefold()` → `re.search(rf"\b{re.escape(w)}\b")`；负锚探针
 "llmsim"/"api_key_env" 必须不命中）。
 **P7 落位**：文件尾部**纯追加**（P5 §3.11 先例：唯一锚点文件 = 本文件，
-纯追加不改既有任何行；追加块 = L1232–1623，392 行）——新增
+纯追加不改既有任何行；追加块 = L1232–1629，398 行）——新增
 `P7_SRC_SUBMODULES`（8 stems）/ `P7_TEST_FILES`（12 名）/ `_P7_WHITELIST_23` /
 `P7_EXPORT_LEDGER`（§8.2 账本 35 名）/ `_p7_ast_face` /
 `_p7_string_literal_face` / `TestP7Boundary`（6 法，§3.9）。
@@ -1053,6 +1053,8 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
   唯一最大 > 50）。
 - **A9**：final_state：rigid 组件值不变（stay）；`gem_state.moved == False`
   （REJECT 的 gem.fell 未应用）。
+- **A10**（kernel 条款，§0.2 逐字）：core/** 零命中 `engine_v2.dynamics` 包路径 /
+  `if backend is` / `elif backend is` / 35 P7 export 名（运行时自 8 模块 `__all__` 派生，§8.2 账本；= 边界第 4 法 (a) 的场景侧镜像，§5.3 A10 行 + 注）。
 
 **G7 Case C（S2）**：
 - **A11**：`checkpoint()` 返回 dict `{"version":1,"seed":0}` 且
@@ -1643,7 +1645,7 @@ capabilities:
 - **ERR-P7-14**（W5 R1 代码修复；4/4 盲评 BLOCK 同根因，Leader 锚点修复，
    消耗 W5 实质修复预算 1/3）：
    1. 缺陷：锚点方法 3（`test_p7_k8_string_literals`）词边界正则在 SOT §3.9
-      L733 规定的 2 字符 `\b` 转义之位含原始 0x08（BS 退格）控制字节，共 4
+      L734 规定的 2 字符 `\b` 转义之位含原始 0x08（BS 退格）控制字节，共 4
       处（扫描行 ×2 + 负锚探针行 ×2；`git show d598cfb` blob 字节实证，非
       工作树漂移；基线 e816a64 = 0）。后果：20 文件 12 名扫描与负例锚探针
       （`llmsim`/`api_key_env`）模式退化为 `<0x08>word<0x08>`，对任何正常
@@ -1651,7 +1653,7 @@ capabilities:
       静默失效：ruff 不报、gate 全绿不暴露，唯盲评捕获；根因 = 写入管线将
       `\b` 解释为 JSON C-8 转义）。
    2. 修复：L1510（×2）/L1517（×2）恢复 2 字符 `\b`（字节 5c 62），逐字对齐
-      §3.9 L733 / §2.5 L234 规格形；方法 3 内新增 ERR-P7-14 自检（逐 12 名
+      §3.9 L734 / §2.5 L234 规格形；方法 3 内新增 ERR-P7-14 自检（逐 12 名
       词边界模式必须命中空格分隔形 `f" {word} "`——若转义再退化为控制字节，
       响亮失败而非恒绿）。
    3. gate 教训：G7 gate ③ Leader bash 增加控制字节预扫（23 白名单文件，
@@ -1662,7 +1664,7 @@ capabilities:
       ERR-P7-11/12 先例）。
    2. §2.5 P7 落位段：`P7_SUBMODULES` → `P7_SRC_SUBMODULES`（8 stems）；
       补列 `P7_EXPORT_LEDGER`（§8.2 账本 35 名）；追加块行号定死
-      L1232–1623（392 行）。
+      L1232–1629（398 行）。
    3. `test_g7_scenarios.py` 3 处 pin 重指向：模块 docstring t10 行与
       `_P7_EXPORTS` 注释 "§2.5 规格" → §0.2 逐字条款 + §3.9 第 4 法 (a)
       （A10/35 名规格实际位置）；`_s5_batch` docstring "§2.2" → §3.6
@@ -1675,3 +1677,14 @@ capabilities:
       形式层面偏差，不指向他行 A/AD 编号语义，非跨行断言，维持现状
       （W5R1-2-F04）；(b) R1 brief P7 追加块行号口径 L1233 差 1（实际
       L1232 起）——brief 侧笔误，交付物不受影响（W5R1-4-F05）。
+- **ERR-P7-16**（W5 R2 docs 闭合；docs-only，不消耗修复预算）：
+   1. §2.5 与 ERR-P7-15 条目 2 的追加块行号区间 `L1232–1623（392 行）` →
+      `L1232–1629（398 行）`：R1 提交 `1d4790f` 自身在锚点追加 6 行
+      ERR-P7-14 自检块，写入区间时未计入（W5R2-3-F01 / W5R2-1-F01 /
+      W5R2-2-F01 / W5R2-4-F01）。
+   2. ERR-P7-14 条目 1/2 的 `§3.9 L733` → `L734`：§2.5 编辑使 §3.9 表方法 3
+      行 +1 位移；`§2.5 L234` 不受影响（W5R2-1-F02 / W5R2-2-F02）。
+   3. §5.2 补 A10 bullet（kernel 条款，Case B 段 A9 之后）：标题与 E5 称
+      |A|=20（A1–A20），正文原仅 19 条 bullet 缺 A10（W5R2-3-F02；W0 SOT
+      起即存在的枚举缺口，非 W5 回归）——补后标题/E5/正文/§5.3 四处
+      |A|=20 口径一致。
