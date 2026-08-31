@@ -1497,6 +1497,12 @@ class TestP7Boundary:
             "base_" + "url",
         ]
         assert set(joined) == P4_LLM_PROVIDER_BLACKLIST, "拼接集与 12 名常量不等"
+
+        # ERR-P7-14 自检：词边界模式必须命中空格分隔形（W5 R1 0x08 控制字节腐蚀教训；
+        # 若转义再退化为控制字节，此处响亮失败而非恒绿）
+        for word in joined:
+            _pat = re.compile(rf"\b{re.escape(word)}\b")
+            assert _pat.search(f" {word} "), f"K8 自检失守: {word!r}"
         hits: dict[str, list[str]] = {}
         for path in _p7_string_literal_face():
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -1507,14 +1513,14 @@ class TestP7Boundary:
                     matched.update(
                         word
                         for word in joined
-                        if re.search(rf"{re.escape(word)}", text)
+                        if re.search(rf"\b{re.escape(word)}\b", text)
                     )
             if matched:
                 hits[str(path.relative_to(REPO_ROOT))] = sorted(matched)
         assert not hits, (
             f"P7 文件命中 12 名黑名单字符串字面量域（SOT §3.9 方法 3）：{hits}"
         )
-        probe = re.compile(r"(?:" + "|".join(joined) + r")")
+        probe = re.compile(r"\b(?:" + "|".join(joined) + r")\b")
         assert not probe.search("llmsim"), "负例锚失守：llmsim 不应命中"
         assert not probe.search("api_key_env"), "负例锚失守：api_key_env 不应命中"
 

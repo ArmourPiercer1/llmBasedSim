@@ -161,7 +161,7 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 | 模块 | 符号（行号） | P7 用途 |
 |---|---|---|
 | `effects.py` | `EFFECT_TYPE_ID_PATTERN` L67（EffectTypeId 词法正则，ERR-P7-05 补列）；`EntityTarget` L163；`StateDomainTarget` L178；`EffectTarget` L191；`ProposedEffect` L197（字段 L217–226：effect_id/effect_type/source/target/payload/base_revision 必填无默认，cause_ids L223 默认 []，authority_scope L224，priority_hint L225，metadata L226）；`CommittedEffect` L229 | backend 产物的唯一类型 |
-| `conflicts.py` | `ConflictKey` L140；`conflict_key` L201（EntityTarget+component_type → 整组件锁；无 component_type → 整实体锁）；`extract_effect_locks` L244；`conflicts_with` L274（None=通配：整实体锁与同实体任何组件锁相交）；`ConflictGroup` L335；`detect_conflicts` L362；`ResolutionContext` L459（`from_batch`）；`ConflictResolutionReport` L571；`AuthorityPriorityStrategy` L611（rule_priority 最大**唯一**者胜，并列弃权）；`TimestampStrategy` L660；`ProducerPriorityStrategy` L699（`registry.priority_of(source)` + `priority_hint` 字典序最大唯一者胜）；`EntityFifoStrategy` L742；`DefaultConflictResolver` L787 | Case B 冲突/裁决面 |
+| `conflicts.py` | `ConflictKey` L140；`conflict_key` L201（EntityTarget+component_type → 整组件锁；无 component_type → 整实体锁）；`extract_effect_locks` L244；`conflicts_with` L274（None=通配：整实体锁与同实体任何组件锁相交）；`ConflictGroup` L335；`detect_conflicts` L362；`ConflictAction` L441（str-Enum WINNER/REJECT；ERR-P7-13 补列）；`ResolutionContext` L459（`from_batch`）；`ConflictResolutionReport` L571；`AuthorityPriorityStrategy` L611（rule_priority 最大**唯一**者胜，并列弃权）；`TimestampStrategy` L660；`ProducerPriorityStrategy` L699（`registry.priority_of(source)` + `priority_hint` 字典序最大唯一者胜）；`EntityFifoStrategy` L742；`DefaultConflictResolver` L787；`resolve_conflicts` L901（缺省四策链 facade，每组恰 1 条 resolution；ERR-P7-13 补列） | Case B 冲突/裁决面（W5 g7 A6/A7 测试面：t6/t7 直接 detect/resolve 消费，ERR-P7-13 补列） |
 | `authority.py` | `AuthorityDecision` L110（str-Enum ALLOW/DENY；W4 测试面：decision 断言，ERR-P7-11 补列）；`AuthoritySelector` L155（5 维，unspecified=wildcard）；`AuthorityRule` L205（allowed_writers≥1 + priority）；`AuthorityPolicy` L242；`ProducerInfo` L276（producer_id/origin/priority/description）；`ProducerRegistry` L295（register 模式 fullmatch 校验；`priority_of` 未注册归 0）；`match_selector` L364；`AuthorityEvaluationResult` L482；`check_authority` L550（规则按 priority 降序/specificity 降序/注册序稳定排序，**首条命中拍板，不 fall-through**；无匹配 → default_decision，缺省 DENY，reason_code=`no_matching_rule`） | P7-INV-6 权限面 |
 | `cascade.py` | `CascadeResult` L678（final_state/transactions/events/trace_records/deferred/diagnostics + `cascade_statistics`）；`CascadeExecutor` L767（构造：`policy` 必填 keyword-only；component_registry/producer_registry/handlers/triggers/resolvers/validator/config/cycle_detector 可注入；构造期武装写屏障）；`run` L867（签名 `run(self, initial_proposals: Sequence[ProposedEffect], state: WorldState, *, causal_root_id: str, origin: Provenance) -> CascadeResult`；state 纯函数不触碰） | **dynamics ProposedEffect 的 K2 入口**（D-P7-09） |
 | `transaction.py` | `TransactionStatus` L51（str-Enum 两态 COMMITTED/ABORTED，JSON 值小写串）；`Transaction` L62（ContractModel：transaction_id/status/base_revision/commit_revision/logical_tick/effects/event_ids/cascade/provenance/abort_reason） | W4 测试面：事务提交状态断言面（src 面不消费，ERR-P7-11 补列） |
@@ -234,9 +234,10 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 `casefold()` → `re.search(rf"\b{re.escape(w)}\b")`；负锚探针
 "llmsim"/"api_key_env" 必须不命中）。
 **P7 落位**：文件尾部**纯追加**（P5 §3.11 先例：唯一锚点文件 = 本文件，
-纯追加不改既有任何行）——新增 `P7_SUBMODULES` / `P7_TEST_FILES` /
-`_P7_WHITELIST_23` / `_p7_ast_face` / `_p7_string_literal_face` /
-`TestP7Boundary`（6 法，§3.9）。
+纯追加不改既有任何行；追加块 = L1232–1623，392 行）——新增
+`P7_SRC_SUBMODULES`（8 stems）/ `P7_TEST_FILES`（12 名）/ `_P7_WHITELIST_23` /
+`P7_EXPORT_LEDGER`（§8.2 账本 35 名）/ `_p7_ast_face` /
+`_p7_string_literal_face` / `TestP7Boundary`（6 法，§3.9）。
 
 ### 2.6 W4 边缘面钉死（P1–P9；SOT 缝隙 → Leader 实现口径）
 
@@ -1639,3 +1640,38 @@ capabilities:
      fixtures 2 文件）；字面 `git diff --name-only e816a64..HEAD -- src tests
      scripts == 23` 由 G7 gate ③ Leader bash 执行（§3.10 步 3）——wave 提交
      点两口径等价。
+- **ERR-P7-14**（W5 R1 代码修复；4/4 盲评 BLOCK 同根因，Leader 锚点修复，
+   消耗 W5 实质修复预算 1/3）：
+   1. 缺陷：锚点方法 3（`test_p7_k8_string_literals`）词边界正则在 SOT §3.9
+      L733 规定的 2 字符 `\b` 转义之位含原始 0x08（BS 退格）控制字节，共 4
+      处（扫描行 ×2 + 负锚探针行 ×2；`git show d598cfb` blob 字节实证，非
+      工作树漂移；基线 e816a64 = 0）。后果：20 文件 12 名扫描与负例锚探针
+      （`llmsim`/`api_key_env`）模式退化为 `<0x08>word<0x08>`，对任何正常
+      文本永不可能命中 → 方法 3 呈绿但 enforcement 结构性空转（机械断言
+      静默失效：ruff 不报、gate 全绿不暴露，唯盲评捕获；根因 = 写入管线将
+      `\b` 解释为 JSON C-8 转义）。
+   2. 修复：L1510（×2）/L1517（×2）恢复 2 字符 `\b`（字节 5c 62），逐字对齐
+      §3.9 L733 / §2.5 L234 规格形；方法 3 内新增 ERR-P7-14 自检（逐 12 名
+      词边界模式必须命中空格分隔形 `f" {word} "`——若转义再退化为控制字节，
+      响亮失败而非恒绿）。
+   3. gate 教训：G7 gate ③ Leader bash 增加控制字节预扫（23 白名单文件，
+      0x08 等 C0 控制字节除 \t\n\r 外 = 0）。
+- **ERR-P7-15**（W5 R1 docs 口径校准；docs-only，不消耗修复预算）：
+   1. §2.1 conflicts.py 行补列 `ConflictAction` L441 + `resolve_conflicts`
+      L901（ERR-P7-13 补列；§2.1 行本体与 §3.0 闭集双条目对齐，
+      ERR-P7-11/12 先例）。
+   2. §2.5 P7 落位段：`P7_SUBMODULES` → `P7_SRC_SUBMODULES`（8 stems）；
+      补列 `P7_EXPORT_LEDGER`（§8.2 账本 35 名）；追加块行号定死
+      L1232–1623（392 行）。
+   3. `test_g7_scenarios.py` 3 处 pin 重指向：模块 docstring t10 行与
+      `_P7_EXPORTS` 注释 "§2.5 规格" → §0.2 逐字条款 + §3.9 第 4 法 (a)
+      （A10/35 名规格实际位置）；`_s5_batch` docstring "§2.2" → §3.6
+      （composite simulate 逐子同输入 fan-out 条款）。
+   4. `test_p7_adversarial.py` 1 处 pin 重指向：`_S3_WIRE` 注释 "§2.1 Case A
+      wire 同形" → §5.1 S3 行 wire 同形。四处均为所引节存在但指向无关内容
+      （W4 ERR-P7-08.2 stale 交叉引用同类），无代码行为影响。
+   5. INFO 不处置记录：(a) `test_p7_adversarial._p7_module_paths` 共享助手
+      携带 2 条结构性断言（8 模块闭集 + 无 `__init__.py`）——C12 严格读
+      形式层面偏差，不指向他行 A/AD 编号语义，非跨行断言，维持现状
+      （W5R1-2-F04）；(b) R1 brief P7 追加块行号口径 L1233 差 1（实际
+      L1232 起）——brief 侧笔误，交付物不受影响（W5R1-4-F05）。

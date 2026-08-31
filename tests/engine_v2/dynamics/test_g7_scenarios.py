@@ -7,7 +7,7 @@ G7 三场景验收面（一场景一函数，t1–t14 = §5.3 表 A1–A14 逐�
 - Case B（t5–t9）：组合双 backend fan-out（S5）——2 effects 可见 /
   detect_conflicts 恰 1 组 / 缺省四策链 1 WINNER（producer_priority 拍板，
   dropped 承载 REJECT 语义）/ WINNER = 物理 effect / 终态 stay；
-- t10：G7 逐字条款场景侧机械像（A10，§2.5 规格逐字；S5 装配后扫 core）；
+- t10：G7 逐字条款场景侧机械像（A10，§0.2 逐字条款 + §3.9 第 4 法 (a) 规格；S5 装配后扫 core）；
 - Case C（t11–t14）：纯数值 backend——checkpoint JSON-clean / restore 续跑 /
   两条独立续跑 byte-identical / metadata 五值面。
 
@@ -91,7 +91,7 @@ _S5_WIRE = json.dumps(
     separators=(",", ":"),
 )
 
-#: A10 的 35 个 P7 export 名——运行时自 8 模块 __all__ 派生（§2.5 规格；
+#: A10 的 35 个 P7 export 名——运行时自 8 模块 __all__ 派生（§3.9 第 4 法 (a) 规格；
 #: 模块序 = §8.2 账本序；不硬编码名字面量，35 名与 §8.2 自动同步）。
 _P7_EXPORTS: tuple[str, ...] = tuple(
     name
@@ -193,7 +193,7 @@ def _case_b_backend() -> CompositeDynamics:
 
 
 def _s5_batch(stim_support_removed: Any) -> tuple[Any, ...]:
-    """S5 双 backend 批：组合体 simulate（同 snapshot/刺激/context，§2.2）。"""
+    """S5 双 backend 批：组合体 simulate（同 snapshot/刺激/context，§3.6）。"""
     world = make_p7_world()
     return _case_b_backend().simulate(
         _snapshot(world), (stim_support_removed,), DynamicsContext(base_revision=0)

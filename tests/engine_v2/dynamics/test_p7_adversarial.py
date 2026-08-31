@@ -57,7 +57,7 @@ from tests.engine_v2.dynamics.conftest import _det_entity_id
 
 _AD_WSI = "wsi_p7_adversarial_test"
 
-#: S3 wire 面（§2.1 Case A wire 同形；AD-2 变体 = NaN payload，AD-8/AD-9 用本 wire）。
+#: S3 wire 面（§5.1 S3 行 wire 同形；AD-2 变体 = NaN payload，AD-8/AD-9 用本 wire）。
 _S3_WIRE = json.dumps(
     {
         "effects": [
