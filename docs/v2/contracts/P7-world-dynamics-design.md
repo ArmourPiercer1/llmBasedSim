@@ -588,6 +588,10 @@ routing 留 P8+ 扩展位——MAY，本波不做）。
   determinism=折叠 join(子 determinism), implementation_type="composite",
   fidelity="composite." + ".".join(子 fidelity),
   checkpointable=and(子), restorable=and(子), replayable=and(子))`。
+  空-children 边缘面（ERR-P7-09(e)）：`children=()` → `fidelity=
+  "composite"`（**无尾点**——公式空 join 会产尾点，裁定口径）、
+  `determinism="deterministic"`（格单位元）、三布尔 `True`（空 and）、
+  `domains=()`；`__init__(children=())` 合法（§6.1 t2 钉死面）。
 
 ### 3.7 `authority.py`（T05；7 exports）
 
@@ -643,6 +647,32 @@ priority=100)`。
 > WINNER=physics / REJECT=llm，strategy="producer_priority"**。此弃权序是
 > A7（strategy 钉死为 producer_priority）成立的充分条件——实现时 P7 全部
 > effect 的 `metadata` 字段**保持缺省 `{}`**（不注入任何 timestamp 键）。
+> **ERR-P7-09：whole-entity effect × 组件级 selector——冻结核语义 +
+> host 场景标准装配裁定**（W4 Leader 实证探针 + dev 交付申报）。
+> 冻结 core `match_selector`（core/authority.py L364+，§2.1）语义：
+> `component_type` 维 = 与 `target.component_type` 全等；**selector 指定
+> 而 effect 未指定 → 不匹配**。推论：whole-entity target（
+> `component_type=None`——S1 规则目标 / S3·S5-LLM wire / S8）的 effect
+> 不能被 `default_dynamics_policy(component_types=(...))` 的组件级规则
+> rule_allow → `no_matching_rule` DENY；而本引文块 A7 面"两 effect 同被
+> **单条** priority=100 规则 ALLOW"——同时匹配 Case B 双 effect（rigid
+> 组件 + whole-entity）的唯一 selector 形态 = 全维缺省（通配）selector，
+> 即 host 场景标准装配形态。**裁定（零代码变更）**：(a)
+> `default_dynamics_policy` 维持本 §3.7 公式（组件级规则）不变——P7
+> 缺省值；需放行 whole-entity effect 的 host 须自装配通配规则（D-P7-08：
+> 最终权限配置属 host）；(b) **P7 host 场景标准装配**（W4 t8；W5 g7
+> Case A/B/C host turn）= 单条通配规则 policy：`AuthorityPolicy(
+> rules=[AuthorityRule(selector=AuthoritySelector(),
+> allowed_writers=[ProducerId(p) for p in P7_PRODUCER_IDS],
+> priority=100)])`——S1 逐字 / S3 / S5 / S8 全部 rule_allow、
+> rule_priority=100，A7 弃权序不变（AuthorityPriorityStrategy 并列 →
+> 弃权 → TimestampStrategy 弃权（metadata `{}`）→ ProducerPriorityStrategy
+> 100 vs 50 拍板）；(c) W4 host driver t1–t7/t9/t10 通用装配维持交付
+> 形态：S1 规则目标钉 `gem_state` 组件（S1 条件/effect_type/payload
+> 逐字不变）+ `make_p7_executor()`（组件级 policy）——host 侧申报偏差，
+> 不回改（(b) 装配下 S1 逐字形态亦过，两形态均属 host 权限）；
+> (d) A18（rogue → `no_matching_rule`）不受影响：组件级 policy 独立
+> 装配面核验（W4 test_authority_host t5 / test_host_driver t5）。
 
 ### 3.8 `host.py`（D-P7-09；2 exports）
 
@@ -957,6 +987,13 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
 | S6 组合 | CompositeDynamics([RuleDynamics, ToyRigidDynamics]) | S1+S2 输入 | 子序拼接 + 格聚合（metadata determinism=deterministic） |
 | S7 权限缺省 | 任意 | 未注册 producer（`"rogue"`）的 effect 入 cascade | DENY `no_matching_rule`、零状态变更（A18） |
 | S8 host 端到端 | LLMWorldDynamics | S3 输入经 `run_dynamics_turn` | final_state revision+1、1 COMMITTED、事件 1:1、origin DYNAMICS_BACKEND |
+
+> **host 场景 policy 装配（ERR-P7-09）**：whole-entity target effect
+> （S1 逐字 / S3 / S5-LLM / S8）在冻结核 `match_selector` 语义下不匹配
+> 组件级 selector（selector 指定而 effect 未指定 → 不匹配）；W4 t8 与
+> W5 g7 Case A/B/C 的 host turn 标准装配 = 单条通配规则 policy（§3.7
+> ERR-P7-09(b)）；W4 host driver t1–t7/t9/t10 通用装配钉 S1 规则目标于
+> `gem_state` 组件（条件/effect_type/payload 逐字不变，§3.7 (c)）。
 
 ### 5.2 编号断言 A1–A20（每条 ↔ 恰 1 个平铺测试函数，§5.3）
 
@@ -1472,3 +1509,44 @@ capabilities:
      计数低于审查 brief C13 自设启发式（≥3）；两者均为实质断言面
      （t4 = prompt byte-identity + 11 字段请求面全量相等；t8 = 词法拒
      绝 + 正例对照），SOT 无断言计数规定——不处置。
+- **ERR-P7-09**（W4 Leader 提交前裁定；SOT §3.6/§3.7/§5.1 口径补注 +
+  host 场景标准装配裁定，docs-only，零代码影响——W4 dev 已按裁定形态
+  交付并申报；Leader 实证探针 P1–P8 背书：whole-entity effect vs
+  组件级 policy → DENY `no_matching_rule`；vs 单条通配规则 → ALLOW
+  `rule_allow` rule_priority=100；rigid 组件 effect vs 同一通配规则 →
+  rule_priority=100（A7 并列弃权序成立）；rule/toy/llm 三 backend
+  effect `metadata=={}` + `cause_ids==[]`（A7 前提 + ERR-P7-06）；
+  suite 2896/0）：
+  1. (W4 dev 申报偏差 + Leader 探针) 冻结核 `match_selector`（core/
+     authority.py L364+ 逐字）："``component_type`` 维：与
+     ``target.component_type`` 全等；selector 指定而 effect 未指定 →
+     不匹配" → whole-entity target effect（`component_type=None`）在
+     `default_dynamics_policy(component_types=(...))` 组件级规则下
+     `no_matching_rule` DENY——SOT §3.7 A7 引文块"两 effect 同被单条
+     priority=100 规则 ALLOW"与 S3/A2（rule_allow）+ S8（1 COMMITTED）
+     在组件级缺省 policy 下不可实现；A7 单规则语义的唯一可行 selector
+     形态 = 全维缺省（通配）。裁定 §3.7 (a)–(d)：`default_dynamics_policy`
+     公式不变（P7 缺省值）/ **host 场景标准装配 = 单条通配规则
+     policy**（W4 t8；W5 g7 Case A/B/C）/ W4 host driver t1–t7/t9/t10
+     维持交付形态 / A18 组件级独立装配面不受影响。
+  2. (W4 dev 申报偏差，同根因) W4 host driver 通用装配
+     （`make_p7_executor()` 组件级 policy）不能放行 S1 逐字规则
+     （whole-entity 目标）——dev 将 host S1 规则目标钉 `gem_state`
+     组件（S1 条件/effect_type/payload 逐字不变），交付绿并申报；
+     裁定 (c) 维持不回改（host 侧装配权限，D-P7-08）。
+  3. (W4 §3.6 公式边缘面) 空-children `fidelity = "composite." +
+     ".".join(...)` 空 join 产尾点——裁定 (e)：空 children →
+     `fidelity="composite"`（无尾点）+ `determinism="deterministic"`
+     （格单位元）+ 三布尔 True（空 and）+ `domains=()`；实现与
+     test_composite t2 钉死面一致。
+  4. (W5 影响面，g7 装配钉死) `test_g7_scenarios.py` Case A/B/C host
+     turn 装配 = 单条通配规则 policy（ERR-P7-09(b)）——S3 wire
+     whole-entity effect rule_allow（A2）+ S5 双 effect 同规则
+     rule_priority=100 并列 → A7 弃权序逐字成立；S7（A18）面 = W4
+     t5 独立组件级装配，与 g7 装配无冲突。
+  5. (INFO 不处置) dev 报告建议"并入 W5 测试白名单或在 dynamics
+     conftest 层面统一"（指测试侧 `_FixedMonotonicClock` 私有 import）
+     ——W3 先例已接受（test_llm_world.py 同面）；W5 边界第 1 法 AST
+     白名单覆盖 test_host_driver.py 对 `dynamics.backend.
+     _FixedMonotonicClock` 的 import（+ core.revision.Revision，
+     ERR-P7-08）；不统一。
