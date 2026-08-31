@@ -1,0 +1,8 @@
+# P5 白名单行 #36（§3.12 L562）：项目根 pyproject.toml（loader 只读原文作
+# K8 扫描面，不做 TOML 解析）。plugins/ 目录存在 → 本文件必须存在，否则
+# LLMSIM_PLUGIN_NO_PYPROJECT（D-P5-07）。零 12 名命中（K8 纪律）。
+[project]
+name = "infection-plugin-project"
+version = "0.1.0"
+description = "v2 local plugin reference project (P5 whitelist row 36)"
+dependencies = []

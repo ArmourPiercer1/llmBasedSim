@@ -1,0 +1,73 @@
+# P5 白名单行 #30（§3.12 L556）：v2 零 Python 参考项目（full 合法 → exit 0）。
+# 镜像源 = public_start/test_empty.yaml（v1 形状 → v2 分节映射；偏差台账 D-01）。
+manifest:
+  schema_version: "2"
+  project_id: zero_python
+  name: Zero Python 镜像项目
+  description: 自 public_start/test_empty.yaml 的 v2 分节镜像（P5 参考项目）。
+  engine_version: ">=0.5.0"
+scenario:
+  id: scenario_main
+  max_ticks: 20
+  ticks_per_game_minute: 1
+  game_time:
+    hour: 12
+    minute: 0
+  starting_scene_description: '你睁开眼睛。
+
+头顶是一颗散发着柔和白光的水晶。它不知已经亮了多久——也许从这间石室被建造起就一直在亮着。你躺在地板上，石板冰冷而平整。
+
+你坐起身来，环顾四周。四方形石室。灰色石块墙壁。一扇橡木门。除此之外——空的。
+
+你不记得自己是怎么来到这里的。你不记得自己的名字。但你还记得如何思考。如何行动。如何观察。
+
+你站了起来。东墙上的橡木门是唯一的出口。门没锁。天花板上那颗水晶在你起身时微微波动了光芒——像是在注视你。
+
+你决定先弄清楚自己在哪里，然后找到出去的路。'
+  narrative_style: 简洁直接的叙述风格。不需要华丽的修辞，用平实的语言描述环境、动作和观察结果。适合快速测试游戏循环。
+player:
+  player_id: player_1
+  name: 测试者
+  persona: '一个身处空白测试世界的观察者。没有过去的记忆，没有未来的目标——只有对当下环境的好奇和探索的本能。你是一个虚空中的存在，被放入这个简化的世界以验证其运转是否正常。你不记得自己是谁，但你能够观察、行动和思考。'
+  position:
+    x: 0
+    y: 0
+    z: 0
+  capabilities:
+    sight_range_m: 50.0
+    hearing_range_m: 100.0
+    field_of_view_degrees: 180.0
+    special_senses: []
+    allowed_extraordinary_actions: []
+    blocked_common_actions: []
+    skill_levels:
+      observation: 0.8
+      investigation: 0.7
+  physical_profile:
+    height_cm: 175.0
+    weight_kg: 70.0
+    body_width_cm: 50.0
+    movement_mode: normal_walking
+    strength: 0.5
+  attributes:
+    curiosity:
+      name: 好奇心
+      value: 80
+      min: 0
+      max: 100
+      natural_delta_per_minute: 0
+      description: 对探索和发现的驱动力。
+    fatigue:
+      name: 疲劳
+      value: 10
+      min: 0
+      max: 100
+      natural_delta_per_minute: 0.1
+      description: 身体和精神疲劳程度。每tick自然增加。高于80时行动效率下降。
+  subconscious_rules: []
+  subconscious_memory: []
+  speech_examples:
+    - 这里什么都没有。
+    - 那扇门通向哪里？
+    - 我想看看箱子里有什么。
+  inventory: []

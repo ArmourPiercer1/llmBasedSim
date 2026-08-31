@@ -1,0 +1,44 @@
+# P5 白名单行 #38（§3.12 L564）：破损参考项目（预期 exit 1）。
+# 预期诊断集（断言 #17 / 对抗 A12 / K8 断言 #19a）：
+# - player.capabilities 开放 dict 内 K8 探针 4 名命中（A10 放置条款：开放
+#   dict 语境）→ 4 条 LLMSIM_DEPLOYMENT_FIELD（path=game.yaml；refs 含探针名）：
+#   api_key / provider / base_url / openai（openai 命中自 base_url 值文本）；
+# - plugin_descriptors 声明 ghost_plugin 未注册 → 1 条
+#   LLMSIM_PLUGIN_ENTRY_UNRESOLVED（warning，path=ghost_plugin，
+#   refs=("local",)）；
+# - world/dup_world.yaml → LLMSIM_DUPLICATE_ID + LLMSIM_UNRESOLVED_REF
+#   （行 #39 文件面）。
+manifest:
+  schema_version: "2"
+  project_id: broken
+  name: 破损参考项目
+  description: 携带 K8 探针与未注册插件声明的 v2 破损项目。
+  engine_version: ">=0.5.0"
+scenario:
+  id: scenario_main
+  max_ticks: 20
+  ticks_per_game_minute: 1
+  game_time:
+    hour: 12
+    minute: 0
+  narrative_style: 简洁直接的叙述风格。
+player:
+  player_id: player_1
+  name: 测试者
+  persona: 验证 K8 文本扫描面的观察者。
+  position:
+    x: 0
+    y: 0
+    z: 0
+  capabilities:
+    api_key: dummy
+    provider: dummy
+    base_url: https://openai.example.local/v1
+  physical_profile: {}
+  attributes: {}
+  inventory: []
+plugin_descriptors:
+  - id: ghost_plugin
+    source: local
+    entrypoint: ghost_plugin.system:GhostSystem
+    description: 未注册插件声明（无 plugins/ghost_plugin/plugin.yaml）。

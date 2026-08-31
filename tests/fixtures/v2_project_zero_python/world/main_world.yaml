@@ -1,0 +1,33 @@
+# P5 白名单行 #31（§3.12 L557）：world 节单值文件（顶层键必为 world）。
+# 镜像源 = public_start/test_empty.yaml world 块；v1 world.objects 不属 v2
+# WorldSpec（映射至 v2 顶层 items 分节，本项目 items 空 → 省略，偏差台账 D-01）。
+world:
+  name: 测试房间
+  description: '一个用于管道测试的空白世界。一间朴素的石室，除了墙壁和地面什么都没有。适合验证游戏核心循环是否正常运转。'
+  environment:
+    time_of_day: 未知
+    weather: 无
+    temperature_c: 20.0
+  locations:
+    - id: stone_room
+      name: 石室
+      description: '一间四方形石室，约十米见方。墙壁由粗糙的灰色石块砌成，地面铺着平整的石板。天花板上嵌着一颗散发柔和白光的水晶，照亮了整间房间。东墙上有一扇紧闭的橡木门。房间里没有任何多余的东西——没有家具，没有装饰，没有生命。唯一的声音是你自己的呼吸和心跳。'
+      connections:
+        east: hallway
+      ambient_light: 天花板水晶的柔和白光
+      ambient_sound: 绝对的寂静
+    - id: hallway
+      name: 走廊
+      description: '一条狭长的石砌走廊，宽两米，向南北方向延伸。墙壁上每隔五米有一盏昏暗的壁灯，投下摇曳的橙色光晕。走廊两端都隐没在黑暗之中。空气中有一丝凉意。地面石板上有裂纹，暗示着这条走廊已经存在了很久。'
+      connections:
+        west: stone_room
+        north: storage_room
+      ambient_light: 壁灯昏暗的橙色光晕
+      ambient_sound: 空气在石壁间细微流动的沙沙声
+    - id: storage_room
+      name: 储藏室
+      description: '一间比石室更小的储物间，墙边堆放着几个木箱。木箱上积着灰尘，显然已经很久没人碰过。一个箱子的盖子半开，里面隐约能看到几卷泛黄的羊皮纸。墙角结着蛛网。空气中有旧木材和纸张的干燥气味。'
+      connections:
+        south: hallway
+      ambient_light: 极为昏暗，仅靠走廊壁灯透入的微光
+      ambient_sound: 细微的老鼠脚步声从角落传来

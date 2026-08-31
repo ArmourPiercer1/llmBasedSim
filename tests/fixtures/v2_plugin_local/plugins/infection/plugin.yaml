@@ -1,0 +1,11 @@
+# P5 白名单行 #37（§3.12 L563）：本地插件 manifest（Spec §28.1 "必须显式
+# manifest"）。字段 = PluginManifest 封闭集（manifest.py §3.8 字段表）。
+# entrypoint 文法 module:Attribute（_split_entrypoint 面）；engine_version
+# 约束对照 registry.ENGINE_VERSION = 0.5.0 满足（D-P5-06）。
+id: infection
+version: 1.0.0
+entrypoint: infection_plugin.system:InfectionSystem
+requires: []
+optional: []
+conflicts: []
+engine_version: ">=0.5.0"

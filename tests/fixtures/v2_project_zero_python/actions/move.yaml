@@ -1,0 +1,9 @@
+# P5 白名单行 #34（§3.12 L560）：actions 节文件（顶层键必为 actions，值为
+# ActionSpec 列表）。condition = DSL if-chain（D-P5-09）；requires_components
+# 引用组件 schema id（本项目未定义组件 → 空元组默认）。
+actions:
+  - id: move
+    name: 移动
+    verb: move
+    condition: 'if(min(player.strength, 1.0) >= 0.0, allowed; blocked)'
+    description: 向相邻连接位置移动。移动消耗少量体力。

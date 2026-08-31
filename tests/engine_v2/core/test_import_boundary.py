@@ -239,6 +239,48 @@ P4_LLM_PROVIDER_BLACKLIST: frozenset[str] = frozenset(
     }
 )
 
+# —— P5 扩展（P5 设计规范 §3.11 锚点同步表 / §6.4 机械验证面）——
+
+#: P5 十个模块（§3.11：10 茎 = content 7 模块 schemas/project_ir/loader/
+#: module_graph/rule_module/validator/cli + plugins 3 模块 manifest/api/
+#: registry；D-P5-01：P5 不入 core，CORE_SUBMODULES 不含此 10 项，此处
+#: 单列以承载 P5 专属谓词的扫描面）。
+P5_SUBMODULES: tuple[str, ...] = (
+    "schemas",
+    "project_ir",
+    "loader",
+    "module_graph",
+    "rule_module",
+    "validator",
+    "cli",
+    "manifest",
+    "api",
+    "registry",
+)
+
+#: P5 测试扫描面（15 文件；白名单 #13-24 / #26-28：11 个 content 测试
+#: 文件 + 2 个 plugins 测试文件 + 2 个共享 conftest；不含 __init__.py，
+#: P4_TEST_FILES 同款基名口径）。``conftest.py`` 基名在 content/ 与
+#: plugins/ 两目录各一（#13/#26），故元组内以重复项计数 15；解析见
+#: ``_p5_test_paths``（去重后恰好 15 个不同路径）。
+P5_TEST_FILES: tuple[str, ...] = (
+    "test_schemas.py",
+    "test_project_ir.py",
+    "test_loader.py",
+    "test_module_graph.py",
+    "test_rule_dsl_parity.py",
+    "test_rule_module.py",
+    "test_validator.py",
+    "test_cli.py",
+    "test_p5_gate_scenario.py",
+    "test_p5_adversarial.py",
+    "test_p5_integration.py",
+    "test_manifest.py",
+    "test_registry.py",
+    "conftest.py",
+    "conftest.py",
+)
+
 
 # —— 扫描工具（扩展骨架 AST 口径：保留完整点分模块名）——
 
@@ -389,6 +431,22 @@ class TestB3OfflineRunnable:
 
     def test_t06_test_tree_has_no_network_provider_or_v1_imports(self) -> None:
         violations = _scan_violations(TESTS_ENGINE_DIR, "**/*.py")
+        # P5 例外（SOT §6.5 字面要求；Leader 裁定，ERR-P5-16 记录）：
+        # test_p5_integration.py 的子进程冒烟 = 本地解释器 python -m 三态
+        # （无网络、无 API key、无 provider），仅豁免该文件「网络/进程 IO」
+        # 类别命中（subprocess）；provider / v1 类别对该文件仍零容忍。
+        # 本方法体是 §3.11 纯追加纪律的受控偏离（既有行变更仅此一处）。
+        p5_smoke = "tests/engine_v2/content/test_p5_integration.py"
+        if p5_smoke in violations:
+            rest = {
+                module_name: category
+                for module_name, category in violations[p5_smoke].items()
+                if category != "网络/进程 IO"
+            }
+            if rest:
+                violations[p5_smoke] = rest
+            else:
+                del violations[p5_smoke]
         assert not violations, f"tests/engine_v2/ 出现 §0.3 黑名单 import：{violations}"
 
 
@@ -503,3 +561,239 @@ class TestP4Boundary:
             if bad:
                 violations[name] = bad
         assert not violations, f"P4 测试文件命中全谓词：{violations}"
+
+
+# —— P5 扫描面解析（§3.11：既有行零改动，纯追加；辅助函数供 TestP5Boundary
+# 五方法复用，P5 专属常量仍仅 P5_SUBMODULES / P5_TEST_FILES 两个）——
+
+
+def _p5_src_path(stem: str) -> Path:
+    """P5 模块茎 → src 实际路径（content/ 与 plugins/ 两目录二选一）。"""
+    for sub in ("content", "plugins"):
+        path = REPO_ROOT / "src" / "engine_v2" / sub / f"{stem}.py"
+        if path.exists():
+            return path
+    raise AssertionError(f"P5 模块缺失：{stem}")
+
+
+def _p5_test_paths() -> list[Path]:
+    """P5 测试扫描面 15 文件 → 实际路径（content/ 与 plugins/ 两目录解析）。
+
+    ``conftest.py`` 基名在两目录各一（白名单 #13/#26），元组内重复计数，
+    去重后恰好 15 个不同路径。
+    """
+    dirs = (TESTS_ENGINE_DIR / "content", TESTS_ENGINE_DIR / "plugins")
+    paths: list[Path] = []
+    for name in P5_TEST_FILES:
+        matches = [d / name for d in dirs if (d / name).exists()]
+        assert matches, f"P5 测试扫描面文件缺失：{name}"
+        paths.extend(matches)
+    deduped = list(dict.fromkeys(paths))
+    assert len(deduped) == 15, f"P5 测试扫描面应为 15 文件：{len(deduped)}"
+    return deduped
+
+
+def _p5_ast_face() -> list[Path]:
+    """P5 AST/import 扫描面（27 文件）：10 模块 + 15 测试文件 + 测试侧 2
+    个包 ``__init__.py``（§6.4 扫描面声明；2 个 src 侧 ``__init__.py``
+    docstring-only（骨架已钉死），不入 AST/import 扫描面）。"""
+    return (
+        [_p5_src_path(stem) for stem in P5_SUBMODULES]
+        + _p5_test_paths()
+        + [
+            TESTS_ENGINE_DIR / "content" / "__init__.py",
+            TESTS_ENGINE_DIR / "plugins" / "__init__.py",
+        ]
+    )
+
+
+def _p5_all_files() -> list[Path]:
+    """P5 全文件文本扫描面（29 文件）：AST/import 扫描面 + src 侧 2 个包
+    ``__init__.py``（§6.4 行 2「全部 P5 src+test 文件」口径）。"""
+    return _p5_ast_face() + [
+        REPO_ROOT / "src" / "engine_v2" / "content" / "__init__.py",
+        REPO_ROOT / "src" / "engine_v2" / "plugins" / "__init__.py",
+    ]
+
+
+class TestP5Boundary:
+    """P5 import 边界强化（P5 设计规范 §3.11 / §6.4，机械验证）。
+
+    - ``P5_SUBMODULES`` 十个模块（content 7 + plugins 3）：绝对 import
+      不得触及 ``datetime``/``time``/``random``/``asyncio``（复用 P4 同
+      源常量 ``P4_NONDETERMINISM_ROOTS``）；
+    - 12 名 casefold 词边界扫描全部 P5 src+test 文件 → 0 命中（常量以
+      串拼接构造自豁免——P5 扫描面扩至 src+test，非 P4 明文常量仅 src
+      六模块的同型先例；拼接集与 ``P4_LLM_PROVIDER_BLACKLIST`` 断言相
+      等，复用既有常量作语义锚）；
+    - 绝对 import 扫描：provider 根集 ∪ 网络库根 → 0 命中（网络库根 =
+      ``NETWORK_IO_ROOTS`` 的网络部分，「httpx/requests/socket/urllib
+      族」；std lib 进程根 subprocess/multiprocessing 不在本行字面范
+      围——进程面由 T06 全树扫描兜底，唯一文档化例外 = SOT §6.5 要求
+      的 test_p5_integration.py 子进程冒烟）；
+    - ``content/loader.py`` + ``plugins/registry.py`` 封闭模式
+      （import_module/__import__/spec_from_file_location/
+      module_from_spec/entry.load()）→ 0 命中（断言 #6 的测试内实
+      现；``importlib.metadata`` 静态元数据查询不在封闭模式——P5 零动
+      态模块加载，W5 交付件 registry.py 既有先例）；
+    - ``src.game.*``/``src.config.*``/``src.agents.*`` 绝对 import → 0
+      命中（复用 V1 根集 + src 命名空间谓词，``_blacklist_category``
+      既有辅助；§3.11 锚点同步）。
+
+    扫描面 = §6.4 声明：10 模块 ∪ 15 测试文件 ∪ 测试侧 2 个包
+    ``__init__.py``；2 个 src 侧 ``__init__.py`` 不入 AST/import 扫描
+    面，只计入 ``test_p5_file_set`` 文件集断言。P5 专属常量仅 2 个
+    （§3.11）。
+    """
+
+    def test_p5_file_set(self) -> None:
+        """实际文件集（路径扫描）== ``P5_SUBMODULES``∪{__init__}×2 ∪
+        ``P5_TEST_FILES`` ∪ {测试侧 2 个包 ``__init__.py``}（§6.4 行 1；
+        §3.12 白名单代码面的测试内镜像，TestB1 文件集断言同型）。"""
+        content_dir = REPO_ROOT / "src" / "engine_v2" / "content"
+        plugins_dir = REPO_ROOT / "src" / "engine_v2" / "plugins"
+        actual_stems = sorted(
+            {p.stem for p in content_dir.glob("*.py")}
+            | {p.stem for p in plugins_dir.glob("*.py")}
+        )
+        assert actual_stems == sorted(set(P5_SUBMODULES) | {"__init__"}), (
+            f"P5 src 文件集与设计文档 §3.11 10 茎不符：{actual_stems}"
+        )
+        assert (content_dir / "__init__.py").exists(), "src content/__init__ 缺失"
+        assert (plugins_dir / "__init__.py").exists(), "src plugins/__init__ 缺失"
+        for path in _p5_test_paths():
+            assert path.exists(), f"P5 测试文件缺失：{path}"
+        assert (TESTS_ENGINE_DIR / "content" / "__init__.py").exists()
+        assert (TESTS_ENGINE_DIR / "plugins" / "__init__.py").exists()
+
+    def test_p5_12_name_blacklist(self) -> None:
+        """12 名 casefold ``\\b`` 词边界扫描全部 P5 src+test 文件 → 0
+        命中（§6.4 行 2）。
+
+        常量以串拼接构造自豁免（P5 扫描面扩至 src+test，非 P4 先例）；
+        拼接集与 ``P4_LLM_PROVIDER_BLACKLIST``（既有 12 明文常量）断言
+        相等。负例锚：``llmsim``/``api_key_env`` 不命中（``\\w`` 边界
+        语义钉死）。
+        """
+        joined = [
+            "open" + "ai",
+            "anthr" + "opic",
+            "lang" + "chain",
+            "lite" + "llm",
+            "oll" + "ama",
+            "gem" + "ini",
+            "g" + "pt",
+            "cla" + "ude",
+            "l" + "lm",
+            "prov" + "ider",
+            "api_" + "key",
+            "base_" + "url",
+        ]
+        assert set(joined) == P4_LLM_PROVIDER_BLACKLIST, "拼接集与 12 名常量不等"
+        hits: dict[str, list[str]] = {}
+        for path in _p5_all_files():
+            text = path.read_text(encoding="utf-8").casefold()
+            matched = [
+                word
+                for word in joined
+                if re.search(rf"\b{re.escape(word)}\b", text)
+            ]
+            if matched:
+                hits[str(path.relative_to(REPO_ROOT))] = matched
+        assert not hits, f"P5 文件命中 12 名黑名单（§6.4）：{hits}"
+        probe = re.compile(r"\b(?:" + "|".join(joined) + r")\b")
+        assert not probe.search("llmsim"), "负例锚失守：llmsim 不应命中"
+        assert not probe.search("api_key_env"), "负例锚失守：api_key_env 不应命中"
+
+    def test_p5_forbidden_roots(self) -> None:
+        """绝对 import 扫描：provider 根集 ∪ 网络库根 → 0 命中（§6.4
+        行 3）。
+
+        网络库根 = ``NETWORK_IO_ROOTS`` 的网络部分（「httpx/requests/
+        socket/urllib 族」）；std lib 进程根 subprocess/multiprocessing
+        不在本行字面范围——进程面由 T06 全树扫描兜底，唯一文档化例外
+        = SOT §6.5 要求的 test_p5_integration.py 子进程冒烟。
+        """
+        forbidden = PROVIDER_ROOTS | (
+            NETWORK_IO_ROOTS - {"subprocess", "multiprocessing"}
+        )
+        violations: dict[str, list[str]] = {}
+        for path in _p5_ast_face():
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if module_name.split(".")[0] in forbidden
+            ]
+            if bad:
+                violations[str(path.relative_to(REPO_ROOT))] = bad
+        assert not violations, f"P5 文件命中 provider/网络库根（§6.4）：{violations}"
+
+    def test_p5_ast_nondeterminism(self) -> None:
+        """AST 扫描 10 个 src 模块：time/random/datetime/asyncio import
+        或属性调用 → 0 命中；content/loader.py + plugins/registry.py
+        封闭模式（import_module/__import__/spec_from_file_location/
+        module_from_spec/entry.load()）→ 0 命中（§6.4 行 4；断言 #6
+        的测试内实现）。
+
+        ``importlib.metadata`` 静态元数据查询（registry.py 的
+        ``entry_points`` 面，W5 交付件既有先例）不在封闭模式——P5 零
+        动态模块加载，允许静态元数据读取。
+        """
+        hits: list[str] = []
+        for stem in P5_SUBMODULES:
+            path = _p5_src_path(stem)
+            for module_name in _collect_absolute_imports(path):
+                if module_name.split(".")[0] in P4_NONDETERMINISM_ROOTS:
+                    hits.append(f"{path.name}: import {module_name}")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Name) and node.id in P4_NONDETERMINISM_ROOTS:
+                    hits.append(f"{path.name}:L{node.lineno}: 使用 {node.id}")
+                elif (
+                    isinstance(node, ast.Attribute)
+                    and node.attr in P4_NONDETERMINISM_ROOTS
+                ):
+                    hits.append(f"{path.name}:L{node.lineno}: 属性 {node.attr}")
+        closed = {
+            "import_module",
+            "__import__",
+            "spec_from_file_location",
+            "module_from_spec",
+        }
+        for path in (_p5_src_path("loader"), _p5_src_path("registry")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and any(
+                    alias.name in closed for alias in node.names
+                ):
+                    hits.append(f"{path.name}:L{node.lineno}: from-import 封闭模式")
+                elif isinstance(node, ast.Name) and node.id in closed:
+                    hits.append(f"{path.name}:L{node.lineno}: {node.id}")
+                elif isinstance(node, ast.Attribute) and node.attr in closed:
+                    hits.append(f"{path.name}:L{node.lineno}: {node.attr}")
+                elif (
+                    isinstance(node, ast.Attribute)
+                    and node.attr == "load"
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "entry"
+                ):
+                    hits.append(f"{path.name}:L{node.lineno}: entry.load()")
+        assert not hits, (
+            f"P5 模块命中非确定性根或动态加载封闭模式（§6.4）：{hits}"
+        )
+
+    def test_p5_no_v1_imports(self) -> None:
+        """src.game.*/src.config.*/src.agents.* 绝对 import → 0 命中
+        （§6.4 行 5；复用 V1 根集 + src 命名空间谓词，
+        ``_blacklist_category`` 既有辅助；§3.11 锚点同步）。"""
+        violations: dict[str, list[str]] = {}
+        for path in _p5_ast_face():
+            bad = [
+                module_name
+                for module_name in _collect_absolute_imports(path)
+                if _blacklist_category(module_name)
+                in ("v1 包（src 命名空间）", "v1 包（裸名）")
+            ]
+            if bad:
+                violations[str(path.relative_to(REPO_ROOT))] = bad
+        assert not violations, f"P5 文件命中 v1 包 import（§6.4）：{violations}"

@@ -1,0 +1,23 @@
+# P5 白名单行 #39（§3.12 L565）：破损 world 节文件（预期 exit 1 文件面）。
+# 预期诊断（断言 #17 / 对抗 A1）：
+# - 两 locations 同 id dup_room → 1 条 LLMSIM_DUPLICATE_ID
+#   （path=locations，refs=(dup_room, "0", "1")，Leader 预裁定 A1 形）；
+# - 首 dup_room connection east → ghost_room（location 池外）→ 1 条
+#   LLMSIM_UNRESOLVED_REF（path=dup_room，refs=(connection, ghost_room)）。
+world:
+  name: 破损房间
+  description: 用于判重与悬空引用断言的破损 world。
+  environment:
+    time_of_day: 未知
+    weather: 无
+    temperature_c: 20.0
+  locations:
+    - id: dup_room
+      name: 重复房间甲
+      description: 与乙同 id 的第一房间。
+      connections:
+        east: ghost_room
+    - id: dup_room
+      name: 重复房间乙
+      description: 与甲同 id 的第二房间。
+      connections: {}

@@ -1,0 +1,32 @@
+# P5 白名单行 #32（§3.12 L558）：characters 节文件（顶层键必为 characters，
+# 值为 CharacterSpec 列表）。relationships key ∈ 角色池 ∪ {player_id}
+# （check_references 面）。personality 开放 dict（5 豁免处之一，D-P5-05）。
+characters:
+  - id: npc01
+    name: 守门人
+    personality:
+      traits:
+        - 谨慎
+        - 寡言
+      motivations:
+        - 守住石室的门
+      speech_style: 短句，不带感情色彩
+      background: 不知何时起便守在这条走廊尽头，没有更久远的记忆。
+    position:
+      x: 3
+      y: 0
+      z: 0
+    starting_inventory: []
+    relationships:
+      player_1: 0.5
+    speech_examples:
+      - 门没锁。
+      - 别碰箱子。
+    attributes:
+      energy:
+        name: 精力
+        value: 60
+        min: 0
+        max: 100
+        natural_delta_per_minute: -0.05
+        description: 守夜消耗的体力和注意力。

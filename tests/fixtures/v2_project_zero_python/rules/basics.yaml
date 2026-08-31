@@ -1,0 +1,14 @@
+# P5 白名单行 #33（§3.12 L559）：rules 节文件（顶层键必为 rules，值为
+# RuleSpec 列表）。condition = DSL if-chain（D-P5-09；validate 期 parse_dsl
+# 面校验）；uncertain 概率槽 parse 生产 = 数字字面（D-P5-DEV-7）。
+rules:
+  - id: rule_carry_weight
+    description: 力量相对目标物重的搬运判定（v1 strength_vs_weight 镜像形状）。
+    condition: 'if(player.strength > target.weight * 1.5, allowed; player.strength > min(target.weight, 25.0), uncertain : 0.4; blocked)'
+    priority: 100
+  - id: rule_move_uncertain
+    description: 移动动作匹配规则（match + feasibility 简式，概率必需）。
+    match: move
+    feasibility: uncertain
+    probability: 0.6
+    priority: 90

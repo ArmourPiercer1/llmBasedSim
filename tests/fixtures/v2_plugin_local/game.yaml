@@ -1,0 +1,43 @@
+# P5 白名单行 #35（§3.12 L561）：本地插件参考项目（full 合法 → exit 0）。
+# plugin_descriptors 声明 infection（source=local）；注册表由
+# plugins/infection/plugin.yaml 本地 manifest 提供（双路发现路 1，D-P5-07）。
+# plugins/ 目录存在且 pyproject.toml 存在（行 #36）→ 零插件族诊断。
+manifest:
+  schema_version: "2"
+  project_id: plugin_local
+  name: 本地插件镜像项目
+  description: 携带 plugins/infection 本地 manifest 的 v2 参考项目。
+  engine_version: ">=0.5.0"
+scenario:
+  id: scenario_main
+  max_ticks: 20
+  ticks_per_game_minute: 1
+  game_time:
+    hour: 9
+    minute: 30
+  narrative_style: 简洁直接的叙述风格。
+player:
+  player_id: player_1
+  name: 测试者
+  persona: 验证本地插件发现链路的观察者。
+  position:
+    x: 0
+    y: 0
+    z: 0
+  capabilities:
+    sight_range_m: 50.0
+    hearing_range_m: 100.0
+    field_of_view_degrees: 180.0
+  physical_profile:
+    height_cm: 175.0
+    weight_kg: 70.0
+    body_width_cm: 50.0
+    movement_mode: normal_walking
+    strength: 0.5
+  attributes: {}
+  inventory: []
+plugin_descriptors:
+  - id: infection
+    source: local
+    entrypoint: infection_plugin.system:InfectionSystem
+    description: 感染系统（本地 manifest 注册，文法 module:Attribute）。
