@@ -62,7 +62,7 @@ DETERMINISM_CLASSES: Final[tuple[str, ...]] = (
 )
 
 #: backend 实现类型闭集（Spec §15.4 描述性口径，D-P7-03）。
-IMPLEMENTATION_TYPES: Final[tuple[str, ...]] = ("rule", "llm", "numerical", "composite")
+IMPLEMENTATION_TYPES: Final[tuple[str, ...]] = ("rule", "inference", "numerical", "composite")
 
 #: 名字型（点分）词法：fidelity / backend_id 共用（Spec §15.4，D-P7-03）。
 FIDELITY_PATTERN: Final[str] = r"^[a-z][a-z0-9_]*(\.[a-z0-9_]+)*$"

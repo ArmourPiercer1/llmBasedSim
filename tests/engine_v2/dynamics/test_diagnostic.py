@@ -1,4 +1,4 @@
-"""P7-W1 test_diagnostic.py（SOT §6.1 t26–t33，8 平铺函数，零 test class）。
+"""P7-W1 test_diagnostic.py（SOT §6.1 t1–t8（逐文件编号），8 平铺函数，零 test class）。
 
 契约面：诊断载体 ``DynamicsDiagnostic``（镜像 P6 ``RuntimeDiagnostic`` 形状，
 ERR-P6-10(a) 先例）与 P7 8 码闭集 ``P7_DYNAMICS_DIAGNOSTIC_CODES``——

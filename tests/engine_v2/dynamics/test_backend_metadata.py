@@ -184,10 +184,9 @@ def test_metadata_determinism_closed_set() -> None:
 
 
 def test_metadata_implementation_type_closed_set() -> None:
-    """t9：``implementation_type`` 闭集 4 元；异名拒绝（token 安全写法）。"""
-    assert len(IMPLEMENTATION_TYPES) == 4
-    for value in ("rule", "numerical", "composite"):
-        assert value in IMPLEMENTATION_TYPES
+    """t9：``implementation_type`` 闭集 4 元；异名拒绝。"""
+    assert tuple(IMPLEMENTATION_TYPES) == ("rule", "inference", "numerical", "composite")
+    for value in ("rule", "inference", "numerical", "composite"):
         _make_backend_metadata(implementation_type=value)
     with pytest.raises(DynamicsError):
         _make_backend_metadata(implementation_type="hybrid")

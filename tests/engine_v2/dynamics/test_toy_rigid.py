@@ -1,4 +1,4 @@
-"""P7-W1 test_toy_rigid.py（SOT §6.1 t13–t25，13 平铺函数，零 test class）。
+"""P7-W1 test_toy_rigid.py（SOT §6.1 t1–t13（逐文件编号），13 平铺函数，零 test class）。
 
 契约面：toy 数值后端 ``ToyRigidDynamics``（SOT §3.4）——欧拉积分 payload
 面、效果词法/确定性（K7）、元数据、checkpoint/restore 语义与失败诊断
