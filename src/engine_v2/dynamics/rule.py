@@ -95,7 +95,9 @@ class WorldRule:
       字段路径（None = 整实体目标；字段路径必须配组件，SOT §3.3 L429）；
     - ``emit_payload`` JSON-clean 模板（构造期机械断言）；标量值可含
       ``@field:<component>.<field>`` 引用（求值期从目标实体组件取 JSON 标量）；
-    - ``cause_ids`` 默认 ()（可链式指上游）。
+    - ``cause_ids`` 默认 () 且规则 backend 恒空（构造期非空拒绝，ERR-P7-06：冻结 core
+      ``ProposedEffect.cause_ids = list[CauseRef]``，``CauseKind`` 5 类无刺激族，裸 str 因果链不可表达；
+      K6 溯源由 origin + source 承载）。
     """
 
     rule_id: str
@@ -141,6 +143,12 @@ class WorldRule:
             not isinstance(cause, str) for cause in self.cause_ids
         ):
             raise DynamicsError(f"WorldRule.cause_ids 必须为 tuple[str, ...]：{self.cause_ids!r}")
+        if self.cause_ids:
+            raise DynamicsError(
+                "WorldRule.cause_ids 必须为空元组（ERR-P7-06：冻结 core cause_ids = "
+                "list[CauseRef] 类型化因果引用，CauseKind 无刺激族；K6 溯源由 "
+                "origin + source 承载）"
+            )
         try:
             assert_json_clean(self.when)
             assert_json_clean(self.emit_payload)
@@ -318,7 +326,7 @@ class RuleDynamics:
           context.base_revision, index)``（index = 声明位）；
           ``source = producer_id``；``target = EntityTarget(entity,
           component_type, field_path)``；``payload`` = 模板 ``@field`` 求值
-          结果；``base_revision = context.base_revision``；``cause_ids`` 透传；
+          结果；``base_revision = context.base_revision``；``cause_ids`` = []（恒空，ERR-P7-06）；
         - 目标实体不在快照 → :class:`DynamicsError`（SOT §3.3：必须存在）；
         - ``stimuli`` 为协议统一面（host 恒传），规则 backend 不消费。
         """
@@ -348,7 +356,7 @@ class RuleDynamics:
                     ),
                     payload=_evaluate_payload(rule, record),
                     base_revision=context.base_revision,
-                    cause_ids=list(rule.cause_ids),
+                    cause_ids=[],
                 )
             )
         return tuple(effects)

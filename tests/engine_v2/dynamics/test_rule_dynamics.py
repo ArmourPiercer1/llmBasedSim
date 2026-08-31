@@ -51,7 +51,9 @@ def _effects_json(effects: tuple[ProposedEffect, ...]) -> str:
 
 
 def test_rule_world_variable_equals_fires() -> None:
-    """t1：``world_variable_equals`` 命中（SOT §5.1 S1 r_gravity 逐字）→ 恰 1 effect 全字段面。"""
+    """t1：``world_variable_equals`` 命中（SOT §5.1 S1 r_gravity 逐字）→ 恰 1 effect 全字段面。
+    （ERR-P7-06：非空 cause_ids 构造期拒绝。）
+    """
     gem = _det_entity_id("gem")
     rule = WorldRule(
         rule_id="r_gravity",
@@ -76,6 +78,18 @@ def test_rule_world_variable_equals_fires() -> None:
     assert effect.base_revision == 4
     assert effect.cause_ids == []
     assert effect.effect_id == new_deterministic_effect_id("rule", "r_gravity", 4, 0)
+    # ERR-P7-06 in-band 纪律探针：非空 cause_ids 同形规则 → 构造期拒绝。
+    with pytest.raises(DynamicsError):
+        WorldRule(
+            rule_id="r_gravity",
+            when={"world_variable_equals": {"key": "gravity", "value": 9.8}},
+            emit_effect_type="gem.fell",
+            emit_target_entity=gem,
+            emit_component_type=None,
+            emit_field_path=None,
+            emit_payload={"moved": True},
+            cause_ids=("eff_stim_x",),
+        )
 
 
 def test_rule_component_field_equals_with_field_ref() -> None:

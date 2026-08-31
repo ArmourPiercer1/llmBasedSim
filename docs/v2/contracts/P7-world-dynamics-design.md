@@ -428,7 +428,7 @@ JSON-clean twin 模式，镜像 `prompts/diagnostic.py` L21 RuntimeDiagnostic）
 | emit_component_type | str \| None | EntityTarget 组件（None = 整实体目标） |
 | emit_field_path | str \| None | 字段路径（配 component） |
 | emit_payload | Mapping[str, object] | JSON-clean 模板；标量值可含 `@field:<component>.<field>` 引用（求值期从目标实体组件取 JSON 标量） |
-| cause_ids | tuple[str, ...] | 默认 ()（可链式指上游） |
+| cause_ids | tuple[str, ...] | 默认 () 且**规则 backend 恒空**（构造期非空拒绝，ERR-P7-06） |
 
 **`RuleDynamics`**：`__init__(*, rules: tuple[WorldRule, ...],
 producer_id: str = "rule_dynamics")`（常量见 §3.7）。
@@ -441,7 +441,7 @@ producer_id: str = "rule_dynamics")`（常量见 §3.7）。
   "rule", rule.rule_id, context.base_revision, index)`；`source=producer_id`；
   `target=EntityTarget(entity, component_type, field_path)`；
   `payload=模板 @field 求值`；`base_revision=context.base_revision`；
-  `cause_ids` 透传。未命中 → 跳过。无内部状态（纯函数于 snapshot）。
+  `cause_ids` = []（恒空，ERR-P7-06）。未命中 → 跳过。无内部状态（纯函数于 snapshot）。
 
 ### 3.4 `toy_rigid.py`（T06；3 exports）
 
@@ -535,8 +535,10 @@ Protocol）, config: LLMWorldDynamicsConfig, clock: MonotonicClock)`。
 5. 映射 wire → `ProposedEffect`：`effect_id =
    new_deterministic_effect_id("inference", index, context.base_revision,
    wire.effect_type, wire.entity_id)`；`source=config.producer_id`；
-   **`cause_ids = tuple(s.stimulus_id for s in stimuli)`**（K6：
-   producer id + cause_ids 溯源链）；`authority_scope=None`（K4：
+   **`cause_ids = []`**（恒空，ERR-P7-06：冻结 core
+   `ProposedEffect.cause_ids = list[CauseRef]` 类型化因果引用
+   （core/provenance.py L97，`CauseKind` 5 类无刺激族）；K6 溯源链 =
+   origin + source，刺激关联 = host driver 场景层）；`authority_scope=None`（K4：
    声明不参与判定——check_authority L550 D-P2-17 口径）；`priority_hint=None`。
 
 `metadata()` → `BackendMetadata(backend_id="llm_world_dynamics",
@@ -777,8 +779,9 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
   （`DynamicsProposalWire`/`DynamicsEffectWire`，ERR-P6-10(a) JSON-clean
   twin 纪律，extra="forbid"）——不复用 P6 `LLMActionProposal`
   （assembler.py L218，ActionProposal 面）；**K6**：事务 origin =
-  `OriginKind.DYNAMICS_BACKEND` + effect `cause_ids = 刺激 id 元组` +
-  producer id 溯源链；**K4**：prompt L0 契约声明"输出皆为提案、受权限/
+  `OriginKind.DYNAMICS_BACKEND` + source（producer id）溯源链
+  （`cause_ids` 恒 []，ERR-P7-06：冻结 core `CauseKind` 5 类无刺激族，
+  刺激关联 = host driver 场景层）；**K4**：prompt L0 契约声明"输出皆为提案、受权限/
   校验/冲突裁决、永不定义权限"（机械断言 t12）；**K5**：走**同一条**
   K2 管道（CascadeExecutor.run），**无 fast path**；**仅 scripted fake
   backend** 进 P7 测试面（HttpxInferenceBackend 不在 import 白名单）。
@@ -949,8 +952,9 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
   base + 1；deferred 空。
 - **A3**：final_state 中 gem 的 `gem_state.moved == True`（handler 应用）。
 - **A4**：溯源链：事务 origin.origin_kind == `OriginKind.DYNAMICS_BACKEND`；
-  effect.source == `llm_world_dynamics`；effect.cause_ids ==
-  `("stim_support_removed",)`。
+  effect.source == `llm_world_dynamics`；effect.cause_ids == []
+  （恒空，ERR-P7-06；刺激 `stim_support_removed` 的关联由 host driver
+  场景层承载——测试经 simulate 入参钉死）。
 
 **G7 Case B（S5）**：
 - **A5**：同批恰 2 个 ProposedEffect：`core.set_component`（source=
@@ -1032,7 +1036,7 @@ D1–D12；D-P7-13..15 为本波自裁（报告 JSON `self_adjudications` 同列
 | `test_backend_metadata.py` | 12 | t1 `test_world_snapshot_from_snapshot_projects` / t2 `test_world_snapshot_frozen_revision_consistent` / t3 `test_stimulus_valid_construction` / t4 `test_stimulus_rejects_unknown_kind` / t5 `test_stimulus_rejects_non_json_clean_payload` / t6 `test_dynamics_context_defaults` / t7 `test_inference_budget_validation` / t8 `test_metadata_determinism_closed_set` / t9 `test_metadata_implementation_type_closed_set` / t10 `test_metadata_fidelity_pattern` / t11 `test_metadata_double_construct_stable_json_clean`（**A17**）/ t12 `test_deterministic_effect_id_pattern_and_stability` |
 | `test_rule_dynamics.py` | 10 | t1 `test_rule_world_variable_equals_fires` / t2 `test_rule_component_field_equals_with_field_ref` / t3 `test_rule_entity_exists_fires` / t4 `test_rule_no_match_no_emit` / t5 `test_rule_declaration_order_deterministic` / t6 `test_rule_field_ref_missing_component_raises` / t7 `test_rule_double_run_byte_identical`（**A15**）/ t8 `test_rule_metadata` / t9 `test_rule_id_lexical_rejected` / t10 `test_rule_unknown_operator_rejected` |
 | `test_toy_rigid.py` | 13 | t1 `test_toy_constant_velocity_integration` / t2 `test_toy_acceleration_integration` / t3 `test_toy_multi_entity_sorted_order` / t4 `test_toy_no_rigid_component_empty` / t5 `test_toy_effect_shape_set_component` / t6 `test_toy_effect_id_deterministic` / t7 `test_toy_double_run_byte_identical` / t8 `test_toy_metadata` / t9 `test_toy_checkpoint_json_clean` / t10 `test_toy_restore_roundtrip_continues` / t11 `test_toy_restore_rejects_wrong_version` / t12 `test_toy_restore_rejects_non_json_clean` / t13 `test_toy_no_random_no_module_mutable_state`（AST 面） |
-| `test_llm_world.py` | 14 | t1 `test_llm_single_call_wire_to_effect` / t2 `test_llm_effect_id_deterministic` / t3 `test_llm_cause_ids_from_stimuli`（K6）/ t4 `test_llm_prompt_deterministic` / t5 `test_llm_parse_failure_repair_success` / t6 `test_llm_parse_failure_twice_diagnostic` / t7 `test_llm_wire_extra_forbid` / t8 `test_llm_wire_bad_effect_type_lexical` / t9 `test_llm_budget_zero_exhausted` / t10 `test_llm_metadata` / t11 `test_llm_double_run_byte_identical_scripted`（**A16**）/ t12 `test_llm_l0_contract_k4_clause`（K4 子串断言）/ t13 `test_llm_canonical_world_facts_stable` / t14 `test_llm_diagnostics_last_run_reset`（D-P7-15） |
+| `test_llm_world.py` | 14 | t1 `test_llm_single_call_wire_to_effect` / t2 `test_llm_effect_id_deterministic` / t3 `test_llm_cause_ids_empty_origin_source`（K6：cause_ids 恒 [] + origin/source 溯源，ERR-P7-06）/ t4 `test_llm_prompt_deterministic` / t5 `test_llm_parse_failure_repair_success` / t6 `test_llm_parse_failure_twice_diagnostic` / t7 `test_llm_wire_extra_forbid` / t8 `test_llm_wire_bad_effect_type_lexical` / t9 `test_llm_budget_zero_exhausted` / t10 `test_llm_metadata` / t11 `test_llm_double_run_byte_identical_scripted`（**A16**）/ t12 `test_llm_l0_contract_k4_clause`（K4 子串断言）/ t13 `test_llm_canonical_world_facts_stable` / t14 `test_llm_diagnostics_last_run_reset`（D-P7-15） |
 | `test_composite.py` | 8 | t1 `test_composite_fanout_child_order` / t2 `test_composite_empty_children` / t3 `test_determinism_join_det_det` / t4 `test_determinism_join_det_seeded` / t5 `test_determinism_join_seeded_nondet` / t6 `test_composite_metadata_domains_union` / t7 `test_composite_metadata_booleans_and` / t8 `test_composite_double_run_byte_identical` |
 | `test_authority_host.py` | 8 | t1 `test_producer_ids_pattern_fullmatch`（**A19**）/ t2 `test_producer_ids_set_exact` / t3 `test_build_producers_priorities` / t4 `test_default_policy_allows_declared` / t5 `test_closed_default_no_matching_rule_deny`（**A18**）/ t6 `test_producer_priority_ordering_physics_over_llm` / t7 `test_default_policy_component_dimension` / t8 `test_default_policy_dump_json_clean` |
 | `test_host_driver.py` | 10 | t1 `test_turn_happy_path_commit` / t2 `test_turn_events_one_to_one` / t3 `test_turn_origin_dynamics_backend`（K6）/ t4 `test_turn_state_not_mutated` / t5 `test_turn_authority_deny_no_change` / t6 `test_turn_empty_effects_no_transactions` / t7 `test_turn_frozen_summary_json_clean` / t8 `test_turn_case_a_end_to_end` / t9 `test_turn_causal_root_in_events` / t10 `test_turn_double_run_byte_identical` |
@@ -1165,7 +1169,7 @@ capabilities:
 | Case A：`LLMWorldDynamics → GemMoved` | llm_world.py + host.py（cascade 入口） | D-P7-05/09 | A1 | t_g7_case_a_single_effect |
 | （Case A 提交链） | cascade.run 全管道 | D-P7-09 | A2 | t_g7_case_a_commit_and_revision |
 | （Case A 终态） | gem.moved handler（测试侧注册） | D-P7-13 | A3 | t_g7_case_a_final_state_moved |
-| （Case A 溯源） | origin DYNAMICS_BACKEND + cause_ids | D-P7-05（K6） | A4 | t_g7_case_a_provenance_chain |
+| （Case A 溯源） | origin DYNAMICS_BACKEND + source（cause_ids 恒 []，ERR-P7-06） | D-P7-05（K6） | A4 | t_g7_case_a_provenance_chain |
 | Case B：`必须可见两个 ProposedEffect` | detect_conflicts + ConflictResolutionReport | D-P7-08/13 | A5–A7 | t_g7_case_b_two_effects_visible / _conflict_group / _resolution_winner_reject |
 | Case B：`由 resolver 决定` | ProducerPriorityStrategy（100>50 唯一最大） | D-P7-08 | A8–A9 | t_g7_case_b_winner_is_physics / _final_state_stay |
 | kernel 条款：`if backend is LLM ...` 禁 | P7 = core/ 外消费者包 | D-P7-07 | A10 | t_g7_kernel_no_backend_if_elif（+边界第 4 法 (a)） |
@@ -1234,7 +1238,7 @@ capabilities:
 | K3 Authority 与 Commit 分离（L285–293） | 准入（check_authority，首匹配拍板）与裁决（conflict 策略链）分离；D-P7-08 两权分离设计（authority 管准入、producer priority 管裁决） | test_authority_host.py t4/t6；A5–A9 |
 | K4 Prompt 不能定义世界权限（L295–303） | L0 契约逐字含"提案受权限/校验/冲突裁决、永不定义权限"；`authority_scope=None` 恒置（D-P2-17 口径：声明不参与判定） | t_llm_l0_contract_k4_clause（子串断言）；t_llm_single_call（authority_scope 断言） |
 | K5 Agent 是 Policy 不是 Engine（L305–313） | 全部 backend = policy：产 ProposedEffect，永不裁决/直写（P7-INV-1 推广） | 边界第 1/4 法；A2/A8 |
-| K6 Event 必须可追踪来源（L315–324） | 事务 origin = DYNAMICS_BACKEND（host 构造）；effect source = producer id；cause_ids = 刺激 id；事件 1:1 携 cascade 上下文 | A4；test_host_driver t2/t3 |
+| K6 Event 必须可追踪来源（L315–324） | 事务 origin = DYNAMICS_BACKEND（host 构造）；effect source = producer id；cause_ids 恒 []（冻结 core `CauseKind` 5 类无刺激族，ERR-P7-06；刺激关联 = host driver 场景层）；事件 1:1 携 cascade 上下文 | A4；test_host_driver t2/t3 |
 | K7 关键调度状态可检查（L326–328） | 零隐藏状态：backend 无 continuation 隐藏态；时钟 = 注入 seam（MonotonicClock Protocol）；零模块级可变全局；全数据结构 JSON-clean；确定性双跑 = 扩展面（D-P6-19 先例口径） | A15–A17；AD-4；t13；t14（last-run 视图可检查） |
 | K8 Deployment 与 Game Project 分离（L330–339） | 项目零部署固定/零 backend 声明（fixture 仅 capability 面）；metadata = P7 模块导出 + host 注册；12 名扫描保项目/引擎边界 | §6.4 fixture 钉死；边界第 3 法（12 名，20 文件 .py 面）；边界第 5 法 diff |
 
@@ -1372,3 +1376,33 @@ capabilities:
      `FIDELITY_PATTERN` 本地定义先例镜像了该正则（文本逐字同值）；Leader
      裁定：补 §2.1 表（单一真源纪律，避免"勿单边修改"重复字面量），
      rule.py 改直接 import core `EFFECT_TYPE_ID_PATTERN`，删本地镜像。
+- **ERR-P7-06**（W2 R1 闭合：3/4 BLOCK、0 SUPPLEMENT；契约错误 = SOT
+  str 链式 cause_ids 口径与冻结 core 三方矛盾；Leader 裁定，代码面走
+  W2 修正轮）：
+  1. **矛盾面**（字节核验）：§3.3 L431/L444 钉 `WorldRule.cause_ids =
+     tuple[str, ...]`「可链式指上游」+ simulate「透传」；§3.5 同款
+     `tuple(s.stimulus_id for s in stimuli)`；A4 钉
+     `effect.cause_ids == ("stim_support_removed",)`——但冻结 core
+     `ProposedEffect.cause_ids: list[CauseRef]`（core/effects.py L223），
+     `CauseRef = {kind: CauseKind, ref_id: str}`（core/provenance.py L97，
+     docstring 明示「避免裸字符串歧义」），`CauseKind` 5 类
+     （event/action/effect/proposal/intervention）**无刺激族**——裸 str
+     链在冻结 core 下不可表达，simulate 期抛 raw
+     `pydantic_core.ValidationError`（逃逸 P7 二分纪律异常带）。SOT 自身
+     §2.1 L163/L173 即列 `CauseRef`/`CauseKind` 消费面 = 自相矛盾。
+  2. **裁定依据**：权威序 = 冻结 core（P4 已实现契约，byte-frozen）>
+     Spec §16.1「建议字段」`cause_ids: list[str]`（非规范建议片段，core
+     类型化精化是其有意演进）> SOT 设计选择。Spec K6/§21.2 为 SHOULD
+     级溯源清单（transaction id/source/cause id/revision/authority
+     decision/events）——**机制保留**：P7 后端 `cause_ids` 恒 []，K6
+     溯源链由 origin（`OriginKind.DYNAMICS_BACKEND`，host 构造）+
+     effect source（producer id）+ 事务/revision 承载；刺激→effect 关联
+     = host driver 场景层（S1/S3 场景表钉死 + 测试经 simulate 入参
+     钉死）；core 内 cascade 型因果（effect→effect，`kind=EFFECT` +
+     EffectId）仍可按 core 语义表达，P7 后端不生产此类引用。
+  3. **修面**（8 处 SOT + 代码）：§3.3 L431 表行 / L444 透传句 / §3.5
+     L538 元组句 / D-P7-05 K6 句 / A4 断言 pin / §6.1 W3 t3 函数名
+     （`test_llm_cause_ids_from_stimuli` → `test_llm_cause_ids_empty_origin_source`）
+     / §7.1 Case A 溯源行 / §8.1 K6 矩阵行；代码面 = rule.py
+     构造期非空 cause_ids 拒绝（DynamicsError，in-band）+ simulate
+     `cause_ids=[]`（W2 修正轮）。
