@@ -1,6 +1,6 @@
-"""P6-W4 ``prompts/registry.py`` 单测（SOT §3.9 + §6.1 L815，恰 13 个平铺函数）。
+"""P6-W4 ``prompts/registry.py`` 单测（SOT §3.9 + §6.1 L816，恰 13 个平铺函数）。
 
-覆盖项（按 §6.1 L815 行逐项 1:1）：
+覆盖项（按 §6.1 L816 行逐项 1:1）：
 
 1. ``test_normal_load``：正常装载（两 scope 各一 policy，by_id 两入、诊断空、
    TemplateDocument 六字段逐词断言）；

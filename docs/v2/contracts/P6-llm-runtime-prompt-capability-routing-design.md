@@ -331,7 +331,7 @@ K1-K8 全文见 Spec:242-339。P6 是**读世界视图 → 产新值（提案/�
 
   **确定性条款**：同 (context, wire, valid_until) → 逐字段相等的提案（#17 消费）；不抛异常（构造违例 = pydantic ValidationError 上抛，属输入不变式违反族）。
 
-**模块纪律**：stdlib（json + hashlib，§3 导入纪律白名单内）+ pydantic + core 冻结面 + prompts.assembler（wire 模型）；零网络、零 I/O、零非确定根源、同步面。
+**模块纪律**：stdlib（hashlib + re，§3 导入纪律白名单内）+ pydantic + core 冻结面 + prompts.assembler（wire 模型）；零网络、零 I/O、零非确定根源、同步面。
 
 ### 3.6 `llm/policy.py`（4 导出）
 
@@ -444,7 +444,7 @@ K1-K8 全文见 Spec:242-339。P6 是**读世界视图 → 产新值（提案/�
   `store.by_id: dict[str, TemplateDocument]`、`store.diagnostics: tuple[RuntimeDiagnostic, ...]`（序 = (code, path, refs) 排序，确定性）。
   **scope 分派面**：`store.for_scope(scope: str) -> tuple[TemplateDocument, ...]` 不存在于本模块（scope 分派归 assembler §3.10——registry 只管加载与纪律，assembler 只管组装，单一职责）。
 
-**模块纪律**：读面 = `pathlib` + core/content 冻结类型；零网络、零非确定根源、同步面；P5 PromptPolicy 只读消费（P5 冻结）。
+**模块纪律**：读面 = `pathlib` + `re` + pydantic + core/content 冻结类型 + `prompts/diagnostic`（W1）；零网络、零非确定根源、同步面；P5 PromptPolicy 只读消费（P5 冻结）。
 
 ### 3.10 `prompts/assembler.py`（12 导出）
 
@@ -1042,3 +1042,5 @@ ERR-P6-6（W3 B3 边界冲突处置 + 闭合）：W3（`adapter.py` 379 行 + `t
 ERR-P6-7（W3 R1 盲审轮处置 + 闭合）：W3 R1 轮 4 审查员 = 4/4 PASS（工作流传输面 R1 返回值丢失，盘上报告完整在位——Leader 按盘上 JSON 验收，传输失败不重发），findings 15（4 DOC + 11 INFO，无 BLOCK/SUPPLEMENT）。处置：F-42a..f 采纳（adapter.py 4 处 + test_adapter.py 2 处开发侧内部审计编号 A-W3-3/4/8/11/12 引用非 SOT 登记面——W1 F-29（ERR-P6-2）/ W2 F-39（ERR-P6-5）同型第三次复发，改引 SOT 锚点：A-W3-3 → §3.4 L256；A-W3-4 → §3.4 L258-270；A-W3-8 → §3.4 L285；A-W3-11 → L17/L123 K8 口径；A-W3-12 → §3.4 L254 Protocol 面；adapter.py L364 的 A-W3-1 已登记（ERR-P6-6）保留——零行为 diff；src 侧 A-W3-x 残留三次复发根因 = 各波 dev brief 的 Leader 预判编号被 dev 直引，后续波次 brief 明令「预判编号不入交付文案，一律引 SOT 锚点」）；F-43 采纳（Leader 自面：ERR-P6-5 头行『router.py 232 行』= F-41 前计数，字节实测终态 233 行，改 233 行〔F-41 后终态〕）。INFO 11 项（去重 7 主题）记录不处置：(a) 端点 rstrip('/') 尾斜杠分支无用例（§6.1 L811 未钉，R1 F-2 ≡ R2 F1b）；(b) 成功路径响应 JSON 非空 'model' 回报分支无用例（mock payload 刻意缺省，R1 F-3 ≡ R2 F1a ≡ R4 F-W3-4-2）；(c) usage wire 键名 prompt_tokens/completion_tokens = 实现约定（SOT 全文 0 命中该两键，与 L277 默认 wire 约定自洽；W4/W6 消费面需知悉此映射，R1 F-4 ≡ R2 F4 ≡ R3 F-3）；(d) test 9 refs 成员断言与 test 7/8 精确元组断言严格度不对称（R2 F2）；(e) test 5 credential 缺失只断言正面（变量名 in message），负面探针在 test 10（R2 F3）；(f) latency_ms = 注入时钟两次调用差（Fixed 面 = 恰 step_ms，SOT L272「注入时钟差」语义内，R3 F-4）；(g) _usage_int 排除 bool（int 子类，SOT 未钉，docstring 自披露，R4 F-W3-4-3）。闭合状态：套件 2715/0；隔离 llm 46；bare pytest 单跑 46；ruff 三路径净；`__all__` 11 名钉死序；12 平铺测试 1:1 §6.1 L811；K8 12 名（含 langchain）AST 串面 0 命中（Leader 独立复扫 3 文件双口径）；A-W3 残留 = 恰 1（A-W3-1 已登记面）。
 
 ERR-P6-8（W4 开发前文档面修正）：§6.1 `test_structured` 行原面列 10 项合计 13 函数却标「→ 12」（行内自相矛盾，与 ERR-P6-1(a) 同型；§8.3 计数方程钉死该文件 = 12，138 总方程依赖之）。W4 实现裁定：「valid_until 透传 1」独立项并入「make_action_proposal 全字段映射」（valid_until 即映射字段之一，全字段映射测试自然携带其透传断言，语境最近）→ 函数数恰 12，与表头/§8.3 方程一致；该行原位修正（ERR-P6-1(a) 先例同款处置）。纯文档面，零代码 diff，不占补充预算。
+
+ERR-P6-9（W4 R1 盲审轮处置）：R1 轮 4 审查员 = 4 × PASS，findings 17（8 DOC + 9 INFO，0 BLOCK / 0 SUPPLEMENT；R1 63 / R2 90 / R3 83 / R4 83 实核样本，计数全自算自洽：导出 6/5/12、测试 12/13/12、套件 2752、K8 双口径 0）。去重后独立根 4，全部纯文档面（零代码 diff），Leader 直接修正（F-44..F-47）：F-44 = test_structured.py docstring「SOT §3.11」→「SOT §3.5」误引（L1；R1-2/R3-2/R4-1 三审查员同根）+ 同文件「family 1」→「族 3」误标（L7 覆盖列表 + L101 函数 docstring，族 3 = 首尾杂文，R1-3）；F-45 = test_registry.py docstring「§6.1 L815」→「L816」行号偏移 1（L1/L3 两处；L815 = test_critic 行，R3-1/R4-2）；F-46 = 本档 L334 §3.5 模块纪律行 stdlib 枚举「json + hashlib」vs 实现实际「hashlib + re」（json 未用——JSON 解析由 pydantic model_validate_json 承接，re 承担 fence 提取；re/json 均在 D-P6-13 白名单 L123 内，代码合规，修 SOT 文本，R1-1/R3-3/R4-3）；F-47 = 本档 L447 §3.9 读面枚举窄于实际 import 面（补 `re` + pydantic + `prompts/diagnostic`（W1），R2-4）。INFO 9 项记录不处置：R2-1 TEMPLATE_EMPTY「空」= strip 后空（dev 登记自裁，SOT 未钉）；R2-2 目录 → TEMPLATE_MISSING（行为超集，防 IsADirectoryError）；R2-3 诊断 path 自裁 ×3（DUPLICATE_POLICY = 首占位 id / SCOPE_UNKNOWN = policy.id / TEMPLATE_EMPTY = template_ref）；R3-4 assemble_prompt L3 全供给对真实 ActorDecisionContext 非 JSON 原生字段（self_view EntityView / visible_entities frozenset / local_entity_views / observations / knowledge）抛 ValueError = SOT L461 钉死语义（house 族），W4 测试刻意 JSON-clean context——**s2 风险**：W5 policy 接线 / W6 gate 场景 fixture 必须维持 JSON-clean（make_p4_world 先例 §6.2 L826）或 SOT 增设序列化适配面；R3-5 UNSUPPORTED 变量 → 该层停渲染空段（SOT 未钉渲染面，两可：error → package None）；R3-6 DUPLICATE_POLICY path 自裁（模块 docstring 已明示）；R4-3 = F-46 根；R1-4 探针发现冻结 ids 直接构造下 ActionTypeId(None) 静默 coerce 为字面串 'None'（非 loud failure）——**s2 风险**：no-op wire 的 None 拦截唯一防线 = W5 policy 层（structured 无 guard 为 SOT L320 钉死设计）。另 R3 登记：assembler 同 scope casefold 并列分支（min by casefold）当前为死代码（registry 先以 DUPLICATE_POLICY 拒绝 casefold 重复 id）。闭合状态：套件 2752/0；隔离 llm 58；隔离 prompts 25；bare pytest llm 58 / prompts 25；ruff 三路径净；`__all__` 6/5/12 钉死序；测试计数 12/13/12 = §6.1 行面 1:1；K8 12 名（含 langchain）AST 串面 0 命中（Leader 独立复扫 7 文件双口径，修正后复扫仍 0）。

@@ -1,10 +1,10 @@
-"""P6-W4 ``structured.py`` 单测（SOT §3.11 + §6.1 L812，恰 12 个平铺函数）。
+"""P6-W4 ``structured.py`` 单测（SOT §3.5 + §6.1 L812，恰 12 个平铺函数）。
 
 覆盖项（按 §6.1 L812 行逐项 1:1）：
 
 1. ``test_extract_fence_block``：代码块提取（``json`` 标记 + 裸围栏）；
 2. ``test_extract_bare_json``：前后噪声包裹裸 JSON 对象（首 ``{`` 末 ``}`` 切窗）；
-3. ``test_extract_noise_strip``：无完整 JSON 对象 → strip 后原文回传（family 1）；
+3. ``test_extract_noise_strip``：无完整 JSON 对象 → strip 后原文回传（族 3）；
 4. ``test_extract_no_json``：无 ``{`` / 空串 → None → no-json-object；
 5. ``test_extract_fence_non_json``：围栏内非 JSON → family 1 回传 + 解析失败；
 6. ``test_parse_success``：五字段全量 payload → ParseResult 全字段映射；
@@ -98,7 +98,7 @@ def test_extract_bare_json() -> None:
 
 
 def test_extract_noise_strip() -> None:
-    """3) 无完整 JSON 对象 → strip 后原文回传（family 1，交解析层显式失败）。"""
+    """3) 无完整 JSON 对象 → strip 后原文回传（族 3 首尾杂文，交解析层显式失败）。"""
     text = "  surrounding noise { incomplete\n"
     assert extract_json_robust(text) == "surrounding noise { incomplete"
 
