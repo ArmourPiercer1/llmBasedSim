@@ -166,7 +166,7 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 | `cascade.py` | `CascadeResult` L678（final_state/transactions/events/trace_records/deferred/diagnostics + `cascade_statistics`）；`CascadeExecutor` L767（构造：`policy` 必填 keyword-only；component_registry/producer_registry/handlers/triggers/resolvers/validator/config/cycle_detector 可注入；构造期武装写屏障）；`run` L867（签名 `run(self, initial_proposals: Sequence[ProposedEffect], state: WorldState, *, causal_root_id: str, origin: Provenance) -> CascadeResult`；state 纯函数不触碰） | **dynamics ProposedEffect 的 K2 入口**（D-P7-09） |
 | `transaction.py` | `TransactionStatus` L51（str-Enum 两态 COMMITTED/ABORTED，JSON 值小写串）；`Transaction` L62（ContractModel：transaction_id/status/base_revision/commit_revision/logical_tick/effects/event_ids/cascade/provenance/abort_reason） | W4 测试面：事务提交状态断言面（src 面不消费，ERR-P7-11 补列） |
 | `validation.py` | `EffectValidator` L699（7 阶段固定管道；阶段 3：语义 effect 的 payload "由 handler 约定，本阶段不查"；阶段 7：语义型需 `EffectHandlerRegistry` 已注册，否则 `no_handler` 过滤） | 语义 effect 走公约注册 |
-| `reducer.py` | `EffectHandler` L609（`Callable[[WorldState, ProposedEffect], WorldState]` 纯函数）；`EffectHandlerRegistry` L695（`register` L717 公开，"P5+ 模块"扩展位；`resolve` L730）；`default_handler_registry` L743（7 结构 handler 预注册） | Case A/B 的 `gem.moved`/`gem.fell` handler 由**测试侧**经 `register` 注入 |
+| `reducer.py` | `EffectHandler` L609（`Callable[[WorldState, ProposedEffect], WorldState]` 纯函数）；`EffectHandlerRegistry` L695（`register` L717 公开，"P5+ 模块"扩展位；`resolve` L730）；`default_handler_registry` L743（7 结构 handler 预注册）；`install_write_barrier` L1111 / `uninstall_write_barrier` L1133（opt-in 运行时逃逸拦截，P2 规范 §2.6.2，幂等；W4 测试面经 `uninstall` 作 autouse `_barrier_isolation` 隔离夹具，ERR-P7-12 补列） | Case A/B 的 `gem.moved`/`gem.fell` handler 由**测试侧**经 `register` 注入 |
 | `snapshot.py` | `Snapshot` L73（frozen ContractModel 信封：snapshot_format_version/contract_schema_version/world_instance_id/world_state/runtime_state/created_logical_tick/**created_wall_time**/project_version/module_versions）；`snapshot()` L110（纯函数，零别名深拷）；`restore_snapshot` L150 | P7 `WorldSnapshot` 的投影源（**丢弃 wall_time**，D-P7-14）。注意：`snapshot` 小写名不在包级 `__all__`（shadowing 豁免）→ 必须 `from src.engine_v2.core.snapshot import snapshot` |
 | `state.py` | `WorldState` L246（schema_version/world_revision/entities/world_variables/scenario_state）；`RuntimeState` L192 | 快照投影 + 纯函数输入 |
 | `entity.py` | `EntityRecord` L115 | 实体记录（测试面夹具装配） |
@@ -293,7 +293,9 @@ src/engine_v2/dynamics/
     script 键型强制面，W3 测试面，ERR-P7-08）；`src.engine_v2.core.transaction`
     （`TransactionStatus`，W4 测试面：事务提交状态断言，ERR-P7-11）；
     `src.engine_v2.core.authority`（`AuthorityDecision` + `check_authority`，
-    W4 测试面：纯 authority 面（A18/t5）断言，ERR-P7-11）；测试 scope stdlib
+    W4 测试面：纯 authority 面（A18/t5）断言，ERR-P7-11）；`src.engine_v2.core.reducer`
+    （`uninstall_write_barrier`，W4 测试面：autouse `_barrier_isolation`
+    屏障隔离夹具，ERR-P7-12）；测试 scope stdlib
     增补 `ast`/`pathlib`
     （K7/AD-4 AST 扫描 + fixture 路径）；其余 engine_v2 模块测试不 import
     （fake backend 直接注入，capability→部署解析不属 P7 验收面）。
@@ -1604,3 +1606,16 @@ capabilities:
      = function scope）——brief = Leader scratch 面，仓库面不重开。
   5. (W4R1-2-F02，INFO 不处置) SOT §5.2 A18 "纯 authority 面" 与 W4
      t5 docstring 装配标签命名体系差异——同语义无冲突，不处置。
+- **ERR-P7-12**（W4 R2 闭合：4 评审 = 4 PASS、0 SUPPLEMENT、0 BLOCK；
+  R2 两项同题 INFO（W4R2-2-F01 / W4R2-4-F01）按 ERR-P7-08 先例以 post-closure
+  docs 闭合（零逻辑面影响，终审轮已 4/4 PASS，不重开评审）；W4R2-4-F02 =
+  brief 枚举失准（仓库面无影响）不处置）：
+  1. (W4R2-2-F01 / W4R2-4-F01，INFO → 补列闭合) §2.1 `reducer.py` 行漏列
+     `uninstall_write_barrier` L1133（冻结 core，`__all__` L147；W4 测试面
+     `test_host_driver.py` L33 import，autouse `_barrier_isolation` 屏障隔离
+     夹具）——§2.1 reducer 行补列（含 install L1111 同源）+ §3.0 测试扩展
+     允许面显式补列。W5 边界第 1 法 AST 闭集按此面核。
+  2. (W4R2-4-F02，INFO 不处置) R2 审查 brief V1(c) 将 `ProposedEffect` 枚举为
+     test_host_driver core import——byte-truth = 12 个 core 符号（不含
+     ProposedEffect；该符号在 test_authority_host / test_composite 面）——
+     brief = Leader scratch 面，仓库面不重开。
