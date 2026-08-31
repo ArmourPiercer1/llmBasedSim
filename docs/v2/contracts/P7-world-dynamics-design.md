@@ -172,6 +172,7 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 | `ids.py` | `PRODUCER_ID_PATTERN` L77（`[a-z0-9_]+(\.[a-z0-9_]+)*`）；`EffectId` L119；`ProducerId` L189；`EntityId` L108（`ent_`+32 hex）；`new_effect_id` L227（`eff_`+uuid4 —— **K7 禁用**，P7 用确定性工厂，D-P7-04/12） | producer/effect ID 词法 |
 | `provenance.py` | `OriginKind` L41–55（含 `DYNAMICS_BACKEND`）；`Provenance` L58；`CauseKind` L77；`CauseRef` L97 | K6：事务 origin + effect cause_ids |
 | `serialization.py` | `assert_json_clean` L82 | JSON-clean 机械口 |
+| `revision.py` | `Revision` L43（typed `int` 子类；pydantic 接受原生 int）；`INITIAL_WORLD_REVISION` L70；`next_revision` L73 | 测试面：冻结 `FakeInferenceBackend` script 键型 `dict[tuple[str, Revision, int], str]`（ERR-P7-08 补列；src 面不消费——`InferenceRequest.base_revision` 由 pydantic 自原生 int 转换） |
 | `trace.py` | `DECISION_PAYLOAD_KEYS` L71；`LLM_CALL_PAYLOAD_KEYS` L76–88（9 键） | LLM 调用 trace 面（P6 约定，P7 不新增键） |
 | `components.py` | `ComponentTypeId` L61；`ComponentSchema` L127；`ComponentRegistry` L144 | `rigid` 组件类型 + 注册表（测试面装配） |
 | `scheduler.py` | `Scheduler` L550；`submit_proposal` L1520（**只收 ActionProposal**）；`WakeupHook` L316–336（返回 `Sequence[ActionProposal]`）；纪律段 L105–111 | 扩展点核验（§2.4）：无 dynamics 入口 → host driver 方案 |
@@ -270,7 +271,8 @@ src/engine_v2/dynamics/
     （`P6_RUNTIME_DIAGNOSTIC_CODES`，P7-INV-7/A20 不相交断言强制）；`src.engine_v2.content.loader`
     （`load_project`，§6.2 p7_game 夹具，§2.3 消费面）；`src.engine_v2.content.schemas`
     （`DIAGNOSTIC_CODES` + `DiagnosticSeverity`，§5.3 A20/t4/t5 P5/P6 码集机械不相交断言，
-    ERR-P7-04）；测试 scope stdlib 增补 `ast`/`pathlib`
+    ERR-P7-04）；`src.engine_v2.core.revision`（`Revision`，冻结 `FakeInferenceBackend`
+    script 键型强制面，W3 测试面，ERR-P7-08）；测试 scope stdlib 增补 `ast`/`pathlib`
     （K7/AD-4 AST 扫描 + fixture 路径）；其余 engine_v2 模块测试不 import
     （fake backend 直接注入，capability→部署解析不属 P7 验收面）。
   - 机械验证：TestP7Boundary 第 1 法（AST import 白名单，闭集）。
@@ -1436,3 +1438,37 @@ capabilities:
      `CAPABILITY_ID_PATTERN` L116；§2.2 表已有 profiles.py 行但 §3.0 闭集
      缺）——补 `src.engine_v2.llm.profiles`（仅 llm_world.py，限
      `CAPABILITY_ID_PATTERN`）+ L197 注同步（同 ERR-P7-04/05 缺口类）。
+- **ERR-P7-08**（W3 R1 闭合：4/4 PASS、0 BLOCK、0 SUPPLEMENT、全部
+  findings ≤ DOC/INFO（5 DOC + 10 INFO）；以下 1–4 项 DOC 修面已落
+  （docs + 两文件 docstring/消息措辞，零逻辑面影响），5–6 项 INFO
+  记录不处置）：
+  1. (W3R1-1-F01/W3R1-4-F01) §2.1/§3.0 闭集漏列测试面 `revision.py`：
+     W3 测试文件 import `src.engine_v2.core.revision.Revision`（冻结
+     `FakeInferenceBackend` script 键型 `dict[tuple[str, Revision, int],
+     str]` 强制面，P6 测试先例）——§2.1 补 `revision.py` 行（`Revision`
+     L43 / `INITIAL_WORLD_REVISION` L70 / `next_revision` L73；src 面
+     不消费，`InferenceRequest.base_revision` 由 pydantic 自原生 int
+     转换）+ §3.0 测试文件扩展允许面显式补列。
+  2. (W3R1-1-F02) `llm_world.py` docstring 5 处陈旧 tN 交叉引用（config
+     “t3 钉死面”→ 构造期拒绝面、本波无专测函数；fidelity “t1 断言面”→
+     t10；类/method metadata “t2 断言面”→ t10；simulate “t8/t9/t10
+     钉死面”→ “t6/t9”）——按 §6.1 t1–t14 名重对齐（同 ERR-P7-03/04
+     缺口类）。
+  3. (W3R1-2-F01/W3R1-2-F03) `llm_world.py` simulate docstring 箭头序
+     “装配 prompt → 预算闸门”与代码执行序不符 → “诊断重置 → 预算闸门
+     → 装配 prompt → 调用/解析/修复 → 映射”；“按首错 type 分层”/
+     诊断消息“首次错误”→“末次迭代错误”（混合 parse→schema 情形代码
+     取末次迭代 error type/摘要；消息措辞 SOT 未钉死，brief P12
+     自由面，无测试断言其原文）。
+  4. (W3R1-1-F05) 测试模块 docstring “session 夹具
+     ``scripted_wire_response`` / ``stim_support_removed``”与 conftest
+     实态不符（前者函数 scope、后者 session scope）——重对齐。
+  5. (W3R1-1-F03，INFO 不处置) 复用的冻结 P6 `repair_instruction`
+     契约文本硬编码 P6 ActionProposal 5 字段 schema 文字，与 P7 wire
+     （effects 数组）schema 文字不匹配——SOT §3.5 钉死面明文指定复用
+     该缝（repair_instruction P6 L129）；scripted fake 面修复文本不
+     参与断言；偏差记录，不处置。
+  6. (W3R1-1-F06/W3R1-2-F02/W3R1-4-F03，INFO 不处置) t4/t8 实质断言
+     计数低于审查 brief C13 自设启发式（≥3）；两者均为实质断言面
+     （t4 = prompt byte-identity + 11 字段请求面全量相等；t8 = 词法拒
+     绝 + 正例对照），SOT 无断言计数规定——不处置。

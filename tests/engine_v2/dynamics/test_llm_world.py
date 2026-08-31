@@ -10,8 +10,9 @@ wire → ``ProposedEffect`` 全字段映射面、确定性 effect_id、K6/ERR-P7
 canonical 世界事实稳定（正例 + 负例）、D-P7-15 诊断 last-run 视图。
 
 夹具：消费 W1 conftest ``make_p7_world`` / ``_det_entity_id``（SOT §6.2；
-夹具只装配，不断言）+ session 夹具 ``scripted_wire_response`` /
-``stim_support_removed``；``FakeInferenceBackend`` / ``Revision`` 为测试侧
+夹具只装配，不断言）+ conftest 夹具 ``scripted_wire_response``（函数
+scope）/ ``stim_support_removed``（session scope）；``FakeInferenceBackend``
+/ ``Revision`` 为测试侧
 合法 import（P6 测试先例）；不 import 网络侧 backend（P7-INV-3）。
 """
 

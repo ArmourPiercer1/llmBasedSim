@@ -102,14 +102,14 @@ class LLMWorldDynamicsConfig:
 
     - ``capability_id`` 必填且必须 fullmatch P6 ``CAPABILITY_ID_PATTERN``
       （``^[a-z][a-z0-9_]{0,63}$``，P6 profiles.py L116 同源正则），违约 →
-      ``ValueError``（t3 钉死面）；
+      ``ValueError``（构造期拒绝面；本波无专测函数，ERR-P7-08）；
     - ``prompt_ref`` 必填（本模块只把它当不透明引用，不解析）；
     - ``producer_id`` 默认 ``"llm_world_dynamics"``（= K4 producer id，
       进 ``ProposedEffect.source`` 与 ``BackendMetadata.producer_id``）；
     - ``max_calls`` / ``max_repair_retries`` 默认各 1（与 P6 默认一致，
       SOT §3.5）；
-    - ``fidelity`` 默认 ``"semantic"``（P6 ``Fidelity`` 闭集成员，t1 断言
-      面）；``domains`` 默认空元组（W1 同形：空 = 不声明域）。
+    - ``fidelity`` 默认 ``"semantic"``（P6 ``Fidelity`` 闭集成员，t10
+      metadata 断言面）；``domains`` 默认空元组（W1 同形：空 = 不声明域）。
     """
 
     capability_id: str
@@ -182,7 +182,7 @@ class LLMWorldDynamics:
 
     构造面：``LLMWorldDynamics(*, backend, config, clock)``（keyword-only；
     全部依赖注入，K7：零 wall clock / 零随机 / 零模块级可变状态）。
-    ``metadata()`` 返回 W1 冻结面 ``BackendMetadata`` 实例（t2 断言面）；
+    ``metadata()`` 返回 W1 冻结面 ``BackendMetadata`` 实例（t10 断言面）；
     ``simulate()`` 实现 SOT §3.5 九步流；``diagnostics`` = 最近一次运行视图
     （D-P7-15；零诊断/失败路径 = ``()``；成功路径恒 ``()``——成功路径无
     诊断是契约，不是缺失误报）。
@@ -208,7 +208,7 @@ class LLMWorldDynamics:
         return tuple(self._diagnostics)
 
     def metadata(self) -> BackendMetadata:
-        """W1 冻结面 ``BackendMetadata``（backend_id = 模块台账名，t2 断言面）。"""
+        """W1 冻结面 ``BackendMetadata``（backend_id = 模块台账名，t10 断言面）。"""
         return BackendMetadata(
             backend_id="llm_world_dynamics",
             producer_id=self._config.producer_id,
@@ -227,13 +227,14 @@ class LLMWorldDynamics:
         stimuli: tuple[Stimulus, ...],
         context: DynamicsContext,
     ) -> tuple[ProposedEffect, ...]:
-        """SOT §3.5 九步流：装配 prompt → 预算闸门 → 调用/解析/修复 → 映射。
+        """SOT §3.5 九步流：诊断重置 → 预算闸门 → 装配 prompt → 调用/解析/
+        修复 → 映射。
 
-        预算与失败面（D-P7-05，t8/t9/t10 钉死面）：推理预算维耗尽
+        预算与失败面（D-P7-05，t6/t9 钉死面）：推理预算维耗尽
         （effective calls = 0）→ 诊断 ``p7.budget_exhausted`` + 零次调用 →
         空元组；解析/schema 终局失败（修复重发 ≤ ``max_repair_retries``）
-        → 诊断 ``p7.wire_parse_failed`` / ``p7.wire_schema_invalid``（按首错
-        ``type`` 分层）+ 空元组。不抛异常、不降级直写。
+        → 诊断 ``p7.wire_parse_failed`` / ``p7.wire_schema_invalid``（按末次
+        迭代 error ``type`` 分层）+ 空元组。不抛异常、不降级直写。
         """
         self._diagnostics = []
         calls = (
@@ -323,7 +324,7 @@ class LLMWorldDynamics:
                     path="llm_world_dynamics",
                     message=(
                         f"推理 wire 终局失败（{failure_layer}）："
-                        f"首次错误 {error_summary!r}，修复重发 {repairs_used} 次，"
+                        f"末次迭代错误 {error_summary!r}，修复重发 {repairs_used} 次，"
                         f"返回空提议"
                     ),
                     refs=(f"elapsed_ms={elapsed_ms}",),
