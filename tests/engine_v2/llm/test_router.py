@@ -28,7 +28,7 @@
     3 → "fallback:3"；
 11. ``test_diagnostic_deterministic_order``：多条 (code, path, refs) 不同
     诊断场景 → diagnostics 序列 == (code, path, refs) 排序 + 双跑相等；
-12. ``test_no_cross_capability_borrow``：profiles 只有 capability A，
+12. ``test_no_cross_capability_borrow``：inference_profiles 只有 capability A，
     requirement B → NO_DEPLOYMENT + resolved None（绝不解析到 A 的模型）。
 
 本文件自包含（零跨测试文件 import、不建 conftest、不建 __init__.py）；测试
@@ -59,7 +59,7 @@ _TIER_MISMATCH = "LLMSIM_RESOLVER_TIER_MISMATCH"
 _BELOW_IDEAL = "LLMSIM_RESOLVER_BELOW_IDEAL"
 
 #: credential env 名/值：名合 W1 pattern，值仅供「值不出现在任何面」探针
-#: （A-W2-6 内省断言消费）。
+#: （SOT §3.3 L225：#18 内省断言消费）。
 _CRED_ENV_NAME = "SIM_CRED_NAME"
 _CRED_ENV_VALUE = "cred-value-0001"
 
@@ -167,7 +167,7 @@ def test_below_ideal_warning_non_blocking() -> None:
 
 
 def test_primary_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    """5) primary 胜出 + credential 只名不值内省（A-W2-6：无值字段 + 诊断无 env 值）。"""
+    """5) primary 胜出 + credential 只名不值内省（#18：无值字段 + 诊断无 env 值）。"""
     monkeypatch.setenv(_CRED_ENV_NAME, _CRED_ENV_VALUE)
     entry = DeploymentEntry(
         provider="prov-a",
@@ -197,7 +197,7 @@ def test_primary_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resolved.api_key_env == _CRED_ENV_NAME
     assert resolved.temperature == 0.3
     assert resolved.timeout_seconds == 12.5
-    # A-W2-6：只名不值——ResolvedModel 无 credential 值字段，诊断 message/
+    # #18：只名不值——ResolvedModel 无 credential 值字段，诊断 message/
     # refs 亦无 env 值探针。
     assert _CRED_ENV_VALUE not in str(resolved)
     for value in resolved.model_dump().values():

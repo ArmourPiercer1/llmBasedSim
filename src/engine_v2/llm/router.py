@@ -1,7 +1,7 @@
 """P6-W2 T03 后半（SOT §3.3）：capability → deployment 匹配 + fallback 梯度 + 诊断。
 
-G6-2 实现面：改实际模型 = 改用户部署文件（Spec §31.2「Deployment Resolver
-映射 capability profile → actual model」，Spec:1647-1656）。纯函数，零 I/O、
+G6-2 实现面：改实际模型 = 改用户部署文件（Spec §31.2：Deployment Resolver
+映射 capability profile → actual model 与供应商侧，Spec:1647-1656）。纯函数，零 I/O、
 零非确定根源、同步面。五步次序钉死（步骤间严格次序，全步不抛异常，
 SOT §3.3 L237-242）；语义钉死（D-P6-07）：fallback = 同 capability 池内按
 声明序降级（primary → fallbacks）；候选间无跨档偏好（首个满足 min_tier 者
@@ -37,10 +37,11 @@ class ResolvedModel(BaseModel):
     """router 产物（adapter 消费，13 字段，SOT §3.3 L219-229）。
 
     - capability = requirement.capability（logical role id，同一字符串域）；
-    - model_id / tier / context_length / max_output / structured_output /
+    - model_id / 供应商侧 / 端点 / temperature / timeout_seconds 取自 entry
+      （model_id 由构造期不变量恒等于 models 目录内层 model_id，deployment.py
+      构造校验；端点可为 ``""``——调用期拦截，非 resolve 期）；
+    - tier / context_length / max_output / structured_output /
       reasoning_class 取自 models 目录胜出项（回显，trace/审计面）；
-    - entry 侧字段（供应商侧 / 端点 / temperature / timeout_seconds）
-      取自 entry（端点可为 ``""``——调用期拦截，非 resolve 期）；
     - api_key_env 只名不值（Leader-A5，内省断言无值字段）；
     - resolved_via = ``"primary"`` 或 ``"fallback:<n>"``（n ≥ 1 = fallbacks
       第 n 项，1-based；provenance 面）。
