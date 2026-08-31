@@ -4,7 +4,7 @@ test class）。
 契约面：host driver ``run_dynamics_turn``（SOT §3.8，D-P7-09；P7 自持组装
 点）——S1 规则 turn 提交面（t1）/ 事件 1:1 派发（t2）/ K6 origin
 DYNAMICS_BACKEND 贯穿（t3）/ state 纯函数不被触碰（t4）/ S7 rogue 权限
-拒绝零变更（t5，P6 装配）/ 空 effects 无事务（t6）/ DynamicsTurn frozen +
+拒绝零变更（t5，组件级 policy 装配）/ 空 effects 无事务（t6）/ DynamicsTurn frozen +
 summary JSON-clean 三键面（t7，P5 钉死）/ S8 Case A 端到端（t8，S3 输入 +
 A7 单规则并集 policy）/ causal_root 贯穿（t9，P4 钉死）/ 双独立装配
 summary byte-identical（t10，K7 host 面；uuid4 原始值按 D-P3-15①/② 前缀 +
@@ -257,7 +257,7 @@ def test_turn_state_not_mutated() -> None:
 
 
 def test_turn_authority_deny_no_change() -> None:
-    """t5：S7 面——P6 装配（rogue producer + gem_state 未声明）→ effects 恰 1（backend 产出）但零事务、零状态变更、backend 零诊断。"""
+    """t5：S7 面——组件级 policy 装配（rogue producer + gem_state 未声明）→ effects 恰 1（backend 产出）但零事务、零状态变更、backend 零诊断。"""
     policy = default_dynamics_policy(component_types=("rigid",))
     executor = CascadeExecutor(
         policy=policy,

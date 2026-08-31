@@ -46,7 +46,7 @@ class DynamicsTurn:
       transactions / events / trace_records / deferred / diagnostics）；
     - ``diagnostics``：backend last-run 诊断视图聚合（D-P7-15）。
 
-    frozen：任何字段赋值 → ``dataclasses.FrozenInstanceError``（§2.8 P5）。
+    frozen：任何字段赋值 → ``dataclasses.FrozenInstanceError``（§2.6 P5）。
     """
 
     effects: tuple[ProposedEffect, ...]
@@ -54,7 +54,7 @@ class DynamicsTurn:
     diagnostics: tuple[DynamicsDiagnostic, ...]
 
     def summary_dict(self) -> dict[str, Any]:
-        """JSON-clean 汇总（§2.8 P5 形状钉死；``assert_json_clean`` 内嵌机械断言）。
+        """JSON-clean 汇总（§2.6 P5 形状钉死；``assert_json_clean`` 内嵌机械断言）。
 
         顶层 3 键：``effects`` / ``result`` / ``diagnostics``；``result`` 成员
         = ``final_state`` / ``transactions`` / ``events`` / ``trace_records`` /

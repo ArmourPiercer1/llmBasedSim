@@ -162,8 +162,9 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 |---|---|---|
 | `effects.py` | `EFFECT_TYPE_ID_PATTERN` L67（EffectTypeId 词法正则，ERR-P7-05 补列）；`EntityTarget` L163；`StateDomainTarget` L178；`EffectTarget` L191；`ProposedEffect` L197（字段 L217–226：effect_id/effect_type/source/target/payload/base_revision 必填无默认，cause_ids L223 默认 []，authority_scope L224，priority_hint L225，metadata L226）；`CommittedEffect` L229 | backend 产物的唯一类型 |
 | `conflicts.py` | `ConflictKey` L140；`conflict_key` L201（EntityTarget+component_type → 整组件锁；无 component_type → 整实体锁）；`extract_effect_locks` L244；`conflicts_with` L274（None=通配：整实体锁与同实体任何组件锁相交）；`ConflictGroup` L335；`detect_conflicts` L362；`ResolutionContext` L459（`from_batch`）；`ConflictResolutionReport` L571；`AuthorityPriorityStrategy` L611（rule_priority 最大**唯一**者胜，并列弃权）；`TimestampStrategy` L660；`ProducerPriorityStrategy` L699（`registry.priority_of(source)` + `priority_hint` 字典序最大唯一者胜）；`EntityFifoStrategy` L742；`DefaultConflictResolver` L787 | Case B 冲突/裁决面 |
-| `authority.py` | `AuthoritySelector` L155（5 维，unspecified=wildcard）；`AuthorityRule` L205（allowed_writers≥1 + priority）；`AuthorityPolicy` L242；`ProducerInfo` L276（producer_id/origin/priority/description）；`ProducerRegistry` L295（register 模式 fullmatch 校验；`priority_of` 未注册归 0）；`match_selector` L364；`AuthorityEvaluationResult` L482；`check_authority` L550（规则按 priority 降序/specificity 降序/注册序稳定排序，**首条命中拍板，不 fall-through**；无匹配 → default_decision，缺省 DENY，reason_code=`no_matching_rule`） | P7-INV-6 权限面 |
+| `authority.py` | `AuthorityDecision` L110（str-Enum ALLOW/DENY；W4 测试面：decision 断言，ERR-P7-11 补列）；`AuthoritySelector` L155（5 维，unspecified=wildcard）；`AuthorityRule` L205（allowed_writers≥1 + priority）；`AuthorityPolicy` L242；`ProducerInfo` L276（producer_id/origin/priority/description）；`ProducerRegistry` L295（register 模式 fullmatch 校验；`priority_of` 未注册归 0）；`match_selector` L364；`AuthorityEvaluationResult` L482；`check_authority` L550（规则按 priority 降序/specificity 降序/注册序稳定排序，**首条命中拍板，不 fall-through**；无匹配 → default_decision，缺省 DENY，reason_code=`no_matching_rule`） | P7-INV-6 权限面 |
 | `cascade.py` | `CascadeResult` L678（final_state/transactions/events/trace_records/deferred/diagnostics + `cascade_statistics`）；`CascadeExecutor` L767（构造：`policy` 必填 keyword-only；component_registry/producer_registry/handlers/triggers/resolvers/validator/config/cycle_detector 可注入；构造期武装写屏障）；`run` L867（签名 `run(self, initial_proposals: Sequence[ProposedEffect], state: WorldState, *, causal_root_id: str, origin: Provenance) -> CascadeResult`；state 纯函数不触碰） | **dynamics ProposedEffect 的 K2 入口**（D-P7-09） |
+| `transaction.py` | `TransactionStatus` L51（str-Enum 两态 COMMITTED/ABORTED，JSON 值小写串）；`Transaction` L62（ContractModel：transaction_id/status/base_revision/commit_revision/logical_tick/effects/event_ids/cascade/provenance/abort_reason） | W4 测试面：事务提交状态断言面（src 面不消费，ERR-P7-11 补列） |
 | `validation.py` | `EffectValidator` L699（7 阶段固定管道；阶段 3：语义 effect 的 payload "由 handler 约定，本阶段不查"；阶段 7：语义型需 `EffectHandlerRegistry` 已注册，否则 `no_handler` 过滤） | 语义 effect 走公约注册 |
 | `reducer.py` | `EffectHandler` L609（`Callable[[WorldState, ProposedEffect], WorldState]` 纯函数）；`EffectHandlerRegistry` L695（`register` L717 公开，"P5+ 模块"扩展位；`resolve` L730）；`default_handler_registry` L743（7 结构 handler 预注册） | Case A/B 的 `gem.moved`/`gem.fell` handler 由**测试侧**经 `register` 注入 |
 | `snapshot.py` | `Snapshot` L73（frozen ContractModel 信封：snapshot_format_version/contract_schema_version/world_instance_id/world_state/runtime_state/created_logical_tick/**created_wall_time**/project_version/module_versions）；`snapshot()` L110（纯函数，零别名深拷）；`restore_snapshot` L150 | P7 `WorldSnapshot` 的投影源（**丢弃 wall_time**，D-P7-14）。注意：`snapshot` 小写名不在包级 `__all__`（shadowing 豁免）→ 必须 `from src.engine_v2.core.snapshot import snapshot` |
@@ -237,6 +238,23 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 `_P7_WHITELIST_23` / `_p7_ast_face` / `_p7_string_literal_face` /
 `TestP7Boundary`（6 法，§3.9）。
 
+### 2.6 W4 边缘面钉死（P1–P9；SOT 缝隙 → Leader 实现口径）
+
+W4 dev docstring 中 "§2.6 P*" 引用锚定本表（原误引 "§2.8"——Leader brief
+节号误镜像，ERR-P7-11-2 重指向）：
+
+| # | 缝隙 | 钉死口径 |
+|---|---|---|
+| P1 | composite 空 children metadata（§3.6 公式空 join 产尾点） | 空 children：`simulate` → `()` 零诊断；metadata = `domains=()`、`determinism="deterministic"`（格单位元）、`fidelity="composite"`（避免尾点）、`checkpointable=restorable=replayable=True`（空 and）；`__init__(children=())` 合法（ERR-P7-09(e) 同口径） |
+| P2 | composite 子失败诊断字段面 | 每失败子恰 1 条：`severity="error"`、`path="composite_dynamics"`、`refs=(子 backend_id,)`、message = 确定性文本（含子 backend_id、触发诊断数、触发描述） |
+| P3 | `determinism_join` 输入校验 | 任一输入 ∉ `DETERMINISM_CLASSES` → `ValueError`（构造面纵深防御；组合 metadata 折叠路径不触达——子 metadata 构造期已词表校验） |
+| P4 | host 测试 origin/causal_root 取值 | `causal_root_id = "turn_p7_case_a"`（模块内联字面量，确定性）；origin = `Provenance(producer_id=ProducerId("<本 turn backend 的 producer id>"), origin=OriginKind.DYNAMICS_BACKEND)`（t8 = `llm_world_dynamics`；rule 系 turn = `rule_dynamics`） |
+| P5 | `DynamicsTurn.summary_dict()` 形状 + frozen 面 | 顶层键 = `"effects"` / `"result"` / `"diagnostics"`；effects/diagnostics = 逐项 `model_dump(mode="json")` 列表；result = `{"final_state": ..., "transactions": [...], "events": [...], "trace_records": [...], "deferred": [...], "diagnostics": [...]}`（各成员 `model_dump(mode="json")`；`CascadeResult` 为 plain dataclass，`CascadeDiagnostic` 手工 dict 装配 kind/depth/detail）；整体必须 `assert_json_clean` 过；`DynamicsTurn` frozen（改字段 → `dataclasses.FrozenInstanceError`） |
+| P6 | host t5（A18 场景面，S7 rogue producer）装配 | 组件级 policy = `default_dynamics_policy(component_types=("rigid",))`（gem_state **未声明**）+ 自定义 executor（`CascadeExecutor(policy=该 policy, component_registry=make_p7_component_registry(), producer_registry=make_p7_producer_registry(), handlers=gem_effect_handlers())`）；backend = `RuleDynamics`（producer_id=`"rogue"` 未注册）；ERR-P7-09(d)：组件级独立装配面，与 g7 通配装配无冲突 |
+| P7 | authority t6 断言深度 | 最小面 = `build_dynamics_producers()` 上 `priority_of`：`rule_dynamics`/`rigid_body` == 100 > `composite_dynamics` == 80 > `llm_world_dynamics` == 50（+ 未注册 id 归 0）；core `DefaultConflictResolver` 四策链全跑属 W5 g7 A5–A9 面（本波不重复计数） |
+| P8 | composite/host 测试的 children/backend 选型 | composite 标准装配 = `CompositeDynamics(children=(RuleDynamics(S1 规则集), ToyRigidDynamics()))`（§5.1 S6 场景行逐字；双确定性、零 fake）；host t1–t7/t9/t10 = RuleDynamics（确定性）；host t8 = LLMWorldDynamics + scripted `FakeInferenceBackend`（S8 场景行逐字 = S3 输入） |
+| P9 | `summary_dict` 的 wall_time 面 | `DomainEvent.wall_time` 可能非 None（cascade 注入墙钟面）——`model_dump(mode="json")` 已 ISO 序列化，JSON-clean 不受影响；零断言依赖其值（K7：不比较、不钉值） |
+
 ---
 
 ## §3 模块与字段级规格
@@ -272,7 +290,11 @@ src/engine_v2/dynamics/
     （`load_project`，§6.2 p7_game 夹具，§2.3 消费面）；`src.engine_v2.content.schemas`
     （`DIAGNOSTIC_CODES` + `DiagnosticSeverity`，§5.3 A20/t4/t5 P5/P6 码集机械不相交断言，
     ERR-P7-04）；`src.engine_v2.core.revision`（`Revision`，冻结 `FakeInferenceBackend`
-    script 键型强制面，W3 测试面，ERR-P7-08）；测试 scope stdlib 增补 `ast`/`pathlib`
+    script 键型强制面，W3 测试面，ERR-P7-08）；`src.engine_v2.core.transaction`
+    （`TransactionStatus`，W4 测试面：事务提交状态断言，ERR-P7-11）；
+    `src.engine_v2.core.authority`（`AuthorityDecision` + `check_authority`，
+    W4 测试面：纯 authority 面（A18/t5）断言，ERR-P7-11）；测试 scope stdlib
+    增补 `ast`/`pathlib`
     （K7/AD-4 AST 扫描 + fixture 路径）；其余 engine_v2 模块测试不 import
     （fake backend 直接注入，capability→部署解析不属 P7 验收面）。
   - 机械验证：TestP7Boundary 第 1 法（AST import 白名单，闭集）。
@@ -1550,3 +1572,35 @@ capabilities:
      白名单覆盖 test_host_driver.py 对 `dynamics.backend.
      _FixedMonotonicClock` 的 import（+ core.revision.Revision，
      ERR-P7-08）；不统一。
+- **ERR-P7-10**（W1 时代裁定补登：§6.2 注"W4 符号引用纪律（ERR-P7-10）"
+  引用自 W1 时代（a8d11e2）已存在，条目迟至 W4 R1 闭合补登——docs-only，
+  零代码影响；W1 冻结 conftest 已按口径实现，不重开）：
+  1. conftest 对 W4 `authority.py` 符号（`build_dynamics_producers` /
+     `default_dynamics_policy`）使用**函数体内惰性 import**；W1–W3 波次
+     禁止模块顶层 import `authority.py`（保证 W1→W5 波次依赖序的
+     文件级封闭——W4 波自身新增 authority.py 后夹具惰性 import 保留
+     为统一面）。W5 边界第 1 法 AST 闭集按此面核。
+- **ERR-P7-11**（W4 R1 闭合：4 评审 = 3 PASS + 1 SUPPLEMENT、0 BLOCK；
+  以下 1–3 项 docs 修面已落（SOT + 4 文件 docstring，零逻辑面影响），
+  4–5 项 INFO 不处置）：
+  1. (W4R1-1-F01 SUPPLEMENT / W4R1-3-F01 DOC) §2.1 漏列：无
+     `transaction.py` 行（W4 测试面 import `TransactionStatus` L51）+
+     `authority.py` 行缺 `AuthorityDecision` L110（W4 测试面 decision
+     断言）——§2.1 补 transaction.py 行 + authority 行补列 + §3.0 测试
+     扩展允许面显式补列（ERR-P7-08-1 先例）。
+  2. (W4R1-3-F02 + Leader 自检，docstring 重对齐) Leader brief 钉死
+     标签泄漏入 SOT 契约面：test_composite "P8 标准装配" ×2 → "S6
+     标准装配"（SOT "P8+" = 计划相位标签，语义冲突）；test_host_driver
+     t5 "P6 装配" → "组件级 policy 装配"（S7 面，ERR-P7-09(d)）；
+     composite.py ×4 + host.py ×2 docstring 引用 "§2.8 P*" —— SOT 无
+     §2.8（该节号 = Leader brief §2.8 实现钉死节号，dev 误镜像）→ SOT
+     新增 §2.6 "W4 边缘面钉死（P1–P9）"（brief 钉死表升 SOT），6 处
+     引用重指向 §2.6；P1–P9 面均已交付绿，零逻辑影响。
+  3. (W4R1-4-F02, INFO → 补登闭合) SOT §6.2 注引用 "ERR-P7-10" 悬空
+     ——ERR-P7-10 条目本轮补登（见上）。
+  4. (W4R1-1-F02 / W4R1-2-F01 / W4R1-4-F01，INFO 不处置) 审查 brief
+     C14 措辞 `stim_support_removed` scope 失准（byte-truth = session
+     scope，conftest L175；SOT §6.2 "单例" 自洽；`scripted_wire_response`
+     = function scope）——brief = Leader scratch 面，仓库面不重开。
+  5. (W4R1-2-F02，INFO 不处置) SOT §5.2 A18 "纯 authority 面" 与 W4
+     t5 docstring 装配标签命名体系差异——同语义无冲突，不处置。

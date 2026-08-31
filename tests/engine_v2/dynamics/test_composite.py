@@ -9,7 +9,7 @@ test class）。
 fidelity 逐字（t7）/ 全独立双装配双跑 effects byte-identical（t8，K7 A 面）。
 
 夹具：消费 W1 conftest ``make_p7_world`` / ``_det_entity_id``（SOT §6.2；
-夹具只装配，不断言）；P8 标准装配 = ``CompositeDynamics(children=(
+夹具只装配，不断言）；S6 标准装配 = ``CompositeDynamics(children=(
 RuleDynamics(S1 规则集), ToyRigidDynamics()))``（S6 场景行逐字；双确定性、
 零 fake）。
 """
@@ -71,7 +71,7 @@ def _s1_rule() -> WorldRule:
 
 
 def _standard_composite() -> CompositeDynamics:
-    """P8 标准装配（S6 行逐字）：(RuleDynamics(S1 规则集), ToyRigidDynamics())。"""
+    """S6 标准装配（S6 行逐字）：(RuleDynamics(S1 规则集), ToyRigidDynamics())。"""
     return CompositeDynamics(
         children=(RuleDynamics(rules=(_s1_rule(),)), ToyRigidDynamics())
     )

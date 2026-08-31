@@ -51,7 +51,7 @@ def determinism_join(a: str, b: str) -> str:
     | seeded | seeded | seeded | nondeterministic |
     | nondeterministic | nondeterministic | nondeterministic | nondeterministic |
 
-    任一输入 ∉ 闭集 → ``ValueError``（§2.8 P3：构造面纵深防御；组合 metadata
+    任一输入 ∉ 闭集 → ``ValueError``（§2.6 P3：构造面纵深防御；组合 metadata
     折叠路径不触达——子 metadata 构造期已词表校验）。
     """
     for value in (a, b):
@@ -66,11 +66,11 @@ def determinism_join(a: str, b: str) -> str:
 class CompositeDynamics:
     """fan-out 组合 dynamics backend（SOT §3.6 逐字）。
 
-    - ``children``：子 backend 元组（``children=()`` 合法——§2.8 P1 空面）；
+    - ``children``：子 backend 元组（``children=()`` 合法——§2.6 P1 空面）；
     - ``simulate``：逐子 ``simulate(snapshot, stimuli, context)``（同输入）→
       按子序拼接；子异常 或 子 last-run 诊断非空 → 每问题子**恰 1 条**
       ``p7.composite_child_failed``（severity=error、path=``composite_dynamics``、
-      refs=子 backend_id、message 含子 backend_id + 触发诊断数——§2.8 P2）；
+      refs=子 backend_id、message 含子 backend_id + 触发诊断数——§2.6 P2）；
     - ``metadata()``：domains 排序去重并集 / determinism 折叠 join / fidelity
       ``"composite." + ".".join(子 fidelity)`` / 三布尔 and 折叠（空 children
       面 = P1：domains=()、determinism=格单位元、fidelity="composite"、
@@ -161,7 +161,7 @@ class CompositeDynamics:
     def _child_failed_diagnostic(
         child_id: str, triggered_count: int, trigger: str
     ) -> DynamicsDiagnostic:
-        """``p7.composite_child_failed`` 单条装配（§2.8 P2 字段面钉死）。
+        """``p7.composite_child_failed`` 单条装配（§2.6 P2 字段面钉死）。
 
         ``message`` 确定性文本：含子 backend_id + 触发诊断数 + 触发描述
         （异常类型名 / last-run 诊断上浮标记）——零时间戳 / 零指针 / 零随机。
