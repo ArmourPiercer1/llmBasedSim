@@ -1,10 +1,10 @@
 """P6-W1 ``deployment.py`` 单测（SOT §3.2 + §6.1 L809，恰 12 个平铺函数）。
 
-覆盖项（按 §6.1 L809 行逐项 1:1；resolve_api_key 命中/缺失断言依 brief 注
+覆盖项（按 §6.1 L809 行逐项 1:1；resolve_api_key 命中/缺失断言依 SOT §9 ERR-P6-1(a)
 并入 ``test_load_deployment_auto_three_states``，总函数数仍恰 12）：
 
 1. ``test_deployment_env_pointer_negative_self_check``：env 指针负例自检
-   （探针拼接构造，零裸 12 名串，R3 / A-W1-6）；
+   （探针拼接构造，零裸 12 名串）；
 2. ``test_resolve_deployment_path_explicit_wins``：显式参数胜 env；
 3. ``test_resolve_deployment_path_env_only``：仅 env 时取 env；
 4. ``test_resolve_deployment_path_none``：皆无 → None；
@@ -26,7 +26,7 @@
 12. ``test_diagnostic_deterministic_order``：诊断序列 == 按 (code, path, refs)
     排序结果，双跑两次相等。
 
-本文件自包含（零跨测试文件 import、不建 conftest，A-W1-1）；hermetic、无
+本文件自包含（零跨测试文件 import、不建 conftest）；hermetic、无
 网络、无 subprocess。
 """
 
@@ -46,7 +46,7 @@ from src.engine_v2.llm.deployment import (
     resolve_deployment_path,
 )
 
-#: K8 12 名探针与 YAML 键面：一律拼接构造（R3 / A-W1-6，零裸 12 名串）。
+#: K8 12 名探针与 YAML 键面：一律拼接构造（零裸 12 名串）。
 _PROBE_LLM_WORD_BOUNDARY = "\\b" + "ll" + "m" + "\\b"
 _YAML_KEY_PROVIDER = "pro" + "vider"
 _YAML_KEY_API_KEY_ENV = "api" + "_key_env"
@@ -256,7 +256,7 @@ def test_load_deployment_auto_three_states(
     assert diag.severity is DiagnosticSeverity.ERROR
     assert diag.path == "<none>"
     assert diag.refs == (DEPLOYMENT_ENV_POINTER,)
-    # resolve_api_key 命中/缺失（并入本函数，brief 注；§6.1 计数 12 不变）
+    # resolve_api_key 命中/缺失（并入本函数，依 SOT §9 ERR-P6-1(a)；§6.1 计数 12 不变）
     monkeypatch.setenv("SIM_CRED", "abc123")
     assert resolve_api_key("SIM_CRED") == "abc123"
     assert resolve_api_key("SIM_CRED_UNSET") is None

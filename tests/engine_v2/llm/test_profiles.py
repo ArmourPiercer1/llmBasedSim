@@ -4,7 +4,7 @@
 
 1. ``test_tier_scale_monotonic``：TIER_SCALE 单调性——context_length_min 与
    max_output_min 严格递增 + reasoning_class_min 按 REASONING_ORDER 单调不减
-   （两断言合 1 函数，A-W1-7）；
+   （两断言合 1 函数，SOT §6.1 L808 钉死）；
 2. ``test_reasoning_vocabulary_closed_and_ordered``：REASONING_CLASSES 封闭
    4 值 + 与 REASONING_ORDER 序一致；
 3. ``test_tier_level_all_five``：tier_level 正例（5 档全取）；
@@ -20,7 +20,7 @@
 10. ``test_capability_re_positive_negative``：CAPABILITY_RE 正/反（合法
     ``major_character`` 命中；大写开头 / 数字开头 / 65 字符拒绝）。
 
-本文件自包含（零跨测试文件 import、不建 conftest，A-W1-1）；hermetic、无
+本文件自包含（零跨测试文件 import、不建 conftest）；hermetic、无
 网络、无 subprocess。
 """
 
