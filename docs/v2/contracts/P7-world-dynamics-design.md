@@ -194,7 +194,8 @@ P7 对 K1–K8（Spec L242–339）的落位 + P7 本地不变量：
 | `prompts/diagnostic.py` | `RuntimeDiagnostic` L21（frozen pydantic extra="forbid"：code/severity/path/message/refs；model_validator 拒 code∉21 集）；`P6_RUNTIME_DIAGNOSTIC_CODES` L57（21 码） | **ERR-P6-10(a) JSON-clean twin 模式** → `DynamicsDiagnostic`；码表不相交机械断言 |
 | `prompts/registry.py` | `TemplateDocument` L63；`render_template` L116；`TemplateStore` L161 | 模板纪律参考（P7 L0 为常量，不走 store） |
 
-> **src import 实际面**：P7 src 实际仅 import `llm.adapter` + `llm.structured`（llm_world.py，§3.0）；
+> **src import 实际面**：P7 src 实际仅 import `llm.adapter` + `llm.structured` +
+> `llm.profiles`（均 llm_world.py，§3.0；ERR-P7-07 补列）；
 > 表内其余行 = 冻结的可用消费参考面（host/测试装配参考），非 src import 义务。
 
 ### 2.3 P5 冻结消费面
@@ -257,7 +258,8 @@ src/engine_v2/dynamics/
 - 包内 import 纪律（逐模块允许面，全部为**冻结只读**面）：
   - 允许：`__future__`；stdlib（`dataclasses`/`hashlib`/`json`/`re`/`collections.abc`/`typing`/`functools`）；`pydantic`；
     `src.engine_v2.core.*`（§2.1 表内符号）；`src.engine_v2.llm.adapter` + `src.engine_v2.llm.structured`
-    （§2.2 表内符号，**仅 llm_world.py**）；`src.engine_v2.content.schemas`（仅 diagnostic.py 的
+    + `src.engine_v2.llm.profiles`（§2.2 表内符号，**仅 llm_world.py**；
+    profiles 限 `CAPABILITY_ID_PATTERN`，ERR-P7-07）；`src.engine_v2.content.schemas`（仅 diagnostic.py 的
     severity 词表）；**同包兄弟模块**（`dynamics.*`，仅 §3 表声明的 import）。
   - **禁止**：`asyncio`/`await`；`httpx`/`requests`/`socket`/`urllib`；`random`；
     `datetime`（墙钟；P6 `llm/adapter.py` 的 `time` 例外**不**延伸至 P7）；
@@ -526,8 +528,20 @@ Protocol）, config: LLMWorldDynamicsConfig, clock: MonotonicClock)`。
    - L1 世界事实：`world_state` 投影（entities + world_variables，canonical）。
    - L2 刺激：stimuli 列表 canonical JSON（刺激 payload 以**数据**入 prompt，
      非指令——注入面见 §6.3 AD-8）。
-3. 推理：`InferenceRequest` → `backend.complete(request)` → `InferenceResponse`
-   （clock 时间戳入 trace 面，P6 `LLM_CALL_PAYLOAD_KEYS` 9 键约定不变）。
+3. 推理：`InferenceRequest` → `backend.generate(request)` → `InferenceResponse`
+   （缝 = 冻结 P6 `InferenceBackend` 协议 `generate`——adapter.py L150，同步；
+   旧文"complete"为缝名笔误，ERR-P7-07）。`InferenceRequest` 字段源
+   （P7 fake 面，ERR-P7-07 钉死）：`messages = (WireMessage(role="user",
+   content=L0+L1+L2 规范化全文),)`；`model` / `logical_role` / `profile` =
+   `config.capability_id`（P6 #19 同串约定）；`base_url = ""`（调用期拦截，
+   不落记录）；`api_key_env = None`；`temperature = 0.0`（K7）；
+   `max_tokens = None`；`timeout_seconds = 0.0`；`base_revision =
+   context.base_revision`；`prompt_metadata_ref =
+   "prompt://{world_instance_id}:{logical_tick}:{base_revision}"`（P6 格式，
+   只存不校验）。`clock`（P6 L47 协议）用于每次调用测 elapsed_ms
+   （调用前后 `now_ms`——P6 adapter.py L246/L259 先例）；解析/schema 败路径
+   elapsed_ms 入诊断 refs，成功路径不落（零 trace 写面——trace 属 kernel 面；
+   P6 `LLM_CALL_PAYLOAD_KEYS` 9 键键名约定不变，P7 不产 trace 记录）。
 4. 解析：`extract_json_robust(text)`（P6 L72）→ `DynamicsProposalWire.
    model_validate`。失败 → 修复重发（`repair_instruction` P6 L129，
    ≤ `max_repair_retries`）；再败 → 诊断 `p7.wire_parse_failed`
@@ -1406,3 +1420,19 @@ capabilities:
      / §7.1 Case A 溯源行 / §8.1 K6 矩阵行；代码面 = rule.py
      构造期非空 cause_ids 拒绝（DynamicsError，in-band）+ simulate
      `cause_ids=[]`（W2 修正轮）。
+- **ERR-P7-07**（W3 开发前 Leader 预检；§3.5 冻结缝口径精度修，docs-only，
+  零代码影响——W3 dev 按修正后 SOT 实现）：
+  1. §3.5 步 3 旧文 `backend.complete(request)` = 缝名笔误——冻结 P6
+     `InferenceBackend` 协议方法为 `generate(request)`（llm/adapter.py
+     L150–157，同步 DEV-2 面；FakeInferenceBackend L296 同法实现）。
+  2. §3.5 未钉 `InferenceRequest` 11 字段源（P7 config 不携模型路由字段）
+     与 `clock` 消费点——补钉：字段源表（messages 单条 role="user" /
+     model·logical_role·profile = capability_id / base_url="" /
+     api_key_env=None / temperature=0.0 / max_tokens=None /
+     timeout_seconds=0.0 / base_revision=context / prompt_metadata_ref
+     P6 格式）+ clock 每次调用测 elapsed_ms（P6 L246/L259 先例），败路径
+     入诊断 refs，成功不落（P7 零 trace 写面）。
+  3. §3.0 src 允许面漏列 `llm.profiles`（config `capability_id` 校验需
+     `CAPABILITY_ID_PATTERN` L116；§2.2 表已有 profiles.py 行但 §3.0 闭集
+     缺）——补 `src.engine_v2.llm.profiles`（仅 llm_world.py，限
+     `CAPABILITY_ID_PATTERN`）+ L197 注同步（同 ERR-P7-04/05 缺口类）。
