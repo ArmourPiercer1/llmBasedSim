@@ -435,7 +435,8 @@ class TestB3OfflineRunnable:
         # test_p5_integration.py 的子进程冒烟 = 本地解释器 python -m 三态
         # （无网络、无 API key、无 provider），仅豁免该文件「网络/进程 IO」
         # 类别命中（subprocess）；provider / v1 类别对该文件仍零容忍。
-        # 本方法体是 §3.11 纯追加纪律的受控偏离（既有行变更仅此一处）。
+        # 本方法体是 §3.11 纯追加纪律的受控偏离（既有行变更：第一处，
+        # 第二处 = 下方 P6 例外，ERR-P6-6 记录）。
         p5_smoke = "tests/engine_v2/content/test_p5_integration.py"
         if p5_smoke in violations:
             rest = {
@@ -447,6 +448,21 @@ class TestB3OfflineRunnable:
                 violations[p5_smoke] = rest
             else:
                 del violations[p5_smoke]
+        # P6 例外（SOT §5.1 S0 L751 + §6.1 L811 字面要求：W3 test_adapter.py
+        # 仅用 httpx.MockTransport / ConnectError 进程内面，零真实网络；
+        # Leader 裁定，ERR-P6-6 记录，W3 提前落地）：仅豁免该文件「网络/
+        # 进程 IO」类别命中（httpx）；provider / v1 类别对该文件仍零容忍。
+        p6_adapter = "tests/engine_v2/llm/test_adapter.py"
+        if p6_adapter in violations:
+            rest = {
+                module_name: category
+                for module_name, category in violations[p6_adapter].items()
+                if category != "网络/进程 IO"
+            }
+            if rest:
+                violations[p6_adapter] = rest
+            else:
+                del violations[p6_adapter]
         assert not violations, f"tests/engine_v2/ 出现 §0.3 黑名单 import：{violations}"
 
 
