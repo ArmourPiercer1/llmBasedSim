@@ -1,0 +1,23 @@
+# P7-W1 e2e 参考项目（SOT §6.4 钉死面；W5 冻结 conftest 消费）。
+# 顶层键 = manifest + scenario + player + capabilities（封闭 8 键子集）。
+# 注意：P7 游戏项目**无** dynamics/ 目录、无 backend 声明（K8/P7-INV-9；
+# 项目 backend 发现 = OI-P7-1，P8+ 面）。
+manifest:
+  schema_version: "2"
+  project_id: p7_dynamics
+  name: P7 Dynamics Fixture
+scenario:
+  id: scenario_main
+  max_ticks: 20
+  ticks_per_game_minute: 1
+  game_time:
+    hour: 12
+    minute: 0
+player:
+  player_id: player_1
+  name: Tester
+capabilities:
+  - id: cap_world_dynamics
+    capability: world_dynamics
+    min_tier: 2
+    ideal_tier: 3
