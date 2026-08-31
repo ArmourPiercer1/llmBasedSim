@@ -49,7 +49,7 @@ class MonotonicClock(Protocol):
 
     ``now_ms`` 返回单调非减的毫秒值；生产面 = ``SystemMonotonicClock``，
     测试面 = ``FixedMonotonicClock``（确定性双跑的延迟来源，#17）。
-    结构化使用（无 runtime_checkable，A-W3-12）。
+    结构化使用（无 runtime_checkable，SOT §3.4 L254 Protocol 面）。
     """
 
     def now_ms(self) -> int:
@@ -71,7 +71,7 @@ class SystemMonotonicClock:
 class FixedMonotonicClock:
     """测试面确定性单调时钟（后置自增：首次 ``now_ms()`` = ``start_ms``）。
 
-    每次调用返回当前值后自增 ``step_ms``（A-W3-3）；确定性双跑的延迟
+    每次调用返回当前值后自增 ``step_ms``（SOT §3.4 L256）；确定性双跑的延迟
     来源（#17）：同脚本同序列同输出。
     """
 
@@ -97,7 +97,7 @@ class WireMessage(BaseModel):
 
 class InferenceRequest(BaseModel):
     """一次推理调用请求（frozen pydantic，``extra="forbid"``；11 字段，
-    序 = SOT 表序，A-W3-4）。
+    序 = SOT §3.4 L258-270 表序）。
 
     - ``messages`` min_length=1（供应商无关最小消息面）；
     - ``model`` / 端点 / ``temperature`` / ``timeout_seconds`` 取自
@@ -312,7 +312,7 @@ class FakeInferenceBackend:
     def __init__(
         self,
         *,
-        # SOT 签名逐字保留（只读不修改，无共享突变风险，A-W3-8）：
+        # §3.4 L285 签名逐字保留（只读不修改，无共享突变风险）：
         script: dict[tuple[str, Revision, int], str] = {},
         default_text: str = '{"action_id": null}',
         base_latency_ms: float = 5.0,

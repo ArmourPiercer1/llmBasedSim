@@ -3,7 +3,7 @@
 覆盖项（按 §6.1 L811 行逐项 1:1）：
 
 1. ``test_fixed_monotonic_clock_increment``：默认 start_ms=0 / step_ms=1
-   三连调 = 0, 1, 2；自定义 start / step 同法断言（后置自增，A-W3-3）；
+   三连调 = 0, 1, 2；自定义 start / step 同法断言（后置自增，SOT §3.4 L256）；
 2. ``test_wire_message_shape``：三 role 正例 + 非法 role 拒绝 + frozen；
 3. ``test_inference_request_construction_surface``：11 字段；
    ``extra="forbid"`` 拒未知键；messages 空元组拒（min_length=1）；
@@ -34,7 +34,7 @@
     JSON usage 值）。
 
 本文件自包含（零跨测试文件 import、不建 conftest）；hermetic、无真实网络、
-无 subprocess。测试数据用 sim 族假名（K8 12 名 stem 禁入，A-W3-11）；探针
+无 subprocess。测试数据用 sim 族假名（K8 12 名 stem 禁入，SOT L17 / L123）；探针
 串一律拼接构造。
 """
 
