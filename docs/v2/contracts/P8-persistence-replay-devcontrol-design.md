@@ -394,8 +394,9 @@ tests/engine_v2/
 
 | 允许 | 禁止 |
 |---|---|
-| stdlib：`json` `os` `pathlib` `dataclasses` `typing` `collections.abc` `argparse`（仅 cli.py）`re` `functools`（仅脚本）`sys`（仅脚本） | `asyncio` `httpx` `requests` `socket` `urllib` `random` `datetime` `time` `uuid` `subprocess` `threading` 及其余全部 stdlib/三方 |
+| stdlib：`json` `os` `pathlib` `dataclasses` `typing` `collections.abc` `argparse`（仅 cli.py）`re` `functools`（仅脚本）`sys`（仅脚本） | `asyncio` `httpx` `requests` `socket` `urllib` `random` `datetime` `time` `uuid` `subprocess` `threading` 及其余全部 stdlib/三方（`pydantic` = 独立允许行 3 名窄例外，D-P8-18；零新依赖——`pydantic` ∈ uv.lock 既有） |
 | `src.engine_v2.core`（根，仅 §2.1 已列消费名）；`src.engine_v2.core.snapshot`（子模块，仅 `snapshot` 函数——DEV-P6 导入路径） | core 其余子模块直引（未列即禁） |
+| `pydantic`（仅 3 名：`Field` / `model_validator` / `ValidationError`——ContractModel 基础设施面，与冻结 core 27 模块同款；D-P8-18） | pydantic 其余名（未列即禁） |
 | `src.engine_v2.dynamics.backend`（仅 `BackendMetadata`，T04） | dynamics 其余子模块直引 |
 | P8 包内：`persistence.base` → 被全部 P8 模块消费；`persistence.snapshot` → filesystem/branch/cli；`persistence.replay` → cli；`persistence.checkpoint` → branch/cli；`persistence.branch` → cli；`devtools.trace_query` → cli；`devtools.intervention` → cli | devtools → persistence 之外的跨包引用（`devtools → persistence.base` 单向允许：错误族单基类，D-P8-11） |
 
@@ -944,7 +945,7 @@ if __name__ == "__main__":
 
 ---
 
-## §4 决策登记（D-P8-01..17；五段式：问题 / 备选 / 选择 / 理由 / 机械验证面；（自裁）标记者备选段豁免 = P7 D-P7-13/14/15 先例）
+## §4 决策登记（D-P8-01..18；五段式：问题 / 备选 / 选择 / 理由 / 机械验证面；（自裁）标记者备选段豁免 = P7 D-P7-13/14/15 先例）
 
 **D-P8-01 包落位与模块粒度**
 - 问题：T01–T08 代码落哪两个既有占位包？模块名是否逐字对齐 Spec §44（L2100–2202）？
@@ -1140,6 +1141,21 @@ if __name__ == "__main__":
   (b) 面 commit 绿。
 - 机械验证面：A9/A13 + §6.4 字面量钉死（command_id "dev-patch-1" / record_id
   "trc_00000000000000000000000000000042"）+ test_intervention cause_ids 断言。
+
+**D-P8-18（自裁）pydantic 导入面 = 3 名窄例外（ContractModel 基础设施）**
+- 问题：§3.0 导入闭集禁止列 catch-all「其余全部 stdlib/三方」与 §3.2 的
+  `model_validator`（L453）/ `ValidationError → schema_invalid`（L477）机制处方
+  互斥；且 45 个冻结 P1–P7 src 模块全部直接 import pydantic（core 27 / content 3 /
+  dynamics 2 / llm 7 / plugins 3 / prompts 3，grep 实证）——S2 双口径。
+- 备选：(a) 严守 catch-all（P8 src 零 pydantic 导入；镜像校验 = 工厂级检查 +
+  裸 `ValueError` 捕获——损失错误保真且异于全代码库模式）；(b) pydantic 窄例外
+  （仅 `Field` / `model_validator` / `ValidationError` 3 名，与冻结 core 同款）。
+- 选择：**(b)**。§3.0 允许列增独立行 + 禁止列 catch-all 括注例外。
+- 理由：§3.2 机制处方 = W0 三轮 12 评审已过的字节在位文本；P8 信封 =
+  `ContractModel` 子类，pydantic = 项目唯一建模基础设施（零新依赖，uv.lock 不动）；
+  机械可验证面保持闭集（边界方法 1 允许面 = §3.0 允许列，现含 3 名例外）。
+- 机械验证面：W1 实现在位（snapshot.py / filesystem.py 导入面 == 3 名）；边界
+  方法 1（W5，允许面含 pydantic 3 名）；ruff。
 
 ---
 
@@ -1598,6 +1614,21 @@ A↔函数映射非 A 部分（101）+ A（22）`。实现波次若新增/删减
   2 INFO 不处置：D-P8-17 问题段引文反引号面省略（V13 窗口正确）；§30.x 区间
   开-fence 口径（内部一致、覆盖全条目）。计数/白名单/账本零变化（gate1 期望仍
   3048）；本条目按 §9 续编取 E-P8-06（严格递增）。
+
+- **ERR-P8-01**（W1 触发；D-P8-18 联动；W1 实现零改动）：
+  触发文件:行：`src/engine_v2/persistence/snapshot.py:27`（W1 dev 偏差 #1 登记；
+  `filesystem.py` 同款）；
+  原口径：§3.0 导入闭集禁止列 catch-all「其余全部 stdlib/三方」与 §3.2 L453
+  `model_validator` / L477 `ValidationError → schema_invalid` 机制处方互斥，且与
+  45 个冻结 P1–P7 src 模块 pydantic 直接导入模式（core 27 / content 3 / dynamics 2 /
+  llm 7 / plugins 3 / prompts 3，grep 实证）冲突——SOT 自洽缺陷（W0 三轮 12 评审
+  未捕获：§3.0 表与 §3.2 处方分属不同审查面）；
+  修正口径：§3.0 允许列增 `pydantic` 独立行（仅 3 名：`Field` / `model_validator` /
+  `ValidationError`；ContractModel 基础设施面）+ 禁止列 catch-all 括注例外 +
+  D-P8-18（自裁）登记（§4 头 D-P8-01..18）；
+  影响面：边界方法 1 允许面口径（W5 实现 = §3.0 允许列，含 pydantic 3 名）；
+  计数/白名单/账本零变化（26 / 2951 / 3048 不变）；W1 实现按修正口径已在位
+  （dev 偏差 #1 溯及合法化，G8 报告 §6 登记）。
 
 （后续实现波次勘误按 `ERR-P8-NN` 续编；每条必含：触发文件:行 / 原口径 / 修正口径 /
 影响面。本区之外零自由文本。）
