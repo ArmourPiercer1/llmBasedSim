@@ -39,14 +39,14 @@
 | P9-T14 | v1/v2 differential behavior review | 测试 | 较高难度 | 1M | GLM | §3.17 差分方法学 + `test_p9_differential.py`（§6.1） |
 
 **G9 条款计数口径（勘误预备 ERR-P9-02）**：任务书「五+五+四」= 14 个命名面；
-Plan G9（L786–814）「并且」段另有 2 个条款（旧 init file migration / 明确
+Plan G9 段（L786–815）「并且」2 条款（L810–813：旧 init file migration / 明确
 incompatible diagnostics；旧 LangGraph 不再是 v2 Engine Runtime 必要依赖）。
 本 SOT 口径：**16 个门面条**（14 命名面 + 迁移条款 A16 + LangGraph 条款归
 TestP9Boundary 方法 4 的 import 闭包检查），A 判据共 24（§5.2）。
 
-### 0.2 Gate G9 逐字回应（Plan L786–814 原文 + 逐条回应）
+### 0.2 Gate G9 逐字回应（Plan L788–813 原文 + 逐条回应）
 
-Plan 原文（L786–814 逐字）：
+Plan 原文（L788–813 逐字；L786–787 = `## G9` 标题/空行、L814–815 = 尾随空行/节界，不入围栏）：
 
 ```text
 三套 sample 必须分别证明：
@@ -104,7 +104,7 @@ Plan 原文（L786–814 逐字）：
 |---|---|---|
 | 基线 commit | `aab029c`（`architecture-v2` 分支 HEAD） | `git rev-parse HEAD` |
 | 门③ diff 面 | `git diff --name-only aab029c..HEAD -- src tests scripts` = ∅（W0 时点 HEAD == 基线，平凡成立；实现波次后以门③复测为准） | `git diff --name-only` |
-| v1 冻结锚 | `f0a1052` = v1 树最后变更点；`git diff --name-status f0a1052..HEAD` 于 v1 路径集 = 24 条既成条目（1 M `pyproject.toml` + 23 A = 3 个 v1 测试文件 + 20 个 v2_* fixture 文件，均 P1–P8 既成产物）；`src/**`（除 engine_v2）+ `public_start/**` + `config/**` 子集实测为空；P9-INV-1 冻结范围 = 自基线 `aab029c` 起不变 | `git diff --name-status f0a1052..HEAD -- src public_start config tests pyproject.toml`（排除 engine_v2） |
+| v1 冻结锚 | `f0a1052` = v1 树最后变更点；`git diff --name-status f0a1052..HEAD` 于 v1 路径集 = **25** 条既成条目（1 M `pyproject.toml` + 24 A = 4 个 v1 测试侧 `.py`（`char_helpers.py`/`test_char_graph.py`/`test_char_nodes.py`/`test_engine_v2_skeleton.py`）+ 20 个 `v2_*` fixture 文件，均 P1–P8 既成产物；ERR-P9-05(1) 撤回 ERR-P9-04(21) 之 24 计数）；`src/**`（除 `src/engine_v2/`）+ `public_start/**` + `config/**` 子集实测为空；P9-INV-1 冻结范围 = 自基线 `aab029c` 起不变 | `git diff --name-status f0a1052..HEAD -- src public_start config tests pyproject.toml`（仅排除 `src/engine_v2/` + `tests/engine_v2/` 两子树；子串过滤 `grep -v 'engine_v2'` 会误排 `tests/test_engine_v2_skeleton.py`，禁用） |
 | v1 路径集定义 | `src/**`（除 `src/engine_v2/**`）+ `public_start/**` + `config/**` + `tests/**`（除 `tests/engine_v2/**`）+ `pyproject.toml` | — |
 | 套件基线 | **3054 passed in 15.66s** | `PYTHONPATH=. .venv/bin/python -m pytest -q`（背景任务 bash-178 实测） |
 | v1 源码 | 34 个 `.py`（含 10 个 `__init__.py`，其中 `src/__init__.py` 0 行），合计 **6146 行**（与任务书 ≈6146 一致；W0 初探 5710 系漏列文件，已按 §9 ERR-P9-01 更正） | `find src -name '*.py' -not -path '*/engine_v2/*' -exec wc -l {} +` |
@@ -120,17 +120,17 @@ Plan 原文（L786–814 逐字）：
 | 行宽纪律 | `pyproject.toml:31` line-length = 100 | `sed -n '31p'` |
 | scripts 现状 | `scripts/llm_smoke.py`、`scripts/v2_devcontrol.py`（2 文件；P9 新增 `v2_migrate_v1.py`） | `ls scripts` |
 | P5 参考镜像 | `tests/fixtures/v2_project_zero_python/`（5 文件：game.yaml + world/main_world.yaml + characters/npc01.yaml + rules/basics.yaml + actions/move.yaml）= test_empty.yaml 的 P5 手工镜像（偏差台账 D-01：objects 未镜像） | `find` |
-| Python 环境 | `.venv/bin/python` + `PYTHONPATH=.`；P9 代码 import 闭集 = 仅 stdlib + pydantic（uv.lock 既有；冻结 pyproject 声明的 v1 树 10 依赖 P9 零消费） | — |
+| Python 环境 | `.venv/bin/python` + `PYTHONPATH=.`；P9 代码 import 闭集 = stdlib + pydantic + `engine_v2` 冻结根（§3.0 闭集表；uv.lock 既有；冻结 pyproject 声明的 v1 树 10 依赖 P9 零消费） | — |
 
 ### 0.4 非范围（P9 明确不做，归后续阶段 / 门）
 
 | 非范围项 | 归属 | 依据 |
 |---|---|---|
 | presentation/（CLI/Web adapter 实现） | P10/P11 | Spec §44（L2198–2201）；43.2-8 Web singleton session 移除 |
-| 真机 runtime host（进程入口 / REPL / 循环宿主） | P1（Plan §15 之前） | P9 样例宿主 = 测试 conftest（§6.2） |
+| 真机 runtime host（进程入口 / REPL / 循环宿主） | P1（Plan §10；冻结 `engine_v2/runtime/` 包 + Scheduler 宿主循环，见 §2.3 `src/main.py` 行与 `game_graph` 行） | P9 样例宿主 = 测试 conftest（§6.2）；Plan 全文无进程入口/REPL 条目（Plan §15 = Phase 6 LLM Runtime，非宿主面） |
 | 图像侧叙述渲染（text/image 并行之 image） | P10 | Spec §32（L1678–1732）；P9 narration 仅 text 侧（D-P9-13） |
 | OI-P7-1 项目侧 `.py` backend 发现 | 不移交、不实装 | G8 报告 R4（L195）+ D-P8-15 评估结论（loader 9-glob 冻结） |
-| D-P7-13 测试侧 handler 注册 | 维持现状 | G8 报告 L202（core 冻结约束持续适用） |
+| D-P7-13 测试侧 handler 注册 | 维持现状 | G8 报告 L203（core 冻结约束持续适用；条款跨 L202–203） |
 | G8 三条 s2 评估面（branch-audit payload schema / replay ABORTED 保留 / snapshot-derived inspect 覆盖） | P9 仅登记、不评估 | G8 报告 L201–202；本 SOT §0.6 R5 占位 |
 | SQLite / 并发持久化 | P8+ | G8 报告 R7（单进程原型 §0.4.7） |
 | 新第三方依赖 / License 变更 | S4 HARD STOP | Plan §24 S4（L1259–1271）；P9-INV-10 |
@@ -160,7 +160,7 @@ Plan 原文（L786–814 逐字）：
   api_key / base_url；P4 黑名单 L225–240）+ engine_v2 全树 import 零
   langgraph/langchain（G9 条款②）。
 - **D8 勘误链纪律**：§9 唯一规范记录；历史条目不追改；实现波次勘误按
-  ERR-P9-NN 续编（ERR-P8-01..07 先例，G8 报告 L202）。
+  ERR-P9-NN 续编（ERR-P8-01..07 先例，G8 报告 L203–204）。
 
 ### 0.6 风险登记册
 
@@ -199,7 +199,7 @@ Plan 原文（L786–814 逐字）：
 
 | ID | 不变量 | 机械验证面 |
 |---|---|---|
-| P9-INV-1 | v1 冻结面字节不变（v1 路径集；§0.3 定义；自基线 `aab029c` 起冻结——f0a1052 与 aab029c 之间的 24 条 P1–P8 既成条目不属本不变量冻结对象） | TestP9Boundary 方法 5（sha256 清单嵌入，W7 自 aab029c 基线工作树计算）+ 门③ `git diff` |
+| P9-INV-1 | v1 冻结面字节不变（v1 路径集；§0.3 定义；自基线 `aab029c` 起冻结——f0a1052 与 aab029c 之间的 25 条 P1–P8 既成条目不属本不变量冻结对象） | TestP9Boundary 方法 5（sha256 清单嵌入，W7 自 aab029c 基线工作树计算）+ 门③ `git diff` |
 | P9-INV-2 | Kernel 冻结面零修改；边界锚文件唯一修改模式 = EOF 纯追加 | TestP9Boundary 方法 6（子树哈希清单）+ 门③ diff |
 | P9-INV-3 | K2 零直写：P9 模块全纯函数/无状态 reducer；状态变更仅经 kernel 应用面（ProposedEffect / 组件 encode-decode / lifecycle 转移） | TestP9Boundary 方法 4（AST import 闭包 + 无 `WorldState` 可变方法调用模式检查）+ A 判据行为面 |
 | P9-INV-4 | K8 零推词：P9 src 字符串字面量 12 名零命中；部署字段（llm/provider/model/api_key_env/base_url）零泄漏入项目 yaml | TestP9Boundary 方法 3 + A19 |
@@ -264,7 +264,7 @@ Plan 原文（L786–814 逐字）：
 |---|---|---|
 | `src/graph/game_graph.py`（952） | 重写（§43.3 第 1 项）+ 内含 3 项 §43.3 函数 | 函数级拆散映射，见下表 |
 | `src/graph/game_state.py`（136；GameState:9 / world_rules 字段:23） | 重写（§43.3 第 2 项） | core `WorldState`（state.py:246）+ 组件化（P1 已交付）；P9 零承接文件 |
-| `src/game/attributes.py`（1100） | 保留思想（43.1-4 locked/derived attribute） | `modules/attributes.py`（§3.2），函数级见下表 |
+| `src/game/attributes.py`（1100） | 保留思想（43.1-4 locked/derived attribute） | `modules/attributes.py`（§3.2），函数级见 §3.2 函数级锚表 |
 | `src/game/condition_eval.py`（450） | 移除（思想已由 P5 承接） | P5 `content/rule_module.py`（冻结；parse_dsl:812 / evaluate_condition:903）——43.1-3 DSL 的 v2 归宿，P9 零重写 |
 | `src/game/deterministic_rules.py`（163） | 移除（思想已由 P5 承接） | P5 `BUILTIN_RULE_IDS`（rule_module.py:515，5 名 tuple，保 v1 disable 1..5 位序）+ v2 rules yaml；P9 迁移器折叠面（§3.15.2） |
 | `src/game/rules.py`（225；check_action_feasibility:122 / _custom_rule_result:94） | 移除（思想已由 P5 承接） | P5 `check_action_feasibility`（rule_module.py:1169）+ v2 rules yaml 自定义条目 |
@@ -504,7 +504,7 @@ P9 模块 = **纯函数 + Protocol + dataclass 库**（P7/P8 同风格）：零�
 
 ### 3.2 attributes 模块（`modules/attributes.py`；T02；导出 11 名）
 
-**来源**：v1 `src/game/attributes.py`（1100 行；§2.3 函数级锚）。保留
+**来源**：v1 `src/game/attributes.py`（1100 行；本表即 §2.3 所指函数级锚）。保留
 43.1-4（locked/derived attribute 思想）；`_LCParser`/`_ComputeParser`
 （v1 :200/:446）私有解析器**不移植**——锁条件/派生计算改经 P5 冻结
 DSL（`parse_dsl` :812 / `evaluate_condition` :903；43.1-3 思想的 v2 归宿）。
@@ -784,7 +784,7 @@ __all__ = [
 ### 3.12 tactical 模块（`modules/tactical.py`；T13 面；导出 4 名）
 
 **来源**：Spec §40 tactical 模块 + Spec §25 GameplayMode/GameplayContext
-（L1396–1455）冻结面
+（L1396–1452）冻结面
 （gameplay_mode.py）；v1 无对应物（v2 新模块）。
 
 #### `__all__`（逐字按序）
@@ -873,16 +873,19 @@ __all__ = [
 
 #### 3.15.2 闭集映射规则（M-1..M-9；零静默丢弃，S3 预检面）
 
+**M-id 命名空间**：M-1..M-9 = 映射规则 id（下表第一列）；M-10..M-17 =
+规则附着诊断事件 id（逐条对应 §3.15.3 绑定表的诊断码）。
+
 输入 = v1 单文件项目（`public_start/*.yaml` 形状：world/player/
 characters/objects/world_rules/starting_scene_description/max_ticks/
 game_time/ticks_per_game_minute/narrative_style 顶层键）。
 
 | 规则 | v1 源（锚） | v2 目标 | 诊断 |
 |---|---|---|---|
-| M-1 | 顶层 `world:`（test_empty.yaml:1 / whisperheads.yaml:1 / murder.yaml:1） | `world/<project>_world.yaml`（顶层键 `world`，P5 LAYOUT_OPTIONAL glob）；locations/objects 分拆（objects → M-4） | — |
+| M-1 | 顶层 `world:`（test_empty.yaml:1 / whisperheads.yaml:1 / murder.yaml:1） | `world/<project>_world.yaml`（顶层键 `world`，P5 LAYOUT_OPTIONAL glob）；locations/objects 分拆（objects → M-4） | 缺 `world` 或 locations 零条 → ERROR（`MIGRATION_EMPTY_WORLD`，唯一无 M-id 码，§3.15.3 绑定表） |
 | M-2 | 顶层 `player:`（test_empty.yaml:89 / whisperheads.yaml:223 / murder.yaml:312） | `game.yaml` 的 `player:` 节（`PlayerSpec`，schemas.py:227；zero_python 先例逐键对齐） | 缺 `player` → M-11 ERROR |
 | M-3 | 顶层 `characters:`（test_empty.yaml:135 空表 / whisperheads.yaml:346 / murder.yaml:432） | `characters/<id>.yaml`（每角色一文件，顶层键 `characters` 列表）；`character_id` 冗余键（== `id`）→ 丢弃 + WARNING（M-16）；`personality`/`relationships`/`speech_examples`/`attributes` 逐键 → `CharacterSpec`（schemas.py:250–263） | 缺 id / 重复 id → ERROR（M-14） |
-| M-4 | `world.objects`（test_empty.yaml:31–88；**v1 `state` 为 dict**，如 :40–42 `{closed: true}`） | `items/<id>.yaml`（顶层键 `items`，`ObjectSpec`，schemas.py:187）；**state dict 折叠 = 规范扁平串**：`state = ",".join(f"{k}={v}" for k, v in sorted(d.items()))`（bool → `true`/`false`；如 `{closed: true, unlocked: false}` → `"closed=true,unlocked=false"`）；空 dict → `state: null` | 每条折叠 → INFO（M-10） |
+| M-4 | `world.objects`（test_empty.yaml:31–88；**v1 `state` 为 dict**，如 :40–42 `{closed: true}`） | `items/<id>.yaml`（顶层键 `items`，`ObjectSpec`，schemas.py:187）；**state dict 折叠 = 规范扁平串**：`state = ",".join(f"{k}={v}" for k, v in sorted(d.items()))`（bool → `true`/`false`；如 `{closed: true, unlocked: false}` → `"closed=true,unlocked=false"`）；空 dict → `state: null` | 每条折叠 → INFO（M-10）；`state` 非 dict（list/str）→ ERROR（M-10 shape 守卫分支，AD-P9-2） |
 | M-5 | 顶层标量 `max_ticks`（:147）/ `game_time`（:148）/ `ticks_per_game_minute`（:151）/ `starting_scene_description`（:136）/ `narrative_style`（:152） | `game.yaml` 的 `scenario:` 节（`ScenarioSpec`，schemas.py:448：id = `scenario_<project>`，其余逐键；docstring 明示 v1 顶层标量归属此节） | 缺 `max_ticks` → ERROR（M-12） |
 | M-6 | `world_rules.<kind>.append`（whisperheads.yaml:880–894：physics.append 5 条 / attribute.append 3 条；murder.yaml:783–799 同形） | `rules/<project>_v1_rules.yaml`（`rules` 列表，`RuleSpec` 形状）：每条 = `{id: rule_v1_<kind>_<NN>, description: <原文逐字>, condition: 'if(1 >= 0, allowed)', priority: <100 - NN>}`（**passthrough 条件**：永不改变可行性；NN = append 序号 01 起） | 每条 → INFO（M-13） |
 | M-7 | `world_rules.<kind>.disable: [N]`（whisperheads.yaml:882 `[8]`；murder.yaml:785 `[]`） | **无 v2 对应物**（43.2-5：LLM physics 移除 → v1 编号内置规则表 `PHYSICS_DEFAULT_RULES`（prompts/loader.py:6）/ `ATTRIBUTE_DEFAULT_RULES`（:19）不存在于 v2） | 每个 N → WARNING（M-15），message 点名 N 与所属 kind |
@@ -890,7 +893,7 @@ game_time/ticks_per_game_minute/narrative_style 顶层键）。
 | M-9 | 未知顶层键（白名单 9 键之外） | 拒绝（不迁移） | ERROR（M-11），message 点名键名 |
 
 **规则表本身 = 模块常量** `MAPPING_RULES: Final[tuple[str, ...]]`
-（9 规则 id M-1..M-9 之诊断码索引表，供 A22 闭集交叉验证）。
+（9 规则 id `M-1`..`M-9` = 上表第一列，模块自检常量；规则 ↔ 码 ↔ severity 绑定以 §3.15.3 绑定表为准，A22 闭集交叉验证引用该表）。
 
 #### 3.15.3 诊断闭集（D-P9-09；9 码，独立于 P5 18 码冻结面）
 
@@ -900,13 +903,29 @@ MIGRATION_DIAGNOSTIC_CODES: Final[frozenset[str]] = frozenset({
     "MIGRATION_PLAYER_MISSING",         # ERROR   M-11
     "MIGRATION_MAX_TICKS_MISSING",      # ERROR   M-12
     "MIGRATION_DUPLICATE_ID",           # ERROR   M-14
-    "MIGRATION_EMPTY_WORLD",            # ERROR   无 world 或无 locations
+    "MIGRATION_EMPTY_WORLD",            # ERROR   M-1 前置（无 world 或无 locations）
     "MIGRATION_DEPLOYMENT_FIELD",       # ERROR   M-17（simulation.yaml 面）
-    "MIGRATION_OBJECT_STATE_FOLDED",    # INFO    M-10
+    "MIGRATION_OBJECT_STATE_FOLDED",    # INFO/ERROR M-10（折叠 / shape 守卫）
     "MIGRATION_FREEFORM_RULE_FOLDED",   # INFO    M-13
     "MIGRATION_RULE_REF_OBSOLETE",      # WARNING M-15/M-16
 })
 ```
+
+**M-id 绑定表**（9 码全绑定；M-11 双绑定 / M-15/M-16 同码双 id /
+`MIGRATION_EMPTY_WORLD` 无 M-id 均显式钉死；与 §3.15.2 诊断列一致）：
+
+| M-id | 诊断码 | severity | 触发（映射规则） |
+|---|---|---|---|
+| M-10 | `MIGRATION_OBJECT_STATE_FOLDED` | INFO / ERROR | M-4：对象 `state` dict 折叠 = INFO；`state` 非 dict（list/str）shape 守卫 = ERROR |
+| M-11 | `MIGRATION_PLAYER_MISSING` | ERROR | M-2：顶层 `player` 缺失 |
+| M-11 | `MIGRATION_UNKNOWN_TOP_KEY` | ERROR | M-9：未知顶层键——M-11 双绑定（码注释「M-9/M-11 族」= 此：缺 player 与未知顶层键同属顶层键缺失族两分支） |
+| M-12 | `MIGRATION_MAX_TICKS_MISSING` | ERROR | M-5：顶层 `max_ticks` 缺失 |
+| M-13 | `MIGRATION_FREEFORM_RULE_FOLDED` | INFO | M-6：每条 `world_rules.<kind>.append` 折叠 |
+| M-14 | `MIGRATION_DUPLICATE_ID` | ERROR | M-3：角色 `id` 缺失 / 重复 |
+| M-15 | `MIGRATION_RULE_REF_OBSOLETE` | WARNING | M-7：每个 `world_rules.<kind>.disable` 编号规则 |
+| M-16 | `MIGRATION_RULE_REF_OBSOLETE` | WARNING | M-3：`character_id` 冗余键（== `id`）丢弃 |
+| M-17 | `MIGRATION_DEPLOYMENT_FIELD` | ERROR | `migrate_simulation`：`simulation.yaml` llm/agents 节部署字段 |
+| （无 M-id） | `MIGRATION_EMPTY_WORLD` | ERROR | M-1 前置：`world` 缺失或 locations 零条（唯一无 M-id 码） |
 
 - `MigrationDiagnostic` frozen dataclass：`code: str`、`severity: str`
   （`ERROR`/`WARNING`/`INFO` 闭集）、`path: str`（yaml 相对路径 + 键链）、
@@ -973,7 +992,7 @@ dynamics/narration）→ 确定性 tick 循环（注入 `LogicalClock` /
 2. **A6 long action**：player 提案长动作（duration 3 tick）→
    `start_action`（scheduler.py:468）→ ActiveAction（actions.py:207）
    RUNNING；tick 3 后 COMPLETED（lifecycle 转移经
-   `transition_action` :257）。
+   `transition_action`（action_lifecycle.py:257））。
 3. **A7 world time**：逻辑 tick 0→N（`set_logical_tick` :117）→ 游戏
    分钟 = tick × `ticks_per_game_minute`（scenario 声明 0.5）确定值
    （无 wall-clock）。
@@ -1124,7 +1143,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | 47 | `tests/engine_v2/core/test_import_boundary.py` | **M（L2071 后 EOF 纯追加；L1–L2071 逐字节不变，边界方法 6 自证）** | §3.20 |
 
 **fixture 项目与 §6.1 测试文件 1:1 对应**（自检项）：白名单行 16–30 的
-13 个测试文件（含 `__init__.py`/`conftest.py` 2 非测试文件）= §6.1 分表
+15 文件 = 13 个测试文件 + 2 个非测试文件（`__init__.py`/`conftest.py`）= §6.1 分表
 13 个平铺函数表 + 2 个零函数文件；行 31–45 的 15 个 fixture 文件 =
 §3.16 三样例各 5 文件。
 
@@ -1212,7 +1231,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
   文件函数级锚表（采纳）。
 - **选择**：三态 = {保留思想（Spec §43.1 的 11 条逐一挂接）、移除（§43.2
   的 9 条逐一挂接）、重写（§43.3 的 9 项逐一挂接）}；粒度 = 文件级总表 +
-  `game_graph.py`/`attributes.py` 两文件函数级锚表（§2.3）；其余 v1 文件
+  `game_graph.py`/`attributes.py` 两文件函数级锚表（game_graph 见 §2.3，attributes 见 §3.2）；其余 v1 文件
   到文件级即可（行数/职责单一）。
 - **理由**：43.1/43.2/43.3 三节即判据本体（Spec 已裁决）；SOT 的职责 =
   逐条落位 + 行锚钉死（防止实现波次误读）；`game_graph.py`（952 行，11
@@ -1407,6 +1426,11 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 
 ### 5.2 A 判据表（24 条：A1–A16 门面条 + A17–A24 辅助面）
 
+> **命名口径**：机械验证面列用短名形 `module.py::tN_<语义>`；规范
+> pytest 收集名以 §5.3 1:1 清单为准（24 行一一对应；函数
+> 命名规则见 §6.1 引言——`test_<短名>_tN_<语义>`，三个公共面文件
+> 裸 `test_tN_<语义>` 形）。
+
 | ID | 可验证陈述 | 机械验证面 |
 |---|---|---|
 | A1 | galgame 样例：player 对 yuki 发起 talk，脚本 backend 回应文本出现在 `DialogueResult.response` 且经事件流可达叙事帧 | `test_g9_galgame.py::t1_dialogue` |
@@ -1561,9 +1585,9 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | 1 | `test_t1_gate_migration_clause` | **A16**：四输入预期（§3.15.4 表）逐输入断言 |
 | 2 | `test_t2_object_state_folded` | M-4 折叠规范串逐值钉（`closed=true,unlocked=false` 形态） |
 | 3 | `test_t3_whisperheads_rule_ref_warning` | whisperheads：WARNING ×1（physics.disable [8]，M-15 点名 8）+ 输出可加载 |
-| 4 | `test_t4_murder_append_folded` | murder：append 8 条 → rules yaml 8 条 passthrough（id/description/priority 钉） |
+| 4 | `test_t4_murder_append_folded` | murder：append 10 条 → rules yaml 10 条 passthrough（id/description/priority 钉） |
 | 5 | `test_t5_simulation_incompatible` | simulation.yaml：incompatible + `MIGRATION_DEPLOYMENT_FIELD` 点名 llm/agents |
-| 6 | `test_t6_unknown_top_key_rejected` | 注入未知顶层键的 v1 夹具（tmp）→ ERROR `MIGRATION_UNKNOWN_TOP_KEY` |
+| 6 | `test_t6_adversarial_injection_rejected` | 4 项敌对注入（tmp 夹具，AD-P9-2）：未知顶层键 → ERROR `MIGRATION_UNKNOWN_TOP_KEY`；角色 `id` 重复 → ERROR `MIGRATION_DUPLICATE_ID`；`world` 缺失或 locations 零条 → ERROR `MIGRATION_EMPTY_WORLD`；对象 `state` 非 dict（list/str）→ ERROR `MIGRATION_OBJECT_STATE_FOLDED`（M-10 shape 守卫分支） |
 | 7 | `test_t7_codes_closed` | **A22**：四输入全诊断 ∈ 9 码闭集 + severity 闭集 |
 
 **`test_g9_galgame.py`（6）**：`test_g9_galgame_t1_dialogue`（A1）/
@@ -1629,7 +1653,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | AD | 对抗面 | 并入 |
 |---|---|---|
 | AD-P9-1 | 锁条件 DSL 注入：条件串含未知变量/除零 → `DslEvalError` 透传（不吞、不误锁） | t8（`test_attributes`） |
-| AD-P9-2 | 迁移宿主敌对 yaml：v1 夹具注入重复 id / 空 world / 对象 state 非 dict（list/str）→ 对应 ERROR/折叠规则面（非 dict state = `MIGRATION_UNKNOWN_TOP_KEY` 外的键级拒绝——M-4 规则含 shape 守卫） | t6（`test_v1_migration`） |
+| AD-P9-2 | 迁移宿主敌对 yaml：v1 夹具注入未知顶层键 / 重复 id / 空 world / 对象 state 非 dict（list/str）→ 4 个 ERROR 面按 §3.15.3 绑定表钉死（`MIGRATION_UNKNOWN_TOP_KEY` / `MIGRATION_DUPLICATE_ID` / `MIGRATION_EMPTY_WORLD` / `MIGRATION_OBJECT_STATE_FOLDED` ERROR——M-10 shape 守卫分支，即 M-4 规则 shape 守卫） | t6（`test_v1_migration`） |
 | AD-P9-3 | 模块 id 文法边缘：`parse_module_id` 对 `LLMSIM-STANDARD-X`（大写）/ `llmsim-standard-`（空尾）/ `standard-x`（前缀缺）全拒 | t2/t3（`test_module_face`）辅助断言 |
 | AD-P9-4 | hex 越界/畸形：`HexGrid(cols=0)` 拒绝；`hex_adjacency` 单行网格（1×N）边表钉（无 6 邻退化） | t1（`test_g9_tactical`）辅助断言 |
 
@@ -1691,7 +1715,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | §32 叙述渲染 text/image（L1678–1732） | §3.14（text 侧）+ §0.4（image = P10） |
 | §40 Standard Modules（L1944–1966，13 模块名逐字） | §0.1 / §3.0 / §3.1.2（OFFICIAL_MODULE_IDS） |
 | §41 requires 声明 + 依赖图检查（L1970–1985） | §3.1.2（MODULE_REQUIRES）+ §2.4（module_graph 11 名消费） |
-| §25 GameplayMode/GameplayContext（L1396–1455） | §3.12（tactical overlay 消费面） |
+| §25 GameplayMode/GameplayContext（L1396–1452） | §3.12（tactical overlay 消费面） |
 | §43 v1→v2 迁移（L2056–2096；43.1 十一条 / 43.2 九条 / 43.3 九项） | §2.3 三态映射表（逐条挂接） |
 | §44 源码树 modules/ + presentation/（L2100–2202；modules/ 树 L2145–2154 / presentation/ L2198–2201） | §3.0 包树（单包落位）+ §0.4（presentation = P10/P11） |
 | §46 MVP 第 21 条族（L2273–2311） | §0.4 / §3.17（D-ζ 持久化面消费 P8 交付） |
@@ -1800,7 +1824,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 ## §9 勘误（errata）
 
 > 纪律（D8）：本节为 P9 行锚/口径勘误**唯一规范记录**；历史条目不追改；
-> 实现波次勘误按 ERR-P9-NN 续编（ERR-P8-01..07 先例，G8 报告 L202）。
+> 实现波次勘误按 ERR-P9-NN 续编（ERR-P8-01..07 先例，G8 报告 L203–204）。
 > W0 种子条目（格式先例 = P8 SOT §9 表形）：
 
 | ID | 类型 | 勘误 | 更正 | 状态 |
@@ -1808,7 +1832,8 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | ERR-P9-01 | 口径 | W0 初探「v1 src 合计 5710 行」及初版口径「30 `.py`（含 11 个 `__init__.py`）」 | 全量 34 `.py`（含 10 个 `__init__.py`）合计 **6146 行**（`find src -name '*.py' -not -path '*/engine_v2/*' -exec wc -l {} +` @ aab029c 实测）；任务书 ≈6146 正确，初探漏列 `src/agents/init.py`/`src/config/loader.py`/`src/models/__init__.py`/`src/ui/cli.py` 等文件，文件计数亦同批更正（§0.3/§2.3 已按实测落表） | W0 定案（§0.3 已按更正值落表） |
 | ERR-P9-02 | 口径 | 任务书「五+五+四」G9 面计数 | Plan G9（L786–814）「并且」段 2 条款独立于 14 命名面 → SOT 口径 = **16 门面条**（§0.1/§5.2；A16 + 边界方法 4 分立承接） | W0 定案（§0.1 已落口径） |
 | ERR-P9-03 | 披露 | `modules/__init__.py` 占位 docstring 仅列 9 模块名（缺 actions/dialogue/dynamics/narration） | 占位字节冻结（§2.9 先例）；官方 13 名闭集以 `modules/base.py::OFFICIAL_MODULE_IDS` 为唯一权威（Spec §40 逐字，A18 机械钉）；占位文案不更新（与 persistence/dynamics 占位同惯例） | W0 定案（§2.9 已落披露） |
-| ERR-P9-04 | 口径/锚 | W0 设计盲评 R1（4 人全 SUPPLEMENT；findings 合计 45 = 19 SUPPLEMENT 级 + 21 DOC 级 + 5 INFO 级；跨评审人去重后裁决修正 18 项 + 合法面/他层 3 项）修正明细：(1) §0.3 v1 冻结锚行「diff = ∅（实测空）」为假——实测 24 条既成条目（1 M pyproject.toml + 23 A = 3 v1 测试 + 20 v2_* fixture，均 P1–P8 产物；src/public_start/config 子集确为空；评审 3 人计「25」系误计，byte-truth = 24），已改写为如实陈述 + P9-INV-1 冻结范围收窄至「自 aab029c 起不变」+ 方法 5 清单时点注明 W7；(2) rules.py 锚 8→9（2 处，`STRENGTH_TO_KG_FACTOR` def 实测 :9）；(3) condition_eval.py 锚 :113→def :35（D-β 行）；(4) game_state.py `GameState` 锚 23→9（world_rules 字段 :23 不变）；(5) Spec §40 列表行范围 L1948–1962→L1951–1963（2 处）；(6) 「Spec §42 GameplayMode（L1989–2052）」→「Spec §25 GameplayMode/GameplayContext（L1396–1455）」（2 处，Spec #42 实为测试层级）；(7) §2.3 补「§43.1 十一条/§43.2 九条逐条挂接核对」表（原缺 43.1-2 YAML authoring、43.2-7 global GameState 两条挂接；现 20/20 全挂接）；(8) §0.3 core 行核验命令 `grep -c '"'`（对单引号条目返回 0）→ `grep -c "^    '"`（实测 308）；(9) D2 行宽自指断言「本文件…零命中」为假（SOT 实测 273 表格行 >100）→ D2 作用域收窄为 P9 产物（src/tests/scripts），SOT 自限「非表格行零命中（表格行豁免，P8 先例）」；(10) §8.1 K 矩阵三行错标 Spec 不变量（K4 行实为 Spec K6 内容/K6 行「确定性」非 Spec K 项/K7 行非 Spec K7）→ 按 Spec L295–303（K4）/L315–324（K6）/L326–328（K7）重标，「确定性双跑」降为标注行「D6（P9 纪律，非 Spec K 项）」；(11) §8.1 K5 行机械验证面「P9-INV（D-P9-05）」悬空引用 → 「D-P9-05 + A8 + A2」；(12) §2.7 「表见 §3.18.3」→「§3.20」（§3.18 无子节）；(13) §2.10「既有 6 项目目录」→「7」（与磁盘 ls 及方法 6(d) 对齐）；(14) 方法 5 清单「30 src .py」→「34」（ERR-P9-01 已更正口径的残留）；(15) §6.1 头命名约定补三公共面文件裸 `test_tN_` 形说明（原声明与 3 文件实际命名不符）；(16) D-P9-01/04/05/06 四个非自裁决策补「备选」段（§4 五段式契约）；(17) §0.1 T02 行补 base.py 同波 W1 落盘注；(18) §0.3 Python 环境行补「冻结 pyproject 声明的 v1 树 10 依赖 P9 零消费」注；(19) 评审报告自述 3 处裸 0x5C 0x62 序列（L146/L436/L514）经裁决为 D3 自命名合法面，不修改；(20) R4-F14 任务书（`.p9/w0-brief.md`）层「v1 路径集 diff 为空」同口径错误 = brief 层，不追改任务书，以本 SOT 为准；(21) R1 评审「25 条」误计 1 处 = 评审层，以 byte-truth 24 为准 | W0 定案（正文已按更正值落表；实现波次复测以 `git diff aab029c..HEAD` + `sed -n` 为准） |
+| ERR-P9-04 | 口径/锚 | W0 设计盲评 R1（4 人全 SUPPLEMENT；findings 合计 45 = 19 SUPPLEMENT 级 + 21 DOC 级 + 5 INFO 级；跨评审人去重后裁决修正 18 项 + 合法面/他层 3 项）修正明细：(1) §0.3 v1 冻结锚行「diff = ∅（实测空）」为假——实测 24 条既成条目（1 M pyproject.toml + 23 A = 3 v1 测试 + 20 v2_* fixture，均 P1–P8 产物；src/public_start/config 子集确为空；评审 3 人计「25」系误计，byte-truth = 24），已改写为如实陈述 + P9-INV-1 冻结范围收窄至「自 aab029c 起不变」+ 方法 5 清单时点注明 W7；(2) rules.py 锚 8→9（2 处，`STRENGTH_TO_KG_FACTOR` def 实测 :9）；(3) condition_eval.py 锚 :113→def :35（D-β 行）；(4) game_state.py `GameState` 锚 23→9（world_rules 字段 :23 不变）；(5) Spec §40 列表行范围 L1948–1962→L1951–1963（2 处）；(6) 「Spec §42 GameplayMode（L1989–2052）」→「Spec §25 GameplayMode/GameplayContext（L1396–1452）」（2 处，Spec #42 实为测试层级）；(7) §2.3 补「§43.1 十一条/§43.2 九条逐条挂接核对」表（原缺 43.1-2 YAML authoring、43.2-7 global GameState 两条挂接；现 20/20 全挂接）；(8) §0.3 core 行核验命令 `grep -c '"'`（对单引号条目返回 0）→ `grep -c "^    '"`（实测 308）；(9) D2 行宽自指断言「本文件…零命中」为假（SOT 实测 273 表格行 >100）→ D2 作用域收窄为 P9 产物（src/tests/scripts），SOT 自限「非表格行零命中（表格行豁免，P8 先例）」；(10) §8.1 K 矩阵三行错标 Spec 不变量（K4 行实为 Spec K6 内容/K6 行「确定性」非 Spec K 项/K7 行非 Spec K7）→ 按 Spec L295–303（K4）/L315–324（K6）/L326–328（K7）重标，「确定性双跑」降为标注行「D6（P9 纪律，非 Spec K 项）」；(11) §8.1 K5 行机械验证面「P9-INV（D-P9-05）」悬空引用 → 「D-P9-05 + A8 + A2」；(12) §2.7 「表见 §3.18.3」→「§3.20」（§3.18 无子节）；(13) §2.10「既有 6 项目目录」→「7」（与磁盘 ls 及方法 6(d) 对齐）；(14) 方法 5 清单「30 src .py」→「34」（ERR-P9-01 已更正口径的残留）；(15) §6.1 头命名约定补三公共面文件裸 `test_tN_` 形说明（原声明与 3 文件实际命名不符）；(16) D-P9-01/04/05/06 四个非自裁决策补「备选」段（§4 五段式契约）；(17) §0.1 T02 行补 base.py 同波 W1 落盘注；(18) §0.3 Python 环境行补「冻结 pyproject 声明的 v1 树 10 依赖 P9 零消费」注；(19) 评审报告自述 3 处裸 0x5C 0x62 序列（L146/L436/L514）经裁决为 D3 自命名合法面，不修改；(20) R4-F14 任务书（`.p9/w0-brief.md`）层「v1 路径集 diff 为空」同口径错误 = brief 层，不追改任务书，以本 SOT 为准；(21) R1 评审「25 条」误计 1 处 = 评审层，以 byte-truth 24 为准 | W0 定案（正文已按更正值落表；实现波次复测以 `git diff aab029c..HEAD` + `sed -n` 为准） |
+| ERR-P9-05 | 口径/锚 | W0 设计盲评 R2（4 人全 SUPPLEMENT；findings 合计 24 = 6 SUPPLEMENT + 7 DOC + 11 INFO；跨评审人去重后：13 项裁决修正〔SOT 层 18 处 findings 归并〕+ 合法面/他层 6 项〔brief 层 4 + 文档化变体 1 + 备查 1〕）修正明细：(1) **撤回 ERR-P9-04(1)(21) 之误计裁决**——v1 路径集 diff 实测 = **25** 条既成条目（1 M `pyproject.toml` + 24 A = 4 个 v1 测试侧 `.py`（`char_helpers.py`/`test_char_graph.py`/`test_char_nodes.py`/`test_engine_v2_skeleton.py`）+ 20 个 `v2_*` fixture，均 P1–P8 产物）；ERR-P9-04 之 24 计数系子串过滤 `grep -v 'engine_v2'` 误排 `tests/test_engine_v2_skeleton.py`（`tests/` 顶层文件，属 v1 路径集成员），R1/R3/R4 评审 25 计数 = byte-truth，§0.3/P9-INV-1 按 25 更正，核验命令排除口径改「仅排除 `src/engine_v2/` + `tests/engine_v2/` 两子树，子串过滤禁用」；(2) murder.yaml `world_rules` append 实测 = 10 条（physics 5 + attribute 5，:783–799），§6.1 T09 t4 行 8→10（whisperheads 8 条实测正确，不变）；(3) §3.15.2 补 M-id 命名空间声明（M-1..M-9 = 映射规则 id；M-10..M-17 = 规则附着诊断事件 id）+ §3.15.3 补 M-id 绑定表（9 码全绑定；M-11 双绑定 = 顶层键缺失族两分支显式化；`MIGRATION_EMPTY_WORLD` = 唯一无 M-id 码，触发 = M-1 前置），MAPPING_RULES 段、M-1/M-4 诊断列、frozenset 两条注释同步；(4) AD-P9-2 非 dict state shape 违规钉 `MIGRATION_OBJECT_STATE_FOLDED` ERROR（M-10 shape 守卫分支）；t6 钉面扩至 4 项敌对注入并更名 `test_t6_adversarial_injection_rejected`（82 平铺函数总数不变）；(5) §5.2 补命名口径注（机械验证面短名形 ↔ §5.3 规范收集名 1:1）；(6) §0.3 Python 环境行 import 闭集改「stdlib + pydantic + `engine_v2` 冻结根（§3.0 闭集表）」（原「仅 stdlib + pydantic」与 §3.0 矛盾）；(7) Spec §25 上界「L1396–1455」→「L1396–1452」×2（§3.12 来源行/§7.3 行；内容末 = L1452「由 ModePolicy 解析。」）；(8) Plan G9 围栏题注与 §0.1 口径行「L786–814」→ 围栏 = 正文 L788–813（L786–787 = `## G9` 标题/空行、L814–815 = 尾随空行/节界；「并且」2 条款 = L810–813）；(9) §3.16.2 A6 `transition_action` :257 补模块归属（action_lifecycle.py:257）；(10) §2.3 attributes 行「函数级见下表」→「函数级见 §3.2 函数级锚表」（§2.3 内唯一函数表 = game_graph 的；§3.2 来源行、D-P9-04 行同步）；(11) §3.19 自检注「13 个测试文件（含 2 非测试文件）」→「15 文件 = 13 个测试文件 + 2 个非测试文件」；(12) G8 报告行锚 3 处：§0.4 D-P7-13 行 → L203（短语实位，条款跨 L202–203）、D8 纪律行与 §9 续编注 → L203–204（勘误链纪律句跨）；(13) §0.4 真机 runtime host 行「P1（Plan §15 之前）」→「P1（Plan §10；冻结 `engine_v2/runtime/` 面）」（Plan §15 = Phase 6 LLM Runtime，Plan 全文无进程入口/REPL 条目；SOT 内依据 = §2.3 `src/main.py` 行/`game_graph` 行）。合法面/他层（不修改）：R1-F03/R2-F04/R3-F06/R4-F07 = brief 层（任务书与旧 brief 不追改，ERR-P9-04(20) 先例；R3 任务书派工前更正 C3 前提与 K 范围）；R4-F04 = G9-16 无 A id 文档化变体（§0.2/§7.4/§8.3/ERR-P9-02 四方一致，登记备查）；R4-F06 = Plan §24 范围声明精确（S1–S5 = L1212–1288 子区间，备查） | W0 定案（正文已按 (1)–(13) 更正值落表；本条为 ERR-P9-04(21) 之唯一规范撤回记录，历史条目不追改；实现波次复测以 `git diff aab029c..HEAD` + `sed -n` 为准） |
 
 （后续实现波次勘误按 ERR-P9-NN 续编；行锚漂移以 `git diff aab029c..HEAD`
 + `sed -n` 复测为准，登记时附复测命令与输出摘要。）
