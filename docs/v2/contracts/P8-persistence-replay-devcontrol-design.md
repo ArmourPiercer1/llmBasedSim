@@ -424,8 +424,8 @@ __all__ = (
 | `PERSISTENCE_SAVE_FILES` | `Final[tuple[str, ...]] = ("snapshot.json", "checkpoints", "trace.jsonl")` | 单个 save 目录的**闭集**布局（P8-INV-5）；load 侧布局校验依据（额外文件 → `layout_violation`） |
 | `SAVE_ID_PATTERN` | `Final[str] = r"[a-z0-9][a-z0-9_]{0,127}"` | `save_id` 词法（host 给出；D5） |
 | `P8_ERROR_CODES` | `Final[tuple[str, ...]]` | **11 码闭集**：`save_not_found` / `corrupt_file` / `schema_invalid` / `version_mismatch` / `layout_violation` / `checkpoint_unavailable` / `replay_mismatch` / `branch_rejected` / `intervention_rejected` / `usage_error` / `internal_error` |
-| `PersistenceError` | `class (Exception)` | 字段 `code: str`（ctor 校验 ∈ `P8_ERROR_CODES`，否则 `ValueError`）、`message: str`；P8 两包**唯一**异常基类（S2 单面） |
-| `PersistenceBackend` | `Protocol` | 3 方法抽象面（Spec §30.3 MAY 的 P8 单一定义；D-P8-03）：`save(*, save_id, envelope, checkpoint_payloads, trace_records) -> None`；`load(*, save_id) -> SaveBundle`；`list_saves() -> tuple[str, ...]` |
+| `PersistenceError` | `class (Exception)` | 字段 `code: str`（ctor 校验 ∈ `P8_ERROR_CODES`，否则 `ValueError`）、`message: str`；`__str__` = "[code] message"；P8 两包**唯一**异常基类（S2 单面） |
+| `PersistenceBackend` | `@runtime_checkable Protocol`（isinstance 探针面，t14 锚定） | 3 方法抽象面（Spec §30.3 MAY 的 P8 单一定义；D-P8-03）：`save(*, save_id, envelope, checkpoint_payloads, trace_records) -> None`；`load(*, save_id) -> SaveBundle`；`list_saves() -> tuple[str, ...]` |
 | `SaveBundle` | `@dataclass(frozen=True)` | 字段：`save_id: str`；`envelope: PersistenceSnapshot`；`checkpoint_payloads: Mapping[str, Mapping[str, object]]`；`trace_records: tuple[TraceRecord, ...]`；`to_dict() -> dict[str, object]`（JSON-clean，D3） |
 
 docstring 纪律：模块 docstring 说明"持久化基面：错误族 / 布局闭集 / 抽象后端面 /
@@ -470,7 +470,8 @@ def to_persistence_snapshot(
 ) -> PersistenceSnapshot: ...   # 纯函数；project/module_versions 自 snapshot 镜像
 
 def dump_persistence_snapshot(envelope: PersistenceSnapshot) -> str: ...
-    # dump_json(envelope.to_dict()) + assert_json_clean；确定性（D6）
+    # assert_json_clean(envelope.to_dict()) + dump_json(envelope)（冻结
+    # dump_json 仅收 BaseModel，core/serialization.py:54）；确定性（D6）
 
 def load_persistence_snapshot(payload: str | bytes) -> PersistenceSnapshot: ...
     # 唯一合法入口 = load_json（serialization.py:67）；
@@ -1432,7 +1433,7 @@ if __name__ == "__main__":
 | `run_p8_script()` | SC-1 3 回合脚本（§5.1）→ `P8RunBundle(final_state, runtime_state, trace_records, dev_command_ids, rule_producer_id)`（模块级 dataclass，conftest 私有） |
 | `make_p8_backend(tmp_path)` | `FilesystemPersistenceBackend(tmp_path / "saves_root")` |
 | `build_p8_save(tmp_path, run)` | SC-1 → 完整 save（`save_id="save_p8_base"`；wall time 固定串 `"1970-01-01T00:00:00+00:00"`——D6） |
-| `build_p8_dynamics_save(tmp_path)` | **SC-2**：`from tests.engine_v2.dynamics.conftest import make_p7_world, make_p7_executor, gem_effect_handlers, …`（§2.7 冻结缝）+ `load_deployment(v2_deployment_p7)` + `FakeInferenceBackend(script=…)` + `run_dynamics_turn` → save（`save_id="save_p8_dyn"`）+ registry（toy 绑定） |
+| `build_p8_dynamics_save(tmp_path)` | **SC-2**：函数内 lazy import `from tests.engine_v2.dynamics.conftest import _det_entity_id, make_p7_executor, make_p7_world`（§2.7 冻结缝；`gem_effect_handlers` 在冻结 `make_p7_executor` 体内注册，dynamics/conftest.py:159）+ `FakeInferenceBackend(script=…)` + `run_dynamics_turn(executor=make_p7_executor(), …)` → save（`save_id="save_p8_dyn"`）+ registry（toy 绑定） |
 | `corrupt_save(save_dir, kind)` | SC-4 破坏函数（`"truncate_snapshot"` / `"bad_checkpoint_seed"` / `"version_zero"` / `"drop_middle_txn"` / `"bad_trace_line"` / `"dangling_index"`）——AD 族共用 |
 
 **`tests/engine_v2/devtools/conftest.py`**：自包含**紧凑版** SC-1 构件
@@ -1629,6 +1630,21 @@ A↔函数映射非 A 部分（101）+ A（22）`。实现波次若新增/删减
   影响面：边界方法 1 允许面口径（W5 实现 = §3.0 允许列，含 pydantic 3 名）；
   计数/白名单/账本零变化（26 / 2951 / 3048 不变）；W1 实现按修正口径已在位
   （dev 偏差 #1 溯及合法化，G8 报告 §6 登记）。
+
+- **ERR-P8-02**（W1-R1 评审触发；SOT 3 处校准；实现零改动）：
+  (1) §6.2 `build_p8_dynamics_save` 行 stale 注记：import 列 `gem_effect_handlers, …`
+  + `load_deployment(v2_deployment_p7)` 子句 → 函数内 lazy import（`_det_entity_id` /
+  `make_p7_executor` / `make_p7_world`，sed 实证 conftest L475–479）+
+  `gem_effect_handlers` 在冻结 `make_p7_executor` 体内注册（dynamics/conftest.py:159）
+  + 无 load_deployment 子句（W1-R1 r4-F1 DOC；行为面已实证达标：gem.moved
+  committed + 9 键 LLM payload）；
+  (2) §3.2 `dump_persistence_snapshot` 伪码 `dump_json(envelope.to_dict())` 不可实现
+  （冻结 `dump_json` 仅收 BaseModel，core/serialization.py:54）→
+  `assert_json_clean(envelope.to_dict()) + dump_json(envelope)`（与 W1 实现
+  snapshot.py L139–140 字节一致；r4-F3 DOC）；
+  (3) §3.1 追认事实契约面：`PersistenceError.__str__` = "[code] message" +
+  `PersistenceBackend` = `@runtime_checkable Protocol`（isinstance 探针面，t14
+  锚定；r3-F1 DOC）。计数/白名单/账本零变化（26 / 2951 / 3048 不变）。
 
 （后续实现波次勘误按 `ERR-P8-NN` 续编；每条必含：触发文件:行 / 原口径 / 修正口径 /
 影响面。本区之外零自由文本。）
