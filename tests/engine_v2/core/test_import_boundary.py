@@ -1627,3 +1627,445 @@ class TestP7Boundary:
             )
             total += len(actual)
         assert total == 35, f"导出账本总数应为 35：{total}"
+
+
+# —— P8 扩展（P8 SOT §3.10.3 TestP8Boundary 6 法 / §3.10.2 白名单 25 文件 /
+# §8.2 导出账本 44 名；W5 纯追加 Leader hunk，TestP7Boundary 同构；本文件
+# 进程无操作纪律：全部 6 法零 subprocess）——
+
+#: P8 src 9 模块（§3.10.2 白名单 #1-#9；dotted 名；占位 ``__init__.py``
+#: 字节冻结不入账本，P8-INV-8）。
+P8_SRC_SUBMODULES: tuple[str, ...] = (
+    "persistence.base",
+    "persistence.snapshot",
+    "persistence.filesystem",
+    "persistence.replay",
+    "persistence.checkpoint",
+    "persistence.branch",
+    "devtools.intervention",
+    "devtools.trace_query",
+    "devtools.cli",
+)
+
+#: P8 测试扫描面（2 目录 14 文件，封闭，含 ``__init__.py`` + conftest；
+#: SOT §3.10.3 方法 2）。
+P8_TEST_FILES: dict[str, tuple[str, ...]] = {
+    "persistence": (
+        "__init__.py",
+        "conftest.py",
+        "test_snapshot_format.py",
+        "test_filesystem_backend.py",
+        "test_replay.py",
+        "test_checkpoint_registry.py",
+        "test_branch.py",
+        "test_p8_adversarial.py",
+    ),
+    "devtools": (
+        "__init__.py",
+        "conftest.py",
+        "test_intervention.py",
+        "test_trace_query.py",
+        "test_cli.py",
+        "test_g8_scenarios.py",
+    ),
+}
+
+#: P8 白名单 25 文件（封闭，§3.10.2 表波次序 #1-25；gate ③/⑥ 字面
+#: ``git diff --name-only 84a5d4f..HEAD -- src tests scripts == 25`` 由
+#: Leader bash 执行（§3.10.4 步 6），pytest 侧以目录封闭镜像承载（方法
+#: 5）；docs/ 依设计不入白名单；2 占位 ``__init__.py`` 不在白名单
+#: （P8-INV-8 字节不变）。
+P8_WHITELIST: tuple[str, ...] = (
+    "src/engine_v2/persistence/base.py",
+    "src/engine_v2/persistence/snapshot.py",
+    "src/engine_v2/persistence/filesystem.py",
+    "src/engine_v2/persistence/replay.py",
+    "src/engine_v2/persistence/checkpoint.py",
+    "src/engine_v2/persistence/branch.py",
+    "src/engine_v2/devtools/intervention.py",
+    "src/engine_v2/devtools/trace_query.py",
+    "src/engine_v2/devtools/cli.py",
+    "scripts/v2_devcontrol.py",
+    "tests/engine_v2/persistence/__init__.py",
+    "tests/engine_v2/persistence/conftest.py",
+    "tests/engine_v2/persistence/test_snapshot_format.py",
+    "tests/engine_v2/persistence/test_filesystem_backend.py",
+    "tests/engine_v2/persistence/test_replay.py",
+    "tests/engine_v2/persistence/test_checkpoint_registry.py",
+    "tests/engine_v2/persistence/test_branch.py",
+    "tests/engine_v2/persistence/test_p8_adversarial.py",
+    "tests/engine_v2/devtools/__init__.py",
+    "tests/engine_v2/devtools/conftest.py",
+    "tests/engine_v2/devtools/test_intervention.py",
+    "tests/engine_v2/devtools/test_trace_query.py",
+    "tests/engine_v2/devtools/test_cli.py",
+    "tests/engine_v2/devtools/test_g8_scenarios.py",
+    "tests/engine_v2/core/test_import_boundary.py",
+)
+
+#: P8 导出账本（9 模块 44 名，§8.2 逐字；边界方法 6 集合 + 序双等锚）。
+P8_EXPORT_LEDGER: dict[str, tuple[str, ...]] = {
+    "persistence.base": (
+        "PERSISTENCE_FORMAT_VERSION",
+        "PERSISTENCE_SAVE_FILES",
+        "SAVE_ID_PATTERN",
+        "P8_ERROR_CODES",
+        "PersistenceError",
+        "PersistenceBackend",
+        "SaveBundle",
+    ),
+    "persistence.snapshot": (
+        "PersistenceSnapshot",
+        "to_persistence_snapshot",
+        "dump_persistence_snapshot",
+        "load_persistence_snapshot",
+        "check_persistence_versions",
+    ),
+    "persistence.filesystem": (
+        "FilesystemPersistenceBackend",
+        "read_trace_records",
+    ),
+    "persistence.replay": ("ReplayResult", "ReplayError", "replay_committed"),
+    "persistence.checkpoint": (
+        "CheckpointError",
+        "CheckpointSnapshot",
+        "BackendCheckpointRegistry",
+    ),
+    "persistence.branch": (
+        "BRANCH_CHECKS",
+        "BranchError",
+        "WorldInstanceHandle",
+        "BranchResult",
+        "branch_world",
+    ),
+    "devtools.intervention": (
+        "DEVTOOLS_DEVELOPER_PRODUCER",
+        "DEVELOPMENT_COMMAND_KINDS",
+        "WORLD_MUTATING_KINDS",
+        "RUNTIME_CONTROL_KINDS",
+        "INSTANCE_LEVEL_KINDS",
+        "DevelopmentCommand",
+        "ExternalInterventionEffect",
+        "InterventionResult",
+        "InterventionError",
+        "to_intervention_effects",
+        "apply_development_command",
+    ),
+    "devtools.trace_query": ("TraceQuery", "CausalChain", "TraceQueryError"),
+    "devtools.cli": (
+        "CLI_TOOL_NAME",
+        "DEVCONTROL_CLI_SCHEMA_VERSION",
+        "CLI_COMMANDS",
+        "build_cli_envelope",
+        "run_devcontrol_cli",
+    ),
+}
+
+
+def _p8_ast_face() -> list[Path]:
+    """P8 src 9 模块 + 薄脚本（10 文件；方法 1 import 面 / 方法 3 字符串
+    字面量面 / 方法 4 (b) async 面）。锚文件自身不在扫描面——自豁免
+    （P5/P6/P7 同构；探针串拼接构造）。"""
+    paths = [
+        REPO_ROOT / "src" / "engine_v2" / f"{dotted.replace('.', '/')}.py"
+        for dotted in P8_SRC_SUBMODULES
+    ]
+    paths.append(REPO_ROOT / "scripts" / "v2_devcontrol.py")
+    return paths
+
+
+class TestP8Boundary:
+    """P8 边界 6 法（SOT §3.10.3；TestP7Boundary 同构；锚文件 EOF 纯追加）。
+
+    - 方法 1（``test_p8_src_import_whitelist``）：9 src 模块 + 薄脚本
+      import 面 ∈ §3.0 闭集（模块根级闭集 + 3 项名级窄例外：pydantic 3
+      名 / core.snapshot 仅 snapshot 函数 / dynamics.backend 仅
+      BackendMetadata——DEV-W5-5）；黑名单零命中；零相对 import；
+    - 方法 2（``test_p8_test_files_closed``）：tests/engine_v2/persistence
+      （8 文件）+ tests/engine_v2/devtools（6 文件）目录枚举 == 闭集；
+    - 方法 3（``test_p8_k8_string_scan``）：10 文件字符串字面量面 12 名
+      casefold 词边界扫描（两侧词边界转义）零命中 + 负探针
+      ``llmsim``/``api_key_env`` 不命中（ERR-P7-14 自检防 0x08 控制字节
+      腐蚀致转义退化恒绿）；
+    - 方法 4（``test_p8_kernel_agnostic_zero_async``）：(a) core/** 全量
+      零引用 ``engine_v2.persistence``/``engine_v2.devtools`` 包路径 / 44
+      P8 导出名（运行时自 9 模块 ``__all__`` 派生）；(b) P8 src 9 文件零
+      ``async def`` / ``await`` + 导入面 6 禁名零命中；
+    - 方法 5（``test_p8_whitelist_diff_mirror``）：25 白名单文件全存在 +
+      src/tests 4 目录封闭 + 2 占位 ``__init__.py`` 不在白名单（diff 右值
+      == 白名单 ⇒ 不在 diff）；
+    - 方法 6（``test_p8_export_ledger_dual_equality``）：9 模块 ``__all__``
+      == §8.2 账本（集合 + 序双等）+ 每名模块级定义；总 44 名。
+    """
+
+    def test_p8_src_import_whitelist(self) -> None:
+        """方法 1：AST import 面 10 文件——绝对 import ∈ SOT §3.0 闭集
+        白名单（根级闭集 + 名级窄例外）；黑名单零命中；零相对 import
+        （同构 P7 L1388）。"""
+        allowed_roots = (
+            "__future__",
+            "argparse",
+            "collections",
+            "dataclasses",
+            "functools",
+            "json",
+            "os",
+            "pathlib",
+            "re",
+            "sys",
+            "typing",
+            "pydantic",
+            "src.engine_v2.core",
+            "src.engine_v2.dynamics",
+            "src.engine_v2.persistence",
+            "src.engine_v2.devtools",
+        )
+        forbidden = (
+            "asyncio",
+            "httpx",
+            "requests",
+            "socket",
+            "urllib",
+            "random",
+            "datetime",
+            "time",
+            "uuid",
+            "subprocess",
+            "threading",
+            "src.game",
+            "src.config",
+            "src.agents",
+            "src.llm",
+            "src.prompts",
+        )
+        narrow_exceptions = {
+            "pydantic": ("Field", "model_validator", "ValidationError"),
+            "src.engine_v2.core.snapshot": ("snapshot",),
+            "src.engine_v2.dynamics.backend": ("BackendMetadata",),
+        }
+
+        def _check(module_name: str) -> str | None:
+            if any(
+                module_name == root or module_name.startswith(root + ".")
+                for root in forbidden
+            ):
+                return f"黑名单命中：{module_name}"
+            if not any(
+                module_name == root or module_name.startswith(root + ".")
+                for root in allowed_roots
+            ):
+                return f"不在闭集白名单：{module_name}"
+            return None
+
+        violations: dict[str, list[str]] = {}
+        for path in _p8_ast_face():
+            rel = str(path.relative_to(REPO_ROOT))
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                modules: list[str] = []
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    if node.level != 0:
+                        violations.setdefault(rel, []).append(
+                            f"L{node.lineno}: 相对 import（模块面封闭，零相对 import）"
+                        )
+                        continue
+                    modules = [node.module or ""]
+                for module_name in modules:
+                    problem = _check(module_name)
+                    if problem is not None:
+                        violations.setdefault(rel, []).append(f"L{node.lineno}: {problem}")
+                if isinstance(node, ast.ImportFrom) and node.module in narrow_exceptions:
+                    for alias in node.names:
+                        if alias.name not in narrow_exceptions[node.module]:
+                            violations.setdefault(rel, []).append(
+                                f"L{node.lineno}: 名级窄例外越界（{node.module}.{alias.name}）"
+                            )
+        assert not violations, f"P8 import 面违规（SOT §3.10.3 方法 1）：{violations}"
+
+    def test_p8_test_files_closed(self) -> None:
+        """方法 2：测试扫描面 2 目录 14 文件（persistence 8 + devtools 6，
+        含 conftest + __init__），与磁盘目录双向相等（SOT §3.10.3 方法 2；
+        同构 P7 L1469 / P7_TEST_FILES 模式）。"""
+        for dirname, expected in P8_TEST_FILES.items():
+            disk = sorted(p.name for p in (TESTS_ENGINE_DIR / dirname).glob("*.py"))
+            assert disk == sorted(expected), (
+                f"tests/engine_v2/{dirname}/ 目录非封闭"
+                f"（P8_TEST_FILES {len(expected)} 文件）：{disk}"
+            )
+
+    def test_p8_k8_string_scan(self) -> None:
+        """方法 3：字符串字面量面 10 文件（9 src + 脚本）12 名闭集零命中
+        （K8；``ast.Constant`` str 域含 docstring；casefold + 词边界）。
+        探针串拼接构造自豁免（本文件不在方法 3 扫描面；本追加块自身同以
+        拼接构造自豁免——与 P5/P6/P7 完全同构）；拼接集与
+        ``P4_LLM_PROVIDER_BLACKLIST``（既有 12 明文常量）断言相等。负例
+        锚：``llmsim``/``api_key_env`` 不命中（词边界转义语义钉死；
+        ERR-P7-14 自检防 0x08 控制字节腐蚀致转义退化恒绿）。"""
+        joined = [
+            "open" + "ai",
+            "anthr" + "opic",
+            "lang" + "chain",
+            "lite" + "llm",
+            "oll" + "ama",
+            "gem" + "ini",
+            "g" + "pt",
+            "cla" + "ude",
+            "l" + "lm",
+            "prov" + "ider",
+            "api_" + "key",
+            "base_" + "url",
+        ]
+        assert set(joined) == P4_LLM_PROVIDER_BLACKLIST, "拼接集与 12 名常量不等"
+
+        # ERR-P7-14 自检：词边界模式必须命中空格分隔形（W5 R1 0x08 控制字节腐蚀教训；
+        # 若转义再退化为控制字节，此处响亮失败而非恒绿）
+        for word in joined:
+            _pat = re.compile(rf"\b{re.escape(word)}\b")
+            assert _pat.search(f" {word} "), f"K8 自检失守: {word!r}"
+        hits: dict[str, list[str]] = {}
+        for path in _p8_ast_face():
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            matched: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    text = node.value.casefold()
+                    matched.update(
+                        word
+                        for word in joined
+                        if re.search(rf"\b{re.escape(word)}\b", text)
+                    )
+            if matched:
+                hits[str(path.relative_to(REPO_ROOT))] = sorted(matched)
+        assert not hits, (
+            f"P8 文件命中 12 名黑名单字符串字面量域（SOT §3.10.3 方法 3）：{hits}"
+        )
+        probe = re.compile(r"\b(?:" + "|".join(joined) + r")\b")
+        assert not probe.search("llmsim"), "负例锚失守：llmsim 不应命中"
+        assert not probe.search("api_key_env"), "负例锚失守：api_key_env 不应命中"
+
+    def test_p8_kernel_agnostic_zero_async(self) -> None:
+        """方法 4：(a) core/** 全量（32 子模块 + __init__）零引用
+        ``engine_v2.persistence`` / ``engine_v2.devtools`` 包路径 / 43 P8
+        导出名（运行时自 9 模块 ``__all__`` 派生 44 名，剔除 ``
+        PersistenceBackend``——已知合法面：冻结 core 3 文件 docstring 设计
+        概念裸词，P7 方法 4 "core/state.py docstring 裸词" 先例同族；
+        DEV-W5-7）；(b) P8 src 9 文件零 ``async def`` / ``await`` + 导入面
+        6 禁名（asyncio/socket/random/datetime/time/uuid）零命中（SOT
+        §3.10.3 方法 4；同构 P7 L1527）。
+        """
+        p8_exports = tuple(
+            name
+            for dotted in P8_SRC_SUBMODULES
+            for name in importlib.import_module(f"src.engine_v2.{dotted}").__all__
+        )
+        assert len(p8_exports) == 44, f"P8 导出账本应为 44 名：{len(p8_exports)}"
+        # 已知合法面（DEV-W5-7）：``PersistenceBackend`` 为冻结 core docstring
+        # 的设计概念裸词（snapshot.py/state.py/trace.py 各 1–3 处，P8-INV 字节
+        # 冻结不可改）——P7 方法 4 "dynamics" 裸词先例同族，从 token 集剔除。
+        scan_exports = tuple(name for name in p8_exports if name != "PersistenceBackend")
+        tokens = (
+            "engine_v2.persistence",
+            "engine_v2.devtools",
+            *scan_exports,
+        )
+        core_hits: dict[str, list[str]] = {}
+        for path in sorted(CORE_DIR.rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            matched = [token for token in tokens if token in text]
+            if matched:
+                core_hits[str(path.relative_to(REPO_ROOT))] = matched
+        assert not core_hits, (
+            f"kernel（core/）引用 P8 类型名/包路径（SOT §3.10.3 方法 4 (a)）："
+            f"{core_hits}"
+        )
+        forbidden_modules = ("asyncio", "socket", "random", "datetime", "time", "uuid")
+        async_hits: dict[str, int] = {}
+        import_hits: dict[str, list[str]] = {}
+        for dotted in P8_SRC_SUBMODULES:
+            path = REPO_ROOT / "src" / "engine_v2" / f"{dotted.replace('.', '/')}.py"
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            count = sum(
+                1
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.AsyncFunctionDef, ast.Await))
+            )
+            if count:
+                async_hits[path.name] = count
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [node.module or ""]
+                else:
+                    continue
+                for name in names:
+                    if any(
+                        name == module_name or name.startswith(module_name + ".")
+                        for module_name in forbidden_modules
+                    ):
+                        import_hits.setdefault(dotted, []).append(
+                            f"L{node.lineno}: {name}"
+                        )
+        assert not async_hits, f"P8 src 零 async def / await（方法 4 (b)）：{async_hits}"
+        assert not import_hits, (
+            f"P8 src 导入面 6 禁名零命中（方法 4 (b)）：{import_hits}"
+        )
+
+    def test_p8_whitelist_diff_mirror(self) -> None:
+        """方法 5：白名单 25 文件闭集断言——gate ③/⑥ 的 pytest 内镜像（P6
+        方法 1 file_set_closed 口径）：25 文件全存在；2 占位
+        ``__init__.py`` 不在白名单（diff 右值 == 白名单 ⇒ 不在 diff；占位
+        字节不变由 gate ``git diff --stat`` 零核验）；src persistence/ 封闭
+        （6 新建 + 占位 __init__）；src devtools/ 封闭（3 新建 + 占位
+        __init__）；tests persistence/ 封闭（8）；tests devtools/ 封闭
+        （6）。字面 ``git diff --name-only 84a5d4f..HEAD -- src tests
+        scripts == 25`` 由 gate ③/⑥ Leader bash 执行（§3.10.4 步 6）——
+        边界文件零 subprocess 纪律下 pytest 侧以目录封闭镜像承载。"""
+        for rel in P8_WHITELIST:
+            assert (REPO_ROOT / rel).exists(), f"白名单文件缺失：{rel}"
+        assert "src/engine_v2/persistence/__init__.py" not in P8_WHITELIST, (
+            "占位 persistence/__init__.py 不应在白名单（P8-INV-8）"
+        )
+        assert "src/engine_v2/devtools/__init__.py" not in P8_WHITELIST, (
+            "占位 devtools/__init__.py 不应在白名单（P8-INV-8）"
+        )
+        persistence_stems = ("base", "snapshot", "filesystem", "replay", "checkpoint", "branch")
+        devtools_stems = ("intervention", "trace_query", "cli")
+        persistence_src = sorted(
+            p.name for p in (REPO_ROOT / "src" / "engine_v2" / "persistence").glob("*.py")
+        )
+        assert persistence_src == sorted(
+            [f"{stem}.py" for stem in persistence_stems] + ["__init__.py"]
+        ), f"src persistence/ 文件集非封闭（6 + 占位 __init__）：{persistence_src}"
+        devtools_src = sorted(
+            p.name for p in (REPO_ROOT / "src" / "engine_v2" / "devtools").glob("*.py")
+        )
+        assert devtools_src == sorted(
+            [f"{stem}.py" for stem in devtools_stems] + ["__init__.py"]
+        ), f"src devtools/ 文件集非封闭（3 + 占位 __init__）：{devtools_src}"
+        for dirname, expected in P8_TEST_FILES.items():
+            disk = sorted(p.name for p in (TESTS_ENGINE_DIR / dirname).glob("*.py"))
+            assert disk == sorted(expected), (
+                f"tests/engine_v2/{dirname}/ 文件集非封闭（{len(expected)} 文件）："
+                f"{disk}"
+            )
+
+    def test_p8_export_ledger_dual_equality(self) -> None:
+        """方法 6：9 模块 ``__all__`` == §8.2 账本（集合 + 序双等）+ 每名
+        模块级定义；总 44 名（SOT §3.10.3 方法 6；同构 P7 L1617）。"""
+        total = 0
+        for dotted in P8_SRC_SUBMODULES:
+            module = importlib.import_module(f"src.engine_v2.{dotted}")
+            actual = tuple(module.__all__)
+            expected = P8_EXPORT_LEDGER[dotted]
+            assert actual == expected, (
+                f"{dotted}.py __all__ 与 §8.2 账本不等（集合 + 序双等）：{actual}"
+            )
+            for name in expected:
+                assert hasattr(module, name), (
+                    f"{dotted}.py 账本名非模块级定义：{name!r}"
+                )
+            total += len(actual)
+        assert total == 44, f"导出账本总数应为 44：{total}"
