@@ -1,0 +1,39 @@
+# P9 W7 白名单行 39（SOT §3.19）：sandbox 角色文件 merchant（顶层键
+# characters 单元素列表；A7/A11 自然差推进面：fatigue 2.0/分钟 ×
+# ticks_per_game_minute 0.5 = 1.0/tick，初值 10.0 → 刻 5（相位 4 后）
+# 达 15.0 阈值（A11 命中刻钉，t6 同源断言）；morale = 零自然差常量面；
+# 落盘后跨波字节冻结）。
+characters:
+  - attributes:
+      fatigue:
+        description: 守摊的疲劳值（自然差样例属性：2.0/分钟）。
+        max: 100.0
+        min: 0.0
+        name: 疲劳
+        natural_delta_per_minute: 2.0
+        value: 10.0
+      morale:
+        description: 商人的士气（常量面：零自然差）。
+        max: 100.0
+        min: 0.0
+        name: 士气
+        natural_delta_per_minute: 0.0
+        value: 40.0
+    id: merchant
+    name: 商人
+    personality:
+      background: 在广场摆摊的商人，午后打盹。
+      motivations:
+        - 守着摊位
+      speech_style: 短促，带鼻音。
+      traits:
+        - 慵懒
+    position:
+      x: 1
+      y: 2
+      z: 0
+    relationships:
+      player: 0.5
+    speech_examples:
+      - 要看看货吗。
+    starting_inventory: []

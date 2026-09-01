@@ -1,0 +1,41 @@
+# P9 W7 白名单行 36（SOT §3.19）：sandbox 样例 game.yaml（顶层键字母序
+# manifest/player/scenario；单文件 ≤ 150 行；id 全小写蛇形 = P5
+# _ID_PATTERN 面；落盘后跨波字节冻结——W7 零修改）。
+# 预裁决值披露（DEV-W7-1）：scenario id = scenario_sandbox（SOT 未字面
+# 钉，M-5 规则可推）/ ticks_per_game_minute = 0.5 = SOT §3.16.2 A7 行
+# 明钉（L1004）；测试 t2 同源钉。
+manifest:
+  description: 长动作 / 世界时间 / 唤醒 / 知识边界 / dynamics 双 backend 切片样例（W7 A6–A11 + A23）。
+  engine_version: ">=0.5.0"
+  name: 沙盒切片
+  project_id: sandbox
+  schema_version: "2"
+player:
+  attributes: {}
+  capabilities:
+    hearing_range_m: 8.0
+    sight_range_m: 5.0
+  inventory: []
+  name: 测试者
+  persona: 沙盒切片的观察者玩家。
+  physical_profile:
+    height_cm: 175.0
+    weight_kg: 70.0
+  player_id: player
+  position:
+    x: 1
+    y: 1
+    z: 0
+  speech_examples:
+    - 这里有个商人在摆摊。
+  subconscious_memory: []
+  subconscious_rules: []
+scenario:
+  game_time:
+    hour: 12
+    minute: 0
+  id: scenario_sandbox
+  max_ticks: 16
+  narrative_style: 平实的沙盒切片叙述，短句，零修辞。
+  starting_scene_description: 正午的石砌广场。商人坐在摊位后打盹，营地的旅人远远望着。
+  ticks_per_game_minute: 0.5

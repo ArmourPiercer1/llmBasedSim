@@ -1,0 +1,20 @@
+# P9 W7 白名单行 37（SOT §3.19）：sandbox 世界节（顶层键必为 world；2 地点
+# square/camp，connections = east 单向引用（check_references 面）；
+# 落盘后跨波字节冻结）。
+world:
+  description: 石砌广场与远郊营地的测试沙盒。
+  environment:
+    temperature_c: 18.0
+    time_of_day: 正午
+    weather: 晴
+  locations:
+    - connections:
+        east: camp
+      description: 平整的石板广场，商人在此摆摊。
+      id: square
+      name: 石砌广场
+    - connections: {}
+      description: 广场东侧的简易营地，旅人在此歇脚。
+      id: camp
+      name: 远郊营地
+  name: 沙盒世界

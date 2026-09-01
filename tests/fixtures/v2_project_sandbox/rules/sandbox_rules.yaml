@@ -1,0 +1,12 @@
+# P9 W7 白名单行 40（SOT §3.19）：sandbox 规则节（顶层键 rules；1 条
+# RuleSpec DSL 规则；A11 命中刻钉面：fatigue 阈值穿越带 [15.0, 16.0)——
+# 自然差 1.0/tick 整数点推进下恰含唯一值 15.0（P5 DSL 无等值算子，
+# D-P9 披露面：带判 ≡ 等值），命中刻 = 5（相位 4 后首次观察 15.0；
+# t6 同源断言 + 逐刻效果流计数钉）；validate 期 parse_dsl 零 ERROR
+# （A11 前件）；落盘后跨波字节冻结）。
+rules:
+  - condition: 'if(merchant_fatigue >= 15.0 and merchant_fatigue < 16.0, allowed; blocked)'
+    description: 商人疲劳值自然差推进至阈值穿越带 [15.0, 16.0) 的命中刻判定（A11）。
+    disabled: false
+    id: rule_merchant_fatigue
+    priority: 100

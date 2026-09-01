@@ -1,0 +1,22 @@
+# P9 W7 白名单行 38（SOT §3.19）：sandbox 角色文件 wanderer（顶层键
+# characters 单元素列表；异地点知识边界面——A9：零观察、KNOWLEDGE 载荷
+# 字节不变钉；零自然差属性；落盘后跨波字节冻结）。
+characters:
+  - attributes: {}
+    id: wanderer
+    name: 旅人
+    personality:
+      background: 从远方来的旅人，在营地歇脚。
+      motivations:
+        - 歇脚
+      speech_style: 话少。
+      traits:
+        - 安静
+    position:
+      x: 8
+      y: 8
+      z: 0
+    relationships: {}
+    speech_examples:
+      - 路还远。
+    starting_inventory: []

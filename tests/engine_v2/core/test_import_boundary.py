@@ -2069,3 +2069,557 @@ class TestP8Boundary:
                 )
             total += len(actual)
         assert total == 44, f"导出账本总数应为 44：{total}"
+import hashlib
+import importlib
+
+
+class TestP9Boundary:
+    """P9 W7 边界六方法块（SOT §3.20；锚文件 EOF 纯追加，L1–L2071 字节
+    冻结）。
+
+    方法 5/6 嵌入清单 = W7 落盘时自 W7 工作树一次性计算的 sha256
+    字面量（81 条 v1 既有路径 == aab029c 逐条一致；15 条 = W6/W7 新
+    fixture 路径，无 aab029c 对应；非运行时 git 调用——测试环境无 git
+    依赖假设）。词边界
+    转义经 ``chr(92) + "b"`` 运行时构造（本追加段零裸 0x5C 0x62，D3 同
+    源纪律）；12 名黑名单复用既有 ``P4_LLM_PROVIDER_BLACKLIST``（:225–
+    240）。锚文件自身在方法 6(c) 子树哈希中特判 = 前 2071 行 sha256。
+    """
+
+    _WB = chr(92) + "b"  # 词边界转义（零裸 0x5C 0x62 纪律）
+    _ANCHOR_REL = "tests/engine_v2/core/test_import_boundary.py"
+    _ANCHOR_HEAD_LINES = 2071
+    _ANCHOR_HEAD_SHA = (
+        "26fc0528459e658f126c9b13bbc284344e553b2918eeee85e8b08dbf3dbc9202"
+    )
+    _PYPROJECT_SHA = (
+        "0faaee7b72bf13e5d28c638f941405dcbcc69d33688313ba5d3d1d20bdd3a17a"
+    )
+
+    _P9_MODULE_STEMS: tuple[str, ...] = (
+        "base", "attributes", "inventory", "relationships", "character",
+        "perception", "knowledge", "scenario", "actions", "dialogue",
+        "space", "tactical", "dynamics", "narration", "v1_migration",
+    )
+    _P9_TEST_FILES: tuple[str, ...] = (
+        "__init__.py", "conftest.py", "test_attributes.py",
+        "test_inventory.py", "test_relationships.py", "test_character.py",
+        "test_perception_knowledge.py", "test_scenario_trigger.py",
+        "test_action_executors.py", "test_v1_migration.py",
+        "test_g9_galgame.py", "test_g9_sandbox.py", "test_g9_tactical.py",
+        "test_p9_differential.py", "test_module_face.py",
+    )
+    _P9_FIXTURE_FILES: dict[str, tuple[str, ...]] = {
+        "v2_project_galgame": (
+            "game.yaml", "world/galgame_world.yaml", "characters/yuki.yaml",
+            "characters/lena.yaml", "items/letter.yaml",
+        ),
+        "v2_project_sandbox": (
+            "game.yaml", "world/sandbox_world.yaml", "characters/wanderer.yaml",
+            "characters/merchant.yaml", "rules/sandbox_rules.yaml",
+        ),
+        "v2_project_tactical": (
+            "game.yaml", "world/arena.yaml", "characters/soldier_a.yaml",
+            "characters/soldier_b.yaml", "actions/tactical_actions.yaml",
+        ),
+    }
+    # — 方法 5：v1 路径集 sha256 清单（relpath → sha256；96 项）—
+    _V1_FROZEN_MANIFEST: dict[str, str] = {
+        "config/simulation.yaml":
+            "26d164153d3db94187a26169f4012e1f78995aad7ccc8713fbae0b0af31323dd",
+        "public_start/murder.yaml":
+            "e08172bfff7ccf87c33b775b331087cda301d7dffe27193d30fae3299a92299d",
+        "public_start/test_empty.yaml":
+            "16e2f4cb870ef4eb269336c0ac8437267ed6996b917cf4293c4804dcd1b82c2b",
+        "public_start/whisperheads.yaml":
+            "5553c48be5676aea87e5ffc4e88e1480f24a533e863ba92c74c2584ff5ffa58e",
+        "pyproject.toml":
+            "0faaee7b72bf13e5d28c638f941405dcbcc69d33688313ba5d3d1d20bdd3a17a",
+        "src/__init__.py":
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/agents/__init__.py":
+            "234f4f3863e422eae99295877fe236edec27745375472e5410a2eee7d2510ce8",
+        "src/agents/init.py":
+            "93339de86b2fab1552fdfefb1c2599ecc49ee884de928345b3a1b06af480012d",
+        "src/config/__init__.py":
+            "cd2d7d5c67c70d8258c342977630924429909c90671872579fddeb631618e560",
+        "src/config/loader.py":
+            "2eec3259d393fcaab6d38caa17588775f1c3c4351c34bad721fdf3d991d6a175",
+        "src/game/__init__.py":
+            "443e5f29945baf9fcfcabed9517ddbf9f73b69bb83677ac92cb4e54c292377d2",
+        "src/game/attributes.py":
+            "f9297de0b76dd9e134df73742d1063ea791cc3eb375b6d6f9fb48d6e9e1c4921",
+        "src/game/condition_eval.py":
+            "f647c6d4bf543a6e2c8be8403881b30eaee8681f6359d195494e107854dca6a8",
+        "src/game/deterministic_rules.py":
+            "b3106181de3122b062dedb8a1e13408ad9707e091972c9d3b488def4b90cd810",
+        "src/game/rules.py":
+            "aea10d493718ac7bc1e7685495fecc4000fc3d17ab7b595e217648c05eead635",
+        "src/game/state_apply.py":
+            "cb25bc3ce7c32e85a0eeb3534b804f2fae95c13835a585d4305ccff59761067f",
+        "src/game/tick_eval.py":
+            "f828ce2125a54ba2d64b8600da78f5aa5e9a7f4b09b3d168ea58b799c8f621b4",
+        "src/graph/__init__.py":
+            "79d8fd91120ee90d9fc5ba4194ebf1d5732178882603e362dfe5514467e330cd",
+        "src/graph/game_graph.py":
+            "bff34ee1e156f10979059104c63848f8772d34def9a2d4a2117c26a10f46559a",
+        "src/graph/game_state.py":
+            "e8d2e7d2c3b4e2f353d997bce7fb46acfa8be9f8e5804b99fbe787be46f3c2bf",
+        "src/llm/__init__.py":
+            "a4d675113995075c5e3719c7f022b0b5043b6e94f7447c522d73f05873b2f47a",
+        "src/llm/parser.py":
+            "d8c2b65893ee962db3a7ee0faaf8f3371f4502c7c27c3c6099569bd8e835ad61",
+        "src/main.py":
+            "2d3df1438240b8cae12c59654faf48e1679fd34102fae02d2d61ed1c9e6508ef",
+        "src/models/__init__.py":
+            "5c66db8931dee126952cf20af03d1261c02ad94e858f667121904e80d695e254",
+        "src/models/character.py":
+            "5b887b77cd7380c5803e8f5ef17a2b2e3dd871030453afdc70346fb04bd593ba",
+        "src/models/common.py":
+            "7b4f9852632360dda1f734dff88308756cc5b4bb526f340d41fc8a983f578e4a",
+        "src/models/config.py":
+            "e0eb3e6a9d82eaa0ca5d46a9a6635bef9bc02de46b1f4e44e105bc3ec4814f7d",
+        "src/models/events.py":
+            "93ab5754fbfba1f55398e927d03e0cba66b053dd6f0ab5e1729708e06e59d00e",
+        "src/models/player.py":
+            "bd8ab98eb5212da1f89012cfe5926952336f19040bf1c5603ecf88771df46279",
+        "src/models/world.py":
+            "b4bd150086946e4184398873da56aada348ad2d5509454de8a377eb86fc668b5",
+        "src/prompts/__init__.py":
+            "b43fe8dbd9e888c12c96b537ed5bc486192cd692bb74733007d1cfd14f7c1a1e",
+        "src/prompts/loader.py":
+            "93e94827d91c94f36c21312e21a8b521e8912aeecc60d928f9374b7c44fd3ad8",
+        "src/ui/__init__.py":
+            "0d6b46c722e1ece3fa2fe5b81bbfbb1c9c497d07391a2c3153fb1b3656650427",
+        "src/ui/cli.py":
+            "9df23a8f6cce9b4183083b8e04edb1b036c5131c3143702d6be74ecd7de2041e",
+        "src/ui/renderer.py":
+            "7546494ecec99abf51bd1738eeab064b3bb96951e05300493c0f302f3757349b",
+        "src/ui/status.py":
+            "e107f91731b76c0eb2ecf12084d05ec798e38795d5cec7266caae7548519ca8c",
+        "src/web/__init__.py":
+            "c16c377ecd2c2eea16498f29f826b4ba808768cc8df623929ebfda3a202a52c1",
+        "src/web/app.py":
+            "9d154e6b091414aaf46ad3e9afd7c2b495f8aab69d44bbe676d0fceebadc63be",
+        "src/web/main.py":
+            "58e13f75e674f8dbc15ea45aafacf9a5b33778b5a134680693ee1b8638d40824",
+        "tests/__init__.py":
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/char_helpers.py":
+            "55d8a56086106ba5910c864d16325543148f9becf7dae4e2fb5bb5bfc40e0b2b",
+        "tests/fixtures/v2_deployment/deployment.yaml":
+            "19eb036a303fe1b84ecb8995d1a9d2ce5ccb9dbba377a920f8d6337656b63c04",
+        "tests/fixtures/v2_deployment/deployment_alt.yaml":
+            "4701b86a000805720358033efeba62590739be34908742b61ef85decb047ff31",
+        "tests/fixtures/v2_deployment_p7/deployment.yaml":
+            "24160f5423f5ee6702fd3c9b4396c217682abc1fe437acaaf341ff3c3cf03664",
+        "tests/fixtures/v2_plugin_local/game.yaml":
+            "ecd9742a2b9ff5428ae969befffc90b14f78c3bdccbabf2e2d17d7686b33c474",
+        "tests/fixtures/v2_plugin_local/plugins/infection/plugin.yaml":
+            "337cca2ad0ca697d0ba4cf23f25143a47d8d69ebc832180b092fbc1d978e8b52",
+        "tests/fixtures/v2_plugin_local/pyproject.toml":
+            "ce650fa38638b7c62f46550e391fb318080049b126e12389bda004ba2fc4c6de",
+        "tests/fixtures/v2_project_broken/game.yaml":
+            "d7fc022d7c385c354329a48ce6bfeee6ecb8141f215b1584bf7a0974329129ad",
+        "tests/fixtures/v2_project_broken/world/dup_world.yaml":
+            "5747fae96ba621eebbbc857369ac3671c37ef32f16d7290d11a09a9b35c97ad3",
+        "tests/fixtures/v2_project_galgame/characters/lena.yaml":
+            "f6de04e0158c9014d2658f17d69cc5c066642c1db4de0d8e7b67ed188a893cd3",
+        "tests/fixtures/v2_project_galgame/characters/yuki.yaml":
+            "1f1566f11898c82759635613573dc3fc5a2fe43619702a869463a5e7180e32c6",
+        "tests/fixtures/v2_project_galgame/game.yaml":
+            "f2b656b74bbd9e4cfb4df8a180313f8770731fce1661fb30febf14ef3c8d00a1",
+        "tests/fixtures/v2_project_galgame/items/letter.yaml":
+            "66442cbc232cf109060a054b99ed2219cc6b4d7ed48668bd29027b89e217fcf3",
+        "tests/fixtures/v2_project_galgame/world/galgame_world.yaml":
+            "1a057771935756a93c33e0c210f9121b382624c27154c7be361f09104017502b",
+        "tests/fixtures/v2_project_llm/characters/alice.yaml":
+            "33f31c682d58f69a5cdd40368fbf52fd885df27446f00a4e693652d4ccc998c5",
+        "tests/fixtures/v2_project_llm/game.yaml":
+            "47417cae1709a8419a1b711315aee3f982e638e1d8b7e197254bd29a6bd97c25",
+        "tests/fixtures/v2_project_llm/prompts/character_alice.md":
+            "5b5a01318a6b52e3b6e2ebd75f95a73b365cc49786008831a849380748294ee5",
+        "tests/fixtures/v2_project_llm/prompts/character_alice.yaml":
+            "31aa125517094862cc978190d1ff189e87e74636f53afbbb8836bfaae368cbf7",
+        "tests/fixtures/v2_project_llm/prompts/game_policy.md":
+            "ca6f47383daed39c9fdb01ccdf0d2bb8bde1f340456f59c9a09928b28a1631ff",
+        "tests/fixtures/v2_project_llm/prompts/game_policy.yaml":
+            "b22fd9871e0f1cfca2986bc0899720122d966c7a4409b9a124bad59a67c55654",
+        "tests/fixtures/v2_project_p7/game.yaml":
+            "16a25a6573703d3a1b36149bfd657744fae3a26d4368da0c194cf0784fdf9052",
+        "tests/fixtures/v2_project_sandbox/characters/merchant.yaml":
+            "51db87ab82b1f7a9c756cb9a5b068f816e59b5dc917b17d5813b715049d93c32",
+        "tests/fixtures/v2_project_sandbox/characters/wanderer.yaml":
+            "922e52745b070455d53cf7dc8fcce15cf5c543a990f6878db9ff5e9ddb87ab09",
+        "tests/fixtures/v2_project_sandbox/game.yaml":
+            "acad80c627ba7f428bd54062e7c3d2122cddc1a2f45b6a41fb46b44c52abc494",
+        "tests/fixtures/v2_project_sandbox/rules/sandbox_rules.yaml":
+            "cf53e6dd2fbf23e15b85b1056dd45d03d61153069bad394dd85c3e8c2883e7e9",
+        "tests/fixtures/v2_project_sandbox/world/sandbox_world.yaml":
+            "5698e4363d512f53b5ef03862edc3b2cebcd3769a7330790410c2a7c02e3aaf9",
+        "tests/fixtures/v2_project_tactical/actions/tactical_actions.yaml":
+            "5a06102f7ac7f559e739d6336a8570c5cc93a0f52236fd55998b00ad910de4e6",
+        "tests/fixtures/v2_project_tactical/characters/soldier_a.yaml":
+            "b87646f54820ca4f5bd9b2b310f66b193adfb48f5336cfb3b6f14fc57fc29353",
+        "tests/fixtures/v2_project_tactical/characters/soldier_b.yaml":
+            "7a5b0f023ec6e583607467cc269f8506983539c4ab52ee0a8010d0d773ad3290",
+        "tests/fixtures/v2_project_tactical/game.yaml":
+            "74f20ddfd3150b6b4acb6c47b4127d628a3755c1d3eb5b532e4a381fd6f7f215",
+        "tests/fixtures/v2_project_tactical/world/arena.yaml":
+            "34609cb5cbd564038f2847f11d02adc6a7c44a2e8b14c4e45b8d38982c886dc3",
+        "tests/fixtures/v2_project_zero_python/actions/move.yaml":
+            "d2bba73b895d695e6b79748e7b0b62347bc03eff03f28d8801b1046ea260cdb7",
+        "tests/fixtures/v2_project_zero_python/characters/npc01.yaml":
+            "0289d86835dd366509e53601d6e489fc5d4fa2a215c82274c81ed44e4b984938",
+        "tests/fixtures/v2_project_zero_python/game.yaml":
+            "42d6098b44f23433435b75ab5a83e74ecb010789515c6889e65e8e074465a5f6",
+        "tests/fixtures/v2_project_zero_python/rules/basics.yaml":
+            "3d944f10d130ee26e430e09c5f4da6104c0f863efc977e75a97d94d8beef16e8",
+        "tests/fixtures/v2_project_zero_python/world/main_world.yaml":
+            "06451f6a070f4057a787bf46817b2161acb6bc95c4b4c6941b8fc5618a2c2e4b",
+        "tests/test_attributes.py":
+            "1a6f21f35d75b6ba53d0310dd69fabc2e03a18cccb3c7efdeb58b60edee6608c",
+        "tests/test_char_graph.py":
+            "ca93962897b4d075c95dc0fca45a721ab315fecbf27c4dc3815984f9506b1e88",
+        "tests/test_char_nodes.py":
+            "cb765b1948e2bf4fda4eff8581fa931ccdd93a086220fa1e72d1c96d4415e8c6",
+        "tests/test_complications.py":
+            "d110ba358b3459a223917f7c5a526381da2175fb0c8ca0db6839ce7f92ff9350",
+        "tests/test_condition_eval.py":
+            "4e748d4a5a0b6fba314b3487a220f823b2ed2f5e83dc1199d3296efc1aa536b3",
+        "tests/test_config_loader.py":
+            "8e50b9c9f0b93a84a3a4f24a5b814772122abe530e5e0beeecb8a74899c7232c",
+        "tests/test_engine_v2_skeleton.py":
+            "f68ed96ed8b419d6103fbdfd07923f63d180a7a29fc113dfea9a874c7e97bb05",
+        "tests/test_init_and_state.py":
+            "9d8fae04150733c06458a92feeb32312e9b4305ca8871ee83393d5d305d83d2f",
+        "tests/test_init_extra.py":
+            "4e735639f651baa17a5236efbebf5feeff0126e3b9a07f2abe2538d63efe5a1d",
+        "tests/test_long_task.py":
+            "35aa0352a18926590a08232b563728852882c02aa4e88065e600b4d529ba9a51",
+        "tests/test_models.py":
+            "9b9e2e0633ef495e63f0e958636e2eb261c525bc2c825516a569e11c63b5e4d1",
+        "tests/test_parser.py":
+            "2f670a4e12a473722cb72a46c757eb83e80ed94dae5e2ea4759669468f4d4ea9",
+        "tests/test_phase4.py":
+            "939818981e8e1ababe44a9c54088e20378be4df68873cc40fd1134d1819e820a",
+        "tests/test_prompts.py":
+            "a6c54113240c99363141bc1eba3be6a945208f051aec994b073ad4bd1b354e8e",
+        "tests/test_renderer.py":
+            "a2ee2d26263a4a2432fe6c325e8d0c38b34d61f55f8bf3096cbbe75ad3eb4b7b",
+        "tests/test_rules.py":
+            "a3766857aea7dc651a28219f998e57510ebc3927de6cf4718f6c8e90ca47d0e1",
+        "tests/test_state_apply.py":
+            "1c4fbc05c5c4c95c58908cea9cb56f31a4916c8efad585e9ee49cecfda1c599f",
+        "tests/test_tick_eval.py":
+            "d966c7d04aac5c69df8fd152ba6666ea9b0f563ce67bf216b02052a5a3d8a822",
+        "tests/test_tick_speed.py":
+            "754f0e48ad9b6f7a81e5f8e8b2a733a3ad5e948c4d7b7ea1399d46a429673583",
+        "tests/test_webui.py":
+            "46df401465c06234d48cf8546f109ac9a99cc026c06e380727f49a8b687c9564",
+    }
+
+    _PLACEHOLDER_MANIFEST: dict[str, str] = {
+        "src/engine_v2/modules/__init__.py":
+            "4f712c2e4291f6cc593ca374bfad9e5c570ab2760afc88fe5bb2b3b864dc70cc",
+        "src/engine_v2/presentation/__init__.py":
+            "b6b04ab2b2318ca7e74774d7c520b85df7981fb70182d191b365b652c34d1c07",
+        "src/engine_v2/context/__init__.py":
+            "2fa9bc9febe0edd25649417cf46c237bcac70d769376ced0956980a7c3a5e009",
+        "src/engine_v2/adapters/__init__.py":
+            "bf15ab529dea18a1160ab7d2c1bd6242f1268e0911e2918652129f4d26389dd5",
+        "src/engine_v2/runtime/__init__.py":
+            "05347655e4ac45a5d2025291f44fe5f8f7bf78357278134f429023d49897f348",
+    }
+    _SUBTREE_MANIFEST: dict[str, str] = {
+        "src/engine_v2/core":
+            "ca3ce91983bf052e4ed92c7106665bdbbdfe8dc9e7e6714197c7397a926e21bc",
+        "tests/engine_v2/core":
+            "42d513e5e68667c9bc43661b7a9d5230912c6399b74f56b7182852be5cef3aa6",
+        "src/engine_v2/content":
+            "0577125f0881733f0aa486e2bd28e82dd7845f81dfd36b9380079d059612eb28",
+        "tests/engine_v2/content":
+            "d5bc24dfbdb6e9a0e65a666acfe37c132ee27a2b5ecbdf00b4a9ed4fa5e349d8",
+        "src/engine_v2/llm":
+            "c21ea42db68d735576784432ea5099cd29c77b65319194881c65d07d1a7ea3d0",
+        "tests/engine_v2/llm":
+            "2bfe397e913168c24d9ee56fd23d30e2713dde6398628400f12fb00f97768a4c",
+        "src/engine_v2/prompts":
+            "9d6c6bc252ec92369efd419395eb530f20f2b4ec942fe9bca7806561a31a9f30",
+        "tests/engine_v2/prompts":
+            "6f9ddabd276ccbf73a6caeefb0f5f88c38a3fb5b5ec323eb098855061c99dbbb",
+        "src/engine_v2/dynamics":
+            "80599cfddcaa6dfc731076e217bf5bd142c0f2bc5ac36f4f9deb683a301cb1ea",
+        "tests/engine_v2/dynamics":
+            "3f21a18872e0b4d38b6dbae2e3dec3e5b2f535c6deb93d1ceca5d2c45be4a3a5",
+        "src/engine_v2/persistence":
+            "1b66b895f9187953c5a3fea9cd034db39d672d195208c9ece9a4912a1773a5e8",
+        "tests/engine_v2/persistence":
+            "82912faf6f1887ab033ea1d4d4e70d375f09c93ba7be3b808c9dbd7f3198a32b",
+        "src/engine_v2/plugins":
+            "c3af0eaa340c9f175ec95b8a45961d26fcc77319366fb989f9b25505e926855a",
+        "tests/engine_v2/plugins":
+            "8ec6694a2f0951c265091e9a6bbf745464c4973828811a6c1862da8a5d996705",
+    }
+    _FIXTURE_MANIFEST: dict[str, str] = {
+        "v2_deployment":
+            "58d9b531ccd0b9dbaedbb38833c476d9d9f5d10ce3d4651d01fc780c5e681fd0",
+        "v2_deployment_p7":
+            "d12ccec56d86799d9e44c4f759804d4a979297b4f5ccaae9a51032f07e0a0b17",
+        "v2_plugin_local":
+            "d430e84101e436521f92b0c5c441c24ebcf426fe23cf458a13f1f4aa37d87fd5",
+        "v2_project_broken":
+            "69b5c28705e3149355bc26923207daa78d94491fbffb03277c3157f0e6e1e6d1",
+        "v2_project_llm":
+            "fc7eef49ba6e5a429678de374dfc513fc0ab777874c2601b65c55b51e514923c",
+        "v2_project_p7":
+            "dfc6bfe31f0387c536183d5c433e0d2b7f9957c481a120f230f0b71c6430e1b1",
+        "v2_project_zero_python":
+            "439e166e01c4bf879c323a7f448d49483321f22a4b9271beeef90a3e038e341d",
+    }
+
+    @staticmethod
+    def _sha(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    @classmethod
+    def _walk_files(cls, root: Path) -> list[Path]:
+        out = []
+        for p in sorted(root.rglob("*")):
+            if p.is_file() and p.suffix != ".pyc" and "__pycache__" not in p.parts:
+                out.append(p)
+        return out
+
+    @classmethod
+    def _anchor_head_sha(cls) -> str:
+        path = REPO_ROOT / cls._ANCHOR_REL
+        head = path.read_bytes().splitlines(keepends=True)[: cls._ANCHOR_HEAD_LINES]
+        return hashlib.sha256(b"".join(head)).hexdigest()
+
+    @classmethod
+    def _subtree_digest(cls, sub: str) -> str:
+        base = REPO_ROOT / sub
+        lines = []
+        for p in cls._walk_files(base):
+            r = p.relative_to(REPO_ROOT).as_posix()
+            if r == cls._ANCHOR_REL:
+                head = p.read_bytes().splitlines(keepends=True)[: cls._ANCHOR_HEAD_LINES]
+                h = hashlib.sha256(b"".join(head)).hexdigest()
+            else:
+                h = cls._sha(p)
+            lines.append(f"{r} {h}")
+        lines.sort()
+        return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _v1_manifest(cls) -> dict[str, str]:
+        out: dict[str, str] = {}
+
+        def add(p: Path) -> None:
+            out[p.relative_to(REPO_ROOT).as_posix()] = cls._sha(p)
+
+        for p in cls._walk_files(REPO_ROOT / "src"):
+            if "engine_v2" not in p.parts:
+                add(p)
+        for p in cls._walk_files(REPO_ROOT / "public_start"):
+            add(p)
+        for p in cls._walk_files(REPO_ROOT / "config"):
+            add(p)
+        for p in cls._walk_files(REPO_ROOT / "tests"):
+            if "engine_v2" not in p.parts:
+                add(p)
+        add(REPO_ROOT / "pyproject.toml")
+        return out
+
+    @classmethod
+    def _import_modules(cls, path: Path) -> list[str]:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        mods: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                mods.append(node.module)
+            elif isinstance(node, ast.Import):
+                mods.extend(alias.name for alias in node.names)
+        return mods
+
+    def test_p9_src_tree_closed(self) -> None:
+        """方法 1：src/engine_v2/modules/ 文件集 == 白名单行 1–15 + 占位
+        __init__.py（16 项）；scripts/v2_migrate_v1.py 存在。"""
+        mod_dir = REPO_ROOT / "src" / "engine_v2" / "modules"
+        actual = {p.name for p in mod_dir.iterdir() if p.is_file()}
+        expected = {"__init__.py"} | {s + ".py" for s in self._P9_MODULE_STEMS}
+        assert actual == expected, (
+            f"src modules/ 文件集越白（应 16 项）：差集 {actual ^ expected}"
+        )
+        assert len(actual) == 16
+        assert (REPO_ROOT / "scripts" / "v2_migrate_v1.py").is_file(), (
+            "scripts/v2_migrate_v1.py 缺失（白名单行 46）"
+        )
+
+    def test_p9_test_tree_closed(self) -> None:
+        """方法 2：tests/engine_v2/modules/ 文件集 == 白名单行 16–30（15
+        项）；tests/fixtures/v2_project_{galgame,sandbox,tactical}/ 文件集
+        == 行 31–45（各 5 项）。"""
+        test_dir = REPO_ROOT / "tests" / "engine_v2" / "modules"
+        actual = {p.name for p in test_dir.iterdir() if p.is_file()}
+        expected = set(self._P9_TEST_FILES)
+        assert actual == expected, (
+            f"tests modules/ 文件集越白（应 15 项）：差集 {actual ^ expected}"
+        )
+        assert len(actual) == 15
+        for dirname, files in self._P9_FIXTURE_FILES.items():
+            base = REPO_ROOT / "tests" / "fixtures" / dirname
+            disk = {
+                p.relative_to(base).as_posix()
+                for p in base.rglob("*")
+                if p.is_file()
+            }
+            assert disk == set(files), (
+                f"fixture {dirname}/ 文件集越白（应 5 项）：差集 {disk ^ set(files)}"
+            )
+            assert len(disk) == 5
+
+    def test_p9_string_literal_k8(self) -> None:
+        """方法 3：AST 遍历 P9 src 15 文件全部字符串字面量（含 docstring）
+        × 12 名黑名单（复用 P4_LLM_PROVIDER_BLACKLIST）零命中（casefold +
+        词边界）；探针拼接构造自豁免 + 负例锚。"""
+        assert len(P4_LLM_PROVIDER_BLACKLIST) == 12
+        joined = sorted(P4_LLM_PROVIDER_BLACKLIST)
+        probe = re.compile(
+            self._WB + "(?:" + "|".join(re.escape(w) for w in joined) + ")" + self._WB
+        )
+        assert not probe.search("llmsim"), "负例锚失守：llmsim 不应命中"
+        assert not probe.search("api_key_env"), "负例锚失守：api_key_env 不应命中"
+        hits: dict[str, list[str]] = {}
+        for stem in self._P9_MODULE_STEMS:
+            path = REPO_ROOT / "src" / "engine_v2" / "modules" / f"{stem}.py"
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            matched: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    text = node.value.casefold()
+                    matched.update(
+                        w for w in joined
+                        if re.search(self._WB + re.escape(w) + self._WB, text)
+                    )
+            if matched:
+                hits[stem] = sorted(matched)
+        assert not hits, (
+            f"P9 src 命中 12 名黑名单字符串字面量域（SOT §3.20 方法 3）：{hits}"
+        )
+
+    def test_p9_import_closure(self) -> None:
+        """方法 4：(a) P9 src 15 文件 import 根闭集 = stdlib + 既有第三方
+        （pydantic / PyYAML，均 pyproject.toml 预声明，零新依赖 P9-INV-10）
+        + engine_v2.{core,content,llm,prompts,dynamics,modules}（§3.0）；
+        v1 包根（src.game 等）与 langgraph / langchain 禁止。(b)
+        engine_v2 全树（P1–P8 冻结面 + P9 面）import 零 langgraph /
+        langchain（G9 条款②，G9-16）。
+
+        注（DEV-W7-5）：§3.0 闭集块字面仅列 "stdlib + pydantic +
+        engine_v2.*" 且禁 "任何其它路径"，但 v1_migration.py（白名单行
+        15）必需 import PyYAML（``yaml``）；PyYAML 为既有项目依赖
+        （pyproject.toml:11 预声明），且已被冻结 v1（src/config/loader.py、
+        src/agents/init.py）与冻结 P1–P8 面（content/loader.py、
+        content/project_ir.py、llm/deployment.py）import。故边界测试将
+        ``yaml`` 列为既有第三方根（非新依赖）——§3.0 闭集块 errata。
+        """
+        allowed_subs = {"core", "content", "llm", "prompts", "dynamics", "modules"}
+        existing_third_party = {"pydantic", "yaml"}
+        closure_hits: dict[str, list[str]] = {}
+        for stem in self._P9_MODULE_STEMS:
+            path = REPO_ROOT / "src" / "engine_v2" / "modules" / f"{stem}.py"
+            bad: list[str] = []
+            for mod in self._import_modules(path):
+                top = mod.split(".")[0]
+                if mod.startswith("src.engine_v2."):
+                    sub = mod.split(".", 3)[2]
+                    if sub not in allowed_subs:
+                        bad.append(mod)
+                elif mod == "src" or mod.startswith("src."):
+                    bad.append(mod)  # v1 树（src.game / src.config / ...）
+                elif top in existing_third_party or top in sys.stdlib_module_names:
+                    continue
+                else:
+                    bad.append(mod)
+            if bad:
+                closure_hits[stem] = sorted(set(bad))
+        assert not closure_hits, (
+            f"P9 src import 根越界（§3.0 闭集 + DEV-W7-5）：{closure_hits}"
+        )
+        # (a2) per-module requires 级（SOT §3.0「modules.<name> 仅
+        # <name> ∈ 本模块 MODULE_REQUIRES」；R1 S-3 补充钉）：13 官方
+        # 模块的 modules.* import 面 ⊆ {base} ∪ IDENTITY.requires 对应
+        # stem 集（base = 13 模块公共面，∉ 任何 requires——§3.0 字面
+        # 自相矛盾，errata 候补）；base / v1_migration = 包基础设施
+        # （无 IDENTITY，A18 13 闭集之外），不在 requires 图内。
+        requires_violations: dict[str, list[str]] = {}
+        for stem in self._P9_MODULE_STEMS:
+            if stem in ("base", "v1_migration"):
+                continue
+            path = REPO_ROOT / "src" / "engine_v2" / "modules" / f"{stem}.py"
+            module = importlib.import_module(f"src.engine_v2.modules.{stem}")
+            allowed = {
+                "base"
+            } | {
+                mid.removeprefix("llmsim-standard-")
+                for mid in module.IDENTITY.requires
+            }
+            imported = set()
+            for mod in self._import_modules(path):
+                if mod.startswith("src.engine_v2.modules."):
+                    imported.add(mod.split(".")[-1])
+            bad = sorted(imported - allowed)
+            if bad:
+                requires_violations[stem] = bad
+        assert not requires_violations, (
+            "P9 src 模块越权 import（modules.<name> ∉ 本模块 requires）"
+            f"（§3.0 per-module 闭集 + R1 S-3）：{requires_violations}"
+        )
+        banned = {"langgraph", "langchain"}
+        lg_hits: dict[str, list[str]] = {}
+        for path in self._walk_files(REPO_ROOT / "src" / "engine_v2"):
+            if path.suffix != ".py":
+                continue
+            bad = [
+                m for m in self._import_modules(path)
+                if m.split(".")[0] in banned
+            ]
+            if bad:
+                lg_hits[path.relative_to(REPO_ROOT).as_posix()] = sorted(set(bad))
+        assert not lg_hits, (
+            f"engine_v2 全树 import 命中 langgraph / langchain（G9-16）：{lg_hits}"
+        )
+
+    def test_v1_frozen_hashes(self) -> None:
+        """方法 5：v1 路径集（§0.3 定义）sha256 == 嵌入清单（W7 落盘时
+        自 W7 工作树计算：81 条 v1 既有路径 == aab029c 逐条一致 +
+        15 条 W6/W7 新 fixture 路径；dict 双等，P9-INV-1）。"""
+        recomputed = self._v1_manifest()
+        assert recomputed == self._V1_FROZEN_MANIFEST, (
+            "v1 冻结面 sha256 漂移（P9-INV-1）："
+            f"差集 {set(recomputed.items()) ^ set(self._V1_FROZEN_MANIFEST.items())}"
+        )
+
+    def test_p9_frozen_surfaces_untouched(self) -> None:
+        """方法 6：(a) pyproject.toml sha256 不变（P9-INV-10）；(b) 占位
+        五件套 sha256 不变（§2.9）；(c) engine_v2 14 子树哈希不变（锚文件
+        特判前 2071 行）；(d) 既有 7 fixture 项目目录哈希不变。"""
+        assert self._sha(REPO_ROOT / "pyproject.toml") == self._PYPROJECT_SHA, (
+            "pyproject.toml sha256 漂移（P9-INV-10）"
+        )
+        for rel_path, expected in self._PLACEHOLDER_MANIFEST.items():
+            assert self._sha(REPO_ROOT / rel_path) == expected, (
+                f"占位 {rel_path} sha256 漂移（§2.9）"
+            )
+        assert self._anchor_head_sha() == self._ANCHOR_HEAD_SHA, (
+            "锚文件前 2071 行 sha256 漂移（纯追加纪律破坏）"
+        )
+        for sub, expected in self._SUBTREE_MANIFEST.items():
+            assert self._subtree_digest(sub) == expected, (
+                f"engine_v2 子树 {sub} 哈希漂移（P9-INV-2）"
+            )
+        for dirname, expected in self._FIXTURE_MANIFEST.items():
+            assert self._subtree_digest(f"tests/fixtures/{dirname}") == expected, (
+                f"既有 fixture 目录 {dirname} 哈希漂移（P9-INV-2）"
+            )
