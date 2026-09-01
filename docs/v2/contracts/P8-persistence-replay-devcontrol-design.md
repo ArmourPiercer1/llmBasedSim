@@ -244,7 +244,7 @@ Plan 原文（`docs/plans/llmBasedSim_Architecture_v2_Refactor_Development_Plan.
 | R5 | G6 carryover：`proposal_id` 无 nonce / `uv lock` 漂移（G7 报告 L206） | 低 | P8 不引入 proposal id 新概念（复用冻结 `EffectId`/`TransactionId` 面）；零新依赖 ⇒ lock 不动 |
 | R6 | 嵌套 `Snapshot` 的 pydantic 校验深度与 JSON-clean 成本 | 低 | 信封 `snapshot` 字段 = 嵌套冻结模型（非裸 dict）；`dump_json(mode="json")` 确定性（`created_wall_time` datetime → ISO）；W1 测试钉死 roundtrip |
 | R7 | `index.json` 单文件写并发 | 低 | 单进程原型（§0.4.7）；并发面 = P8+（届时 SQLite 后端，S2 评估） |
-| R8 | 边界锚文件纯追加后体积增长（P7 块后 1629 行 + P8 块 ≈ +380 行） | 低 | 锚文件唯一修改模式 = EOF 纯追加（P7 先例）；AST 负载增长 = 已知成本（G7 报告 L206 同项） |
+| R8 | 边界锚文件纯追加后体积增长（P7 块后 1629 行 + P8 块实测 +442 行，ERR-P8-07） | 低 | 锚文件唯一修改模式 = EOF 纯追加（P7 先例）；AST 负载增长 = 已知成本（G7 报告 L206 同项） |
 
 ### 0.7 S1–S5 预检（Plan §24 L1212–1288）
 
@@ -883,8 +883,8 @@ if __name__ == "__main__":
 |---|---|---|---|
 | W1 | T01+T02 | `persistence/base.py`、`persistence/snapshot.py`、`persistence/filesystem.py`、`tests/engine_v2/persistence/__init__.py`、`tests/engine_v2/persistence/conftest.py`、`test_snapshot_format.py`、`test_filesystem_backend.py` | 12+14 = **26** |
 | W2 | T03+T04 | `persistence/replay.py`、`persistence/checkpoint.py`、`test_replay.py`、`test_checkpoint_registry.py` | 13+11 = **24** |
-| W3 | T05+T06 | `persistence/branch.py`、`devtools/intervention.py`、`test_branch.py`、`test_intervention.py` | 13+12 = **25** |
-| W4 | T07+T08 | `devtools/trace_query.py`、`devtools/cli.py`、`scripts/v2_devcontrol.py`、`tests/engine_v2/devtools/__init__.py`、`tests/engine_v2/devtools/conftest.py`、`test_trace_query.py`、`test_cli.py` | 12+14 = **26** |
+| W3 | T05+T06 | `persistence/branch.py`、`devtools/intervention.py`、`tests/engine_v2/devtools/__init__.py`、`tests/engine_v2/devtools/conftest.py`、`test_branch.py`、`test_intervention.py` | 13+12 = **25** |
+| W4 | T07+T08 | `devtools/trace_query.py`、`devtools/cli.py`、`scripts/v2_devcontrol.py`、`test_trace_query.py`、`test_cli.py` | 12+14 = **26** |
 | W5 | T09 | `test_p8_adversarial.py`、`test_g8_scenarios.py`、`tests/engine_v2/core/test_import_boundary.py`（**纯追加** P8 块） | 10+12 = **22** |
 | 合计 | T01–T09 | **25 文件** | **123** |
 
@@ -1756,6 +1756,22 @@ A↔函数映射非 A 部分（101）+ A（22）`。实现波次若新增/删减
   L21；AST 名面仍扫；P7 method 4 裸词先例；DEV-W5-7）；
   影响面：计数/白名单/账本零变化（123 恒等式、25 文件、44 名不变；3054 不变）；纯口径/
   标注修正，无代码行为影响；W5 交付物零改动（4 盲评 9/9 准则 PASS 之交付面不受本勘误触及）。
+
+- **ERR-P8-07**（G8-R1 触发；SOT 内部不一致残留 2 项——纯 DOC）：
+  触发文件:行：G8-R1 四盲评 4/4 PASS（9/9 准则 MET、门禁 6 步独立复跑全绿）之 DOC 级
+  发现收敛：R3 F01（§3.10.1 波次表归属残留）+ R4 F01（R8 体积估计陈旧）；
+  修正口径：
+  (1) §3.10.1 波次表：`tests/engine_v2/devtools/__init__.py` / `tests/engine_v2/devtools/
+  conftest.py` W4 行 → W3 行（byte-truth：W3 提交 `a7834c6` 实测交付 6 文件含此 2 文件；
+  ERR-P8-06(4) 已修 §3.10.2 标签，§3.10.1 文件清单残留不一致未及；W3/W4 文件数 6/5、
+  合计 25 不变、新增测试列不变）；
+  (2) §0.6 R8 风险行「P8 块 ≈ +380 行」→「实测 +442 行」（锚文件 1629 @ `84a5d4f` →
+  2071 @ `9eb3e27`，diff +442/−0 实测；原行带 ≈ 估计标记，风险等级「低」不变）；
+  影响面：计数/白名单/账本零变化（123 恒等式、25 文件、44 名不变；3054 不变）；纯口径/
+  修正，无代码行为影响。G8-R1 全部 7 findings = 3 DOC + 4 INFO，其中 2 DOC 为本勘误对象；
+  其余 5 项（1 DOC + 4 INFO：g8 表陈旧行锚〔SOT 内实测无此锚，源出 W5 时代 brief〕/
+  ruff 全量「10 文件」标签应为 12〔两 reviewer 独立提出〕/ P8-INV 范围 8 应为 10 /
+  速查表 #11 占位行）全部为 brief 层——零 SOT 动作。
 
 （后续实现波次勘误按 `ERR-P8-NN` 续编；每条必含：触发文件:行 / 原口径 / 修正口径 /
 影响面。本区之外零自由文本。）
