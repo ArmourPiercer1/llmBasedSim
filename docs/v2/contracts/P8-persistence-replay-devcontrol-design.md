@@ -596,7 +596,7 @@ None`（non-checkpointable → `None`，**降级可见**——非静默丢弃）
 |---|---|---|
 | `register(*, backend_id: str, metadata: BackendMetadata, instance: object) -> None` | 绑定 `backend_id → (metadata, instance)`；重复 id → `CheckpointError`；**一致性门**：`metadata.checkpointable == True` 而 instance 无 `checkpoint` 可调用 → `CheckpointError(schema_invalid)`（声明/能力不符，显式）；`restorable == True` 而 instance 无 `restore` → 同 | `checkpoint_unavailable` / `schema_invalid` |
 | `checkpoint_all() -> tuple[CheckpointSnapshot, ...]` | 按注册序（确定性）：checkpointable → `instance.checkpoint()`（返回值必须 dict，`assert_json_clean`；非 dict → `CheckpointError(schema_invalid)`）；non-checkpointable → `checkpoint=None`（降级可见，`to_dict` 面可辨） | `schema_invalid` |
-| `restore(*, backend_id: str, checkpoint: Mapping[str, object]) -> object` | 委派 `instance.restore(checkpoint)`（toy 模式：返回**新实例**，`dynamics/toy_rigid.py:134`；版本门在实例侧，`L150`）；未知 id → `CheckpointError`；实例侧异常（版本失配/类型坏）→ wrap `CheckpointError`（版本类 → `version_mismatch`，形态类 → `schema_invalid`） | `checkpoint_unavailable` / `version_mismatch` / `schema_invalid` |
+| `restore(*, backend_id: str, checkpoint: Mapping[str, object]) -> object` | 委派 `instance.restore(checkpoint)`（toy 模式：返回**新实例**，`dynamics/toy_rigid.py:134`；版本门在实例侧，`L150`）；未知 id → `CheckpointError`；实例侧异常（版本失配/类型坏）→ wrap `CheckpointError`（版本类 → `version_mismatch`，形态类 → `schema_invalid`——判别最窄实现：实例侧异常 `str` casefold 含 `version` → 版本类，余 → 形态类；锚冻结 `dynamics/toy_rigid.py:150` 版本门消息面；ERR-P8-03 补注） | `checkpoint_unavailable` / `version_mismatch` / `schema_invalid` |
 | `validate_refs(backend_refs: Sequence[BackendStateRef]) -> tuple[str, ...]` | 空 = 一致；ref 的 backend_id 未注册 → issue 串；ref `checkpointable=True` 而注册项 non-checkpointable → issue 串（声明漂移显式） | —（报告面，不抛） |
 
 ### 3.6 `persistence/branch.py`（T05；5 导出）
@@ -1645,6 +1645,23 @@ A↔函数映射非 A 部分（101）+ A（22）`。实现波次若新增/删减
   (3) §3.1 追认事实契约面：`PersistenceError.__str__` = "[code] message" +
   `PersistenceBackend` = `@runtime_checkable Protocol`（isinstance 探针面，t14
   锚定；r3-F1 DOC）。计数/白名单/账本零变化（26 / 2951 / 3048 不变）。
+
+- **ERR-P8-03**（W2-R1 评审触发；SOT 1 处补注；实现零改动）：
+  触发文件:行：`src/engine_v2/persistence/checkpoint.py:191`（W2 dev 偏差 #4
+  登记；W2-R1 4/4 评审独立同靶收敛——r1–r4 各 3 条 checkpoint.py L180/L186/
+  L191 偏差条目（同靶 SOT L599 restore 行）+ r4 erratum 候选，均判 SOT
+  沉默面而非交付违规，0 finding）；
+  原口径：§3.5 L599 restore 行「版本类 → `version_mismatch`，形态类 →
+  `schema_invalid`」未定判别机制（沉默面；4 评审偏差同靶 = 重复面，W5
+  对抗族 AD-2 将触及）；
+  修正口径：L599 补注判别最窄实现 = 实例侧异常 `str` casefold 含 `version`
+  → 版本类，余 → 形态类（锚冻结 `dynamics/toy_rigid.py:150` 版本门消息面；
+  W2 实现 checkpoint.py L191 已在位，零改动）；
+  影响面：W5 AD-2（恢复失败显式）与 G8 场景判别面口径锚定；测试面 F01
+  处置 = `test_replay.py` 4 处（7 调用点）`json.dumps` 补 `ensure_ascii=False`
+  与仓库确定性序列化惯用法对齐（r4-F01 DOC；纯形式零行为变化，W2 波提交前
+  修正，不计实质修复预算——ERR-P8-02 同族口径）；
+  计数/白名单/账本零变化（24 / 2975 / 3048 不变）。
 
 （后续实现波次勘误按 `ERR-P8-NN` 续编；每条必含：触发文件:行 / 原口径 / 修正口径 /
 影响面。本区之外零自由文本。）
