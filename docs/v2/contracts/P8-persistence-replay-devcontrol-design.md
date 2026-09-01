@@ -291,16 +291,16 @@ Plan 原文（`docs/plans/llmBasedSim_Architecture_v2_Refactor_Development_Plan.
 | `core/trace.py`（139 行） | `__all__` L56–62（5 导出）；`PAYLOAD_RECORD_KEY` L67（`"record"`）；`DECISION_PAYLOAD_KEYS` L71；`LLM_CALL_PAYLOAD_KEYS` L76–88（9 键 frozenset）；`TraceKind` L91（12 值 L99–110：`COMMAND` L99 … `TRANSACTION` L105 / `DOMAIN_EVENT` L106 / `LLM_CALL` L107 / … / `DEV_INTERVENTION` L109 / `SYSTEM` L110）；`TraceRecord` L113（字段 L131–139：`record_id`/`kind`/`world_revision`/`logical_tick`/`wall_time`/`producer_id`/`transaction_id`/`cascade_id`/`payload`） | T03 replay 驱动记录族；T07 查询面；T08 CLI trace 命令 |
 | `core/state.py` | `__all__` L85–95（9 导出）；`CONTRACT_SCHEMA_VERSION` L99（=1）；`RuntimeLifecycle` L115（5 值 L123–127，`STEPPING` L126 = pause/step 语义载体）；`BackendStateRef` L169（`backend_id` L183 / `backend_kind` L184 / `checkpointable` L185 / `restorable` L186 / `replayable` L187，三者默认 False / `checkpoint_ref` L188 / `metadata` L189）；`RuntimeState` L192（字段 L217–227：`schema_version`/`logical_tick`/`lifecycle`/`scheduler_queue`/`active_actions`/`actor_wakeups`/`active_modes`/`mode_context`/`rng_state`/`pending_proposals`/`backend_refs`）；`WorldState` L246（字段 L274–280：`schema_version`/`world_revision`/`entities`/`world_variables`/`scenario_state`） | T01 信封内容；T04 三声明消费；T05 branch 三检查；T08 inspect 面（Spec §37 1–4 项） |
 | `core/revision.py` | `Revision` L43（int 子类）；`INITIAL_WORLD_REVISION` L70（`Revision(0)`）；`next_revision` L73；`is_stale` L78 | T03 连续性校验；T05 branch 不 bump 语义 |
-| `core/effects.py` | `__all__` L50；`EffectTarget` L191（tagged union，判别 `"kind"` L193）；`EntityTarget` L163（`kind` L172 / `entity_id` L173 / `component_type` L174 / `field_path` L175）；`StateDomainTarget` L178（`kind` L185 / `domain` L186）；`ProposedEffect` L197（字段 L217–226：`effect_id`/`effect_type`/`source` L219（ProducerId）/`target`/`payload`/`base_revision`/`cause_ids` L223（默认空 list）/`authority_scope`/`priority_hint`/`metadata`）；`CommittedEffect` L229（`effect` L245 内嵌完整 `ProposedEffect` / `transaction_id` L246 / `commit_revision` L247 / `sequence` L248；自包含设计注记 L241–242） | T03 replay 自足性根据；T06 intervention 包裹面 |
+| `core/effects.py` | `__all__` L50；`EffectTypeId` L98；`StateDomainId` L106；`EffectTarget` L191（tagged union，判别 `"kind"` L193）；`EntityTarget` L163（`kind` L172 / `entity_id` L173 / `component_type` L174 / `field_path` L175）；`StateDomainTarget` L178（`kind` L185 / `domain` L186）；`ProposedEffect` L197（字段 L217–226：`effect_id`/`effect_type`/`source` L219（ProducerId）/`target`/`payload`/`base_revision`/`cause_ids` L223（默认空 list）/`authority_scope`/`priority_hint`/`metadata`）；`CommittedEffect` L229（`effect` L245 内嵌完整 `ProposedEffect` / `transaction_id` L246 / `commit_revision` L247 / `sequence` L248；自包含设计注记 L241–242） | T03 replay 自足性根据；T06 intervention 包裹面（W3 intervention 消费 `EffectTypeId`/`StateDomainId`，ERR-P8-06 补列） |
 | `core/transaction.py` | `Transaction` L62（字段 L83–92：`transaction_id`/`status`/`base_revision`/`commit_revision` L86（可空）/`logical_tick`/`effects` L88/`event_ids` L89/`cascade`/`provenance`/`abort_reason` L92；原子不变量校验 L94 起） | T03 replay 驱动单元；T07 因果链中间层 |
-| `core/reducer.py` | `__all__` 37 导出；结构效果型常量 L216–222（`core.create_entity`/`core.remove_entity`/`core.set_component`/`core.remove_component`/`core.set_world_variable`/`core.remove_world_variable`/`core.set_scenario_data`）；`STRUCTURAL_EFFECT_TYPES` L226；`ReducerError` L159；`EffectHandlerRegistry` L695（ctor L711 预注册全部结构效果；`register` L717；`resolve` L730；`has` L734）；`default_handler_registry()` L743；`apply_committed_effects` L843；`apply_transaction(state, txn, *, component_registry=None, handlers=None)` L974–980（COMMITTED-only，L988–992） | T03 replay 唯一应用路径（K2 复用）；T06 patch_state 映射到结构效果；R1 CLI 默认 registry |
+| `core/reducer.py` | `__all__` 37 导出；结构效果型常量 L216–222（`core.create_entity`/`core.remove_entity`/`core.set_component`/`core.remove_component`/`core.set_world_variable`/`core.remove_world_variable`/`core.set_scenario_data`；其中 Python 名 `EFFECT_SET_COMPONENT` L218 / `EFFECT_SET_WORLD_VARIABLE` L220 由 W3 intervention 消费）；`STRUCTURAL_EFFECT_TYPES` L226；`ReducerError` L159；`EffectHandlerRegistry` L695（ctor L711 预注册全部结构效果；`register` L717；`resolve` L730；`has` L734）；`default_handler_registry()` L743；`apply_committed_effects` L843；`apply_transaction(state, txn, *, component_registry=None, handlers=None)` L974–980（COMMITTED-only，L988–992） | T03 replay 唯一应用路径（K2 复用）；T06 patch_state 映射到结构效果；R1 CLI 默认 registry；W3 intervention 消费 `EFFECT_SET_*` 2 定数（ERR-P8-06 补列） |
 | `core/cascade.py` | `CascadeResult` L678（字段 L697–702：`final_state`/`transactions`/`events`/`trace_records`/`deferred`/`diagnostics`）；`CascadeExecutor` L767（ctor 必填 `policy`）；`run(initial_proposals: Sequence[ProposedEffect], state: WorldState, *, causal_root_id: str, origin: Provenance) -> CascadeResult` L867–874；authority trace 构造 L1069–1078（`payload = decision.to_trace_payload()`） | T06 提交驱动（P7 host 模式同形）；T07 authority 行面 |
 | `core/transaction_executor.py` | `commit_transaction` L162；`abort_transaction` L337 | 冻结面（P8 不直接调用——replay 经 reducer 面；列此备查） |
 | `core/scheduler.py` | `Scheduler` L550（ctor 必填 `origin: Provenance` L576–578）；`step` L1507；`submit_proposal` L1520（docstring：外部提案入口 player/devtools）；纪律块 L105–111 | P8 测试 conftest 驱动 scripted world（同 P7 gate 模式） |
-| `core/ids.py` | `PRODUCER_ID_PATTERN` L77；`ProducerId` L189；`new_trace_record_id` L268（uuid4 工厂，P8 不消费——D-P8-17） | T06 producer id 词法校验（`PRODUCER_ID_PATTERN`） |
+| `core/ids.py` | `PRODUCER_ID_PATTERN` L77；`EntityId` L108；`EffectId` L119；`TraceRecordId` L180；`ProducerId` L189；`new_trace_record_id` L268（uuid4 工厂，P8 不消费——D-P8-17） | T06 producer id 词法校验（`PRODUCER_ID_PATTERN`）；W3 intervention 消费 `EntityId`/`EffectId`/`TraceRecordId`（ERR-P8-06 补列） |
 | `core/events.py` | `DomainEvent` L111（字段 L131–141：`event_id`/`event_type`/`world_revision`/`logical_tick`/`transaction_id` L135/`payload`/`cause_ids` L137/`source_system` L138/`provenance`/`cascade`/`wall_time`） | T03 event 重建；T07 因果链起点 |
 | `core/authority.py` | `AuthorityPolicy`/`AuthorityRule`/`AuthoritySelector`（core 根导出）；`check_authority` L550 | 测试侧 policy（devtools.developer 放行规则） |
-| `core/components.py` | `ComponentRegistry` L144 | conftest 注册表注入 |
+| `core/components.py` | `ComponentTypeId` L61；`ComponentRegistry` L144 | conftest 注册表注入；W3 intervention 消费 `ComponentTypeId`（ERR-P8-06 补列） |
 | `core/entity.py` | `ContractModel` L51（frozen + extra="forbid" 基类） | T01 `PersistenceSnapshot` 基类 |
 | `core/clock.py` | `LogicalClock` L77（世界逻辑时钟） | 备查（P8 不消费——逻辑 tick = host 传入；**注意**：`core/clock.py` = 逻辑时钟，monotonic clock Protocol 在 P6 `llm/adapter.py:47`——任务书此处归属有误，§9 勘误） |
 
@@ -309,6 +309,9 @@ Plan 原文（`docs/plans/llmBasedSim_Architecture_v2_Refactor_Development_Plan.
 > 其余 P8 消费名均在 core 根 `__all__`（AST 逐一核验通过：`ReducerError`/
 > `AuthorityPolicy`/`AuthorityRule`/`AuthoritySelector`/`AuthorityEvaluationResult`/
 > `ComponentRegistry`/`default_handler_registry` 等）。
+> （ERR-P8-06：§2.1 表现已穷尽列举 40 消费名——9 模块 AST 重算核验，8 补列名全部
+> 由冻结 W3 devtools/intervention.py 消费且 ∈ core 根 `__all__` 308；上列「等」为
+> 旧非穷尽口径，以 §2.1 表为准。）
 
 ### 2.2 P7 `dynamics/`（8 模块 35 导出，冻结交付 @ `ea84d00`/`84a5d4f`）
 
@@ -395,7 +398,7 @@ tests/engine_v2/
 | 允许 | 禁止 |
 |---|---|
 | stdlib：`json` `os` `pathlib` `dataclasses` `typing` `collections.abc` `argparse`（仅 cli.py）`re` `functools`（仅脚本）`sys`（仅脚本） | `asyncio` `httpx` `requests` `socket` `urllib` `random` `datetime` `time` `uuid` `subprocess` `threading` 及其余全部 stdlib/三方（`pydantic` = 独立允许行 3 名窄例外，D-P8-18；零新依赖——`pydantic` ∈ uv.lock 既有） |
-| `src.engine_v2.core`（根，仅 §2.1 已列消费名）；`src.engine_v2.core.snapshot`（子模块，仅 `snapshot` 函数——DEV-P6 导入路径） | core 其余子模块直引（未列即禁） |
+| `src.engine_v2.core`（根，仅 §2.1 已列消费名——40 名穷尽列举，ERR-P8-06；名级约束由 dev 纪律 + 逐波评审承载，边界方法 1 = 模块级闭集 + 3 名级窄例外，§3.10.3）；`src.engine_v2.core.snapshot`（子模块，仅 `snapshot` 函数——DEV-P6 导入路径） | core 其余子模块直引（未列即禁） |
 | `pydantic`（仅 3 名：`Field` / `model_validator` / `ValidationError`——ContractModel 基础设施面，与冻结 core 27 模块同款；D-P8-18） | pydantic 其余名（未列即禁） |
 | `src.engine_v2.dynamics.backend`（仅 `BackendMetadata`，T04） | dynamics 其余子模块直引 |
 | P8 包内：`persistence.base` → 被全部 P8 模块消费；`persistence.snapshot` → filesystem/branch/cli；`persistence.filesystem` → cli；`persistence.replay` → cli；`persistence.checkpoint` → branch/cli；`persistence.branch` → cli；`devtools.trace_query` → cli；`devtools.intervention` → cli | devtools → persistence 之外的跨包引用（`devtools → persistence.base` 单向允许：错误族单基类，D-P8-11） |
@@ -907,8 +910,8 @@ if __name__ == "__main__":
 | 16 | `tests/engine_v2/persistence/test_checkpoint_registry.py` | W2 |
 | 17 | `tests/engine_v2/persistence/test_branch.py` | W3 |
 | 18 | `tests/engine_v2/persistence/test_p8_adversarial.py` | W5 |
-| 19 | `tests/engine_v2/devtools/__init__.py` | W4 |
-| 20 | `tests/engine_v2/devtools/conftest.py` | W4 |
+| 19 | `tests/engine_v2/devtools/__init__.py` | W3 |
+| 20 | `tests/engine_v2/devtools/conftest.py` | W3 |
 | 21 | `tests/engine_v2/devtools/test_intervention.py` | W3 |
 | 22 | `tests/engine_v2/devtools/test_trace_query.py` | W4 |
 | 23 | `tests/engine_v2/devtools/test_cli.py` | W4 |
@@ -925,7 +928,7 @@ if __name__ == "__main__":
 | `test_p8_src_import_whitelist` | 9 src 模块 + 脚本的 import 面 ∈ §3.0 闭集（同构 P7 L1388） |
 | `test_p8_test_files_closed` | `tests/engine_v2/persistence/`（8 文件）+ `tests/engine_v2/devtools/`（6 文件）目录枚举 == 闭集（同构 P7 L1469；`P7_TEST_FILES` L1253 模式） |
 | `test_p8_k8_string_scan` | P8 src + 脚本字符串字面量面对推理侧 12 名 casefold 双 `\b` 扫描零命中 + 负探针 `"llmsim"`/`"api_key_env"` 不命中（同构 P7 L1478；实现模板 P6 块 def L1050 / 体 L1061–1093） |
-| `test_p8_kernel_agnostic_zero_async` | core 32 子模块 + `core/__init__.py` 零引用 `engine_v2.persistence`/`engine_v2.devtools`/P8 类型名（AST 名 + 字符串面）；P8 src 导入面零 `asyncio`/`socket`/`random`/`datetime`/`time`/`uuid`（同构 P7 L1527） |
+| `test_p8_kernel_agnostic_zero_async` | core 32 子模块 + `core/__init__.py` 零引用 `engine_v2.persistence`/`engine_v2.devtools`/P8 类型名（AST 名 + 字符串面）；P8 src 导入面零 `asyncio`/`socket`/`random`/`datetime`/`time`/`uuid`（同构 P7 L1527）；`PersistenceBackend` 名 token 不扫字符串面——冻结 core docstring 裸词 5 处（core/snapshot.py L14/L134/L157、core/state.py L175、core/trace.py L21），AST 名面仍扫（同构 P7 L1527 裸词先例；ERR-P8-06 / DEV-W5-7） |
 | `test_p8_whitelist_diff_mirror` | `git diff --name-only 84a5d4f..HEAD -- src tests scripts` == `P8_WHITELIST`（25 文件）；子断言：两占位 `__init__.py` 不在 diff（同构 P7 L1585） |
 | `test_p8_export_ledger_dual_equality` | 9 模块：AST `__all__` == `P8_EXPORT_LEDGER[module]` 且每个名 = 模块级定义（双相等，同构 P7 L1617） |
 
@@ -1194,7 +1197,7 @@ if __name__ == "__main__":
 | A1 | G8-1 | SC-1 save → `FilesystemPersistenceBackend.load` → `SaveBundle.envelope.snapshot.world_state` 与 save 前 `WorldState` 的 `model_dump(mode="json")` **逐键相等**（含 `world_revision`） |
 | A2 | G8-1 | 篡改 save 文本（`contract_schema_version` → 999）→ `load` 抛 `PersistenceError`，`code == "version_mismatch"`；message 非空 |
 | A3 | G8-2 | SC-1：`replay_committed(初始 state, trace)` 终态 `model_dump(mode="json")` == 活管道终态同面相等 |
-| A4 | G8-2 | SC-2（语义 flavor）：replay 双跑，两次 `ReplayResult.final_state.model_dump(mode="json")` **字节一致**（`json.dumps` 全量文本相等） |
+| A4 | G8-2 | SC-1 结构双跑（devtools 侧）：replay 双跑，两次 `ReplayResult.final_state.model_dump(mode="json")` **字节一致**（`json.dumps` 全量文本相等）；SC-2 语义 flavor 双跑由冻结 W2 `test_replay.py::test_replay_dynamics_flavor_semantic_handler`（L78–115）承载——SC-2 fixture `build_p8_dynamics_save` 限 persistence 包 conftest（§6.2），测试包间零跨导入（ERR-P8-06） |
 | A5 | G8-3 | SC-1：branch A/B 后——改 A 的 world_variable + B 的 entity 组件 → 双方互不影响（dump 对比 source 与对方） |
 | A6 | G8-3 | branch 结果：`handle.world_instance_id == 新 id`；`check_snapshot_versions`（branch 内部构造的信封）空；`handle.world_state.world_revision == source.world_revision`（不 bump） |
 | A7 | G8-4 | SC-3：默认 `branch_world` → `BranchError`，`code == "branch_rejected"`，`str(exc)` 含该 backend_id |
@@ -1205,7 +1208,7 @@ if __name__ == "__main__":
 | A12 | G8-7 | SC-1 回 2 的 event：`causal_chain` → `transaction` 非 None；`effects` 非空且每个 `effect.effect.source` ∈ `producers`；`producers` 含 `p8.rule` |
 | A13 | G8-7 | SC-1 回 1 的 event：chain `intervention_refs == (intervention_record_id,)`；含 PROPOSAL/ACTION cause 的 event → `action_refs` 含对应 ref_id |
 | A14 | 补充 | 预置 `<snapshot.json>.tmp` 垃圾文件 → `save` 成功 → `load` 正常（旧文件完好，tmp 不残留） |
-| A15 | 补充（AD） | `snapshot.json` 截断 40% → `load` 抛 `PersistenceError`，`code == "corrupt_file"` |
+| A15 | 补充（AD） | `snapshot.json` 截断半文（50%；conftest `text[:max(1, len//2)]`）→ `load` 抛 `PersistenceError`，`code == "corrupt_file"` |
 | A16 | 补充（AD） | 删除 trace 中间一笔事务记录 → replay 抛 `ReplayError`，message 含两侧 revision |
 | A17 | 补充（AD） | toy checkpoint 体 `{"version":1,"seed":"not_int"}` → `registry.restore` 抛 `CheckpointError` |
 | A18 | 补充 | `source_project_version="1.0"` / `target_project_version="2.0"` → `BranchError`；message 含 `"project_compatibility"` |
@@ -1349,7 +1352,7 @@ if __name__ == "__main__":
 | t5 | `test_ad5_replay_unregistered_semantic_effect` | replay：SC-2 trace + 纯结构 registry → `ReplayError`（不静默） |
 | t6 | `test_ad6_branch_degraded_not_silent` | branch：degraded 开关 → 结果面点名（非静默） |
 | t7 | `test_ad7_branch_checkpoint_payload_non_mapping` | branch：标量 payload → `schema_invalid` |
-| t8 | `test_ad8_trace_jsonl_mid_corrupt` | corruption：第 3 行垃圾 → `read_trace_records` 显式（行号） |
+| t8 | `test_ad8_trace_jsonl_mid_corrupt` | corruption：第 2 行垃圾（conftest `bad_trace_line` 写坏 `lines[1]`；冻结 W1 测试断言 "line 2"）→ `read_trace_records` 显式（行号） |
 | t9 | `test_ad9_index_points_missing_dir` | corruption：索引悬空（目录删）→ `save_not_found` |
 | t10 | `test_ad10_branch_of_branch_independent` | branch：branch-of-branch 三方独立（base/A/B） |
 
@@ -1725,6 +1728,34 @@ A↔函数映射非 A 部分（101）+ A（22）`。实现波次若新增/删减
   导出账本 44 名不变；全量套件期望 3048 → 3054（= 2925+123+6）；历史勘误
   条目（E-P8-01..06 / ERR-P8-01..04）中「3048」为当时 gate1_p8_face 口径的
   时点记录，不追改。
+
+- **ERR-P8-06**（W5-R1 触发；W5 盲评 4/4 PASS 之 DOC 发现收敛 + DEV-W5-7，共 6 项口径修正）：
+  触发文件:行：W5-R1 四盲评 DOC 级发现收敛（t8 行号 4/4；§2.1 8 名未列 4/4；A4 口径 2/4；
+  #19/#20 波次标签 2/4；A15 截断比例 1/4）+ dev 报告 DEV-W5-7（method 4 裸词排除）；
+  修正口径：
+  (1) §6.1 t8 行（原 L1352）「第 3 行垃圾」→「第 2 行垃圾」（冻结 conftest `bad_trace_line`
+  docstring L598 + 实际写坏 `lines[1]` L640；冻结 W1 测试断言 "line 2"；SOT 自身 W1 t10 行
+  即「第 2 行」）；
+  (2) §5.2 A4 行（原 L1197）「SC-2（语义 flavor）」→ SC-1 结构双跑（devtools 侧）；
+  SC-2 语义 flavor 双跑由冻结 W2 `test_replay.py::test_replay_dynamics_flavor_semantic_handler`
+  （L78–115）承载——SC-2 fixture `build_p8_dynamics_save` 限 persistence 包 conftest（§6.2），
+  测试包间零跨导入（DEV-W5-1）；
+  (3) §2.1 补列 8 名（9 模块自 core 根消费 union = 40 名之 AST 重算，原表缺 8 名，全部由
+  冻结 W3 devtools/intervention.py 消费，全部 ∈ core 根 `__all__` 308）：ids 行（原 L300）+
+  `EntityId` L108/`EffectId` L119/`TraceRecordId` L180；effects 行（原 L294）+ `EffectTypeId`
+  L98/`StateDomainId` L106；components 行（原 L303）+ `ComponentTypeId` L61；reducer 行
+  （原 L296）+ `EFFECT_SET_COMPONENT` L218/`EFFECT_SET_WORLD_VARIABLE` L220；DEV-P8-6 注补
+  40 名穷尽列举口径；§3.0 core 根行补名级约束承载口径（dev 纪律 + 逐波评审；边界方法 1 =
+  模块级闭集 + 3 名级窄例外，§3.10.3）；
+  (4) §3.10.2 #19/#20（`devtools/__init__.py`/`devtools/conftest.py`）波次标签 W4 → W3
+  （W3 实际交付，同波 #17/#21）；
+  (5) §5.2 A15 行（原 L1208）「截断 40%」→「截断半文（50%）」（冻结 conftest
+  `text[:max(1, len//2)]` L604 + docstring L594「截断半文」）；
+  (6) §3.10.3 method 4 行补 `PersistenceBackend` 名 token 不扫字符串面注（冻结 core
+  docstring 裸词 5 处：core/snapshot.py L14/L134/L157、core/state.py L175、core/trace.py
+  L21；AST 名面仍扫；P7 method 4 裸词先例；DEV-W5-7）；
+  影响面：计数/白名单/账本零变化（123 恒等式、25 文件、44 名不变；3054 不变）；纯口径/
+  标注修正，无代码行为影响；W5 交付物零改动（4 盲评 9/9 准则 PASS 之交付面不受本勘误触及）。
 
 （后续实现波次勘误按 `ERR-P8-NN` 续编；每条必含：触发文件:行 / 原口径 / 修正口径 /
 影响面。本区之外零自由文本。）
