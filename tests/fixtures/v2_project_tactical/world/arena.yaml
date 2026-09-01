@@ -1,0 +1,18 @@
+# P9 W6 白名单行 42（SOT §3.19）：tactical 世界节（顶层键必为 world；
+# 单地点 arena；hex 网格不在 yaml 声明——空间域 = 测试侧经
+# p9_world_builder 参数构造，SOT §3.16.3）。
+world:
+  description: 废弃演武场，六角格战场。
+  environment:
+    temperature_c: 18.0
+    time_of_day: morning
+    weather: overcast
+  locations:
+    - ambient_light: dim
+      ambient_sound: wind
+      connections: {}
+      description: 六角格演武场中央区域。
+      id: arena
+      name: 演武场
+      properties: {}
+  name: 演武场

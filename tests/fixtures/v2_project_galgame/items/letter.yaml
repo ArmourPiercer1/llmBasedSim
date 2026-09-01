@@ -1,0 +1,13 @@
+# P9 W6 白名单行 35（SOT §3.19）：galgame 物品节（顶层键 items 单元素
+# 列表；ObjectSpec 形状；落盘后跨波字节冻结）。
+items:
+  - description: 一封手写信，收件人姓名尚未落款。
+    id: letter
+    name: 手写信
+    object_type: letter
+    position:
+      x: 3.0
+      y: 2.0
+    properties:
+      weight_kg: 0.01
+    state: sealed

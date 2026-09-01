@@ -1,0 +1,17 @@
+# P9 W6 白名单行 32（SOT §3.19）：galgame 世界节（顶层键必为 world；
+# 单地点 classroom；落盘后跨波字节冻结）。
+world:
+  description: 午后铃声后的教室，阳光从窗斜进。
+  environment:
+    temperature_c: 24.0
+    time_of_day: afternoon
+    weather: clear
+  locations:
+    - ambient_light: warm
+      ambient_sound: quiet
+      connections: {}
+      description: 长条教室，窗斜进午后阳光。
+      id: classroom
+      name: 教室
+      properties: {}
+  name: 教室

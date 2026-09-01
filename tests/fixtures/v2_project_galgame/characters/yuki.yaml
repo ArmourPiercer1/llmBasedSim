@@ -1,0 +1,21 @@
+# P9 W6 白名单行 33（SOT §3.19）：galgame 角色文件 yuki（顶层键
+# characters 单元素列表；落盘后跨波字节冻结）。
+characters:
+  - attributes: {}
+    id: yuki
+    name: 雪村由纪
+    personality:
+      background: 班级前列，冷静克制，疏离但内心热忱。
+      motivations: 想帮转学生适应新环境，但又不想被看穿。
+      speech_style: 礼貌，短句，偶尔自嘲。
+      traits:
+        - calm
+        - meticulous
+    position:
+      x: 2.0
+      y: 1.0
+    relationships:
+      player_1: 0.5
+    speech_examples:
+      - 不客气，这是我应该做的。
+    starting_inventory: []

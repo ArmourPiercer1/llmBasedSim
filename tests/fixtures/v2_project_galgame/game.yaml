@@ -1,0 +1,47 @@
+# P9 W6 白名单行 31（SOT §3.19）：galgame 样例 game.yaml（顶层键字母序
+# manifest/player/scenario；单文件 ≤ 150 行；id 全小写蛇形 = P5
+# _ID_PATTERN 面；落盘后跨波字节冻结——W7 零修改）。
+# 预裁决值披露（R2 F4-1）：scenario id = scenario_galgame（DEV-W6-4）/
+# player_id = player_1（DEV-W6-5）；SOT 未钉值，测试 t6 同源钉为唯一
+# 事实源。
+manifest:
+  description: 教室小切片样例（W6 A1–A5 切片面）。
+  engine_version: ">=0.5.0"
+  name: 教室的午后
+  project_id: galgame
+  schema_version: "2"
+player:
+  attributes:
+    spirit:
+      description: 玩家精神值（样例属性；字段封闭面）。
+      max: 10.0
+      min: 0.0
+      name: spirit
+      natural_delta_per_minute: 0.0
+      value: 6.0
+  capabilities:
+    hearing_range_m: 12.0
+    sight_range_m: 8.0
+  inventory: []
+  name: 转学生
+  persona: 转学第一天的学生，谨慎而善意。
+  physical_profile:
+    height_cm: 165.0
+    weight_kg: 55.0
+  player_id: player_1
+  position:
+    x: 1.0
+    y: 1.0
+  speech_examples:
+    - 谢谢你昨天帮我找资料。
+  subconscious_memory: []
+  subconscious_rules: []
+scenario:
+  game_time:
+    hour: 14
+    minute: 30
+  id: scenario_galgame
+  max_ticks: 16
+  narrative_style: 温暖克制的轻叙事，短句，少形容词。
+  starting_scene_description: 午后铃声后的教室。阳光从窗斜进，值日的两个女生在整理课桌。
+  ticks_per_game_minute: 0.5

@@ -1,0 +1,57 @@
+# P9 W6 白名单行 41（SOT §3.19）：tactical 样例 game.yaml（顶层键字母序
+# gameplay_modes/manifest/player/scenario；模式声明承载面 = game.yaml
+# 顶层 gameplay_modes 键（P5 project_ir.py:356；DEV-W6-6）；落盘后跨波
+# 字节冻结）。
+# 预裁决值披露（R2 F4-1）：scenario id = scenario_tactical（DEV-W6-4）/
+# player_id = player_1（DEV-W6-5）；SOT 未钉值，测试 t5 同源钉为唯一
+# 事实源。
+gameplay_modes:
+  - description: 自由探索阶段，无动作集约束（基线层）。
+    id: exploration
+    mode_type: exploration
+    params: {}
+  - description: 战术阶段，动作集限定为战术面（allow 层）。
+    id: tactical
+    mode_type: tactical
+    params: {}
+manifest:
+  description: 六角演武场小切片样例（W6 A12–A15 切片面）。
+  engine_version: ">=0.5.0"
+  name: 六角演武场
+  project_id: tactical
+  schema_version: "2"
+player:
+  attributes:
+    strength:
+      description: 指挥者力量（样例属性；动作 DSL 条件引用面）。
+      max: 10.0
+      min: 0.0
+      name: strength
+      natural_delta_per_minute: 0.0
+      value: 6.0
+  capabilities:
+    hearing_range_m: 10.0
+    sight_range_m: 6.0
+  inventory: []
+  name: 指挥官
+  persona: 探索阶段的指挥者；战术阶段下达指令并控制节奏。
+  physical_profile:
+    height_cm: 178.0
+    weight_kg: 72.0
+  player_id: player_1
+  position:
+    x: 1.0
+    y: 1.0
+  speech_examples:
+    - 进入战术阶段，注意掩体。
+  subconscious_memory: []
+  subconscious_rules: []
+scenario:
+  game_time:
+    hour: 9
+    minute: 0
+  id: scenario_tactical
+  max_ticks: 16
+  narrative_style: 冷峻简洁的军事叙事口吻，强调位置与动作。
+  starting_scene_description: 废弃的演武场，两兵守位两端，指挥者居中。
+  ticks_per_game_minute: 0.5

@@ -1,0 +1,23 @@
+# P9 W6 白名单行 43（SOT §3.19）：tactical 角色文件 soldier_a（顶层键
+# characters 单元素列表；relationships 互指 + player_1；落盘后跨波字节
+# 冻结）。
+characters:
+  - attributes: {}
+    id: soldier_a
+    name: 哨兵甲
+    personality:
+      background: 老兵，习惯掩护左翼。
+      motivations: 保护同袍，等待指挥官的攻击指令。
+      speech_style: 简短，命令式口吻。
+      traits:
+        - steady
+        - disciplined
+    position:
+      x: 0.0
+      y: 0.0
+    relationships:
+      player_1: 0.6
+      soldier_b: 0.7
+    speech_examples:
+      - 收到，进入掩体。
+    starting_inventory: []

@@ -1,0 +1,20 @@
+# P9 W6 白名单行 45（SOT §3.19）：tactical 动作节（顶层键 actions；
+# ActionSpec 列表：move/attack/take_cover 三声明；condition = DSL
+# if-chain（validate 期 parse_dsl 零 ERROR——形状对照 zero_python
+# actions/move.yaml）；落盘后跨波字节冻结）。
+actions:
+  - condition: 'if(min(player.strength, 1.0) >= 0.0, allowed; blocked)'
+    description: 向相邻六角移动（邻接校验在执行器面）。
+    id: move
+    name: 移动
+    verb: move
+  - condition: 'if(min(player.strength, 1.0) >= 0.0, allowed; blocked)'
+    description: 攻击相邻目标（确定性零推理执行器面）。
+    id: attack
+    name: 攻击
+    verb: attack
+  - condition: 'if(min(player.strength, 1.0) >= 0.0, allowed; blocked)'
+    description: 进入掩体，降低受威胁面。
+    id: take_cover
+    name: 掩护
+    verb: take_cover
