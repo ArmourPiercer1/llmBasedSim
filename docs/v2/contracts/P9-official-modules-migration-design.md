@@ -431,14 +431,14 @@ src/engine_v2/modules/
 **导入闭集**（边界方法 4 AST 检查基准；每模块 `MODULE_REQUIRES` 见 §3.1.2）：
 
 ```text
-允许 import 根 = stdlib + pydantic
+允许 import 根 = stdlib + pydantic + yaml（PyYAML 既有依赖 pyproject.toml:11；ERR-P9-12）
                + engine_v2.core.*      （§2.1 消费子集）
                + engine_v2.content.*   （§2.4）
                + engine_v2.llm.*       （§2.5）
                + engine_v2.prompts.*   （§2.5）
                + engine_v2.dynamics.*  （§2.2）
                + engine_v2.persistence.snapshot（§2.6，仅测试侧 A24 经 conftest）
-               + engine_v2.modules.<name>（仅 <name> ∈ 本模块 MODULE_REQUIRES）
+               + engine_v2.modules.<name>（仅 <name> ∈ 本模块 MODULE_REQUIRES，或 base——base 为 13 模块公共面且 ∉ 任何 requires，13/13 模块必 import；ERR-P9-12）
 禁止 = engine_v2.{presentation,context,adapters,runtime,plugins,devtools}
        + langgraph + langchain + 12 名推词（D7）+ 任何其它路径
 ```
@@ -786,7 +786,7 @@ __all__ = [
 | `HexGrid` | frozen dataclass：`cols: int`、`rows: int`、`offset: str = "odd-r"`（闭集 `odd-r`/`even-r`） | hex 网格参数（轴向 = offset 行坐标惯例；文法违例 → `ValueError`） |
 | `hex_adjacency` | `(grid: HexGrid) -> tuple[tuple[str, str], ...]` | 纯函数：节点 id = `hex_<c>_<r>`；6 邻（offset 修正；出界裁剪）→ 对称边表（sorted 去重，确定性）；供 `GraphSpace(nodes, edges)` 构造（A12 主面） |
 | `distance_between` | `(grid: HexGrid, a: str, b: str) -> int` | hex 立方坐标步数（纯函数；非网格节点 → `KeyError`） |
-| `register_standard_space` | `(registry: SpaceRegistry, domain: str, backend: SpaceBackend) -> None` | 宿主把 `GraphSpace`（hex 邻接构造）或 `GridSpace`（方格对照）注册入域（幂等） |
+| `register_standard_space` | `(entries: dict[str, tuple[SpatialDomain, SpaceBackend]], domain: str, backend: SpaceBackend) -> None`（ERR-P9-10：原字面签名不可实现——core `SpaceRegistry` 不可变零公共 mutator） | 宿主把 `GraphSpace`（hex 邻接构造）或 `GridSpace`（方格对照）注册入宿主条目映射（幂等），写毕经 `SpaceRegistry(entries)`（core space.py:185）装配；函数职责 = 域 id 文法 / backend 种类核验 + 幂等覆盖 |
 
 ### 3.12 tactical 模块（`modules/tactical.py`；T13 面；导出 4 名）
 
@@ -828,7 +828,7 @@ __all__ = [
 
 | 名 | 形 | 语义 |
 |---|---|---|
-| `DynamicsBinding` | frozen dataclass：`backend: WorldDynamicsBackend`（backend.py:302）、`turn: Callable[[DynamicsTurn], ...]`（host.py:40/86 宿主签名） | 绑定 = backend + 轮驱动闭包（宿主注入 authority 裁决面） |
+| `DynamicsBinding` | frozen dataclass：`backend: WorldDynamicsBackend`（backend.py:302）、`turn: Callable[[WorldState, int], Sequence[ProposedEffect]]`（W6 冻结宿主缝 conftest set_dynamics 面；ERR-P9-14：原字面 `DynamicsTurn` = host.py:40 结果信封，作 turn 驱动参数不可实现） | 绑定 = backend + 轮驱动闭包（宿主注入 authority 裁决面） |
 | `build_standard_dynamics` | `(rule_backend: RuleDynamics, llm_backend: LLMWorldDynamics, weight: float = 0.5) -> DynamicsBinding` | 组装 P7 `CompositeDynamics`（composite.py:66）：rule 优先、llm 补位（权重 = 复合仲裁参数）；**P9 不实现任何 dynamics 子类** |
 
 ### 3.14 narration 模块（`modules/narration.py`；T11 面；导出 4 名）
@@ -891,7 +891,8 @@ game_time/ticks_per_game_minute/narrative_style 顶层键）。
 |---|---|---|---|
 | M-1 | 顶层 `world:`（test_empty.yaml:1 / whisperheads.yaml:1 / murder.yaml:1） | `world/<project>_world.yaml`（顶层键 `world`，P5 LAYOUT_OPTIONAL glob）；locations/objects 分拆（objects → M-4） | 缺 `world` 或 locations 零条 → ERROR（`MIGRATION_EMPTY_WORLD`，唯一无 M-id 码，§3.15.3 绑定表） |
 | M-2 | 顶层 `player:`（test_empty.yaml:89 / whisperheads.yaml:223 / murder.yaml:312） | `game.yaml` 的 `player:` 节（`PlayerSpec`，schemas.py:227；zero_python 先例逐键对齐） | 缺 `player` → M-11 ERROR |
-| M-3 | 顶层 `characters:`（test_empty.yaml:135 空表 / whisperheads.yaml:346 / murder.yaml:432） | `characters/<id>.yaml`（每角色一文件，顶层键 `characters` 列表）；`character_id` 冗余键（== `id`）→ 丢弃 + WARNING（M-16）；`personality`/`relationships`/`speech_examples`/`attributes` 逐键 → `CharacterSpec`（schemas.py:250–263） | 缺 id / 重复 id → ERROR（M-14） |
+| M-3 | 顶层 `characters:`（test_empty.yaml:135 空表 / whisperheads.yaml:346 / murder.yaml:432） | `characters/<id>.yaml`（每角色一文件，顶层键 `characters` 列表）；`character_id` 冗余键：== `id` → 静默丢弃；!= `id` → 丢弃 +
+WARNING（M-16）；`personality`/`relationships`/`speech_examples`/`attributes` 逐键 → `CharacterSpec`（schemas.py:250–263） | 缺 id / 重复 id → ERROR（M-14） |
 | M-4 | `world.objects`（test_empty.yaml:31–88；**v1 `state` 为 dict**，如 :40–42 `{closed: true, unlocked: true}`） | `items/<id>.yaml`（顶层键 `items`，`ObjectSpec`，schemas.py:187）；**state dict 折叠 = 规范扁平串**：`state = ",".join(f"{k}={v}" for k, v in sorted(d.items()))`（bool → `true`/`false`；如 `{closed: true, unlocked: true}` → `"closed=true,unlocked=true"`）；空 dict → `state: null` | 每条折叠 → INFO（M-10）；`state` 非 dict（list/str）→ ERROR（M-10 shape 守卫分支，AD-P9-2） |
 | M-5 | 顶层标量 `max_ticks`（:147）/ `game_time`（:148）/ `ticks_per_game_minute`（:151）/ `starting_scene_description`（:136）/ `narrative_style`（:152） | `game.yaml` 的 `scenario:` 节（`ScenarioSpec`，schemas.py:448：id = `scenario_<project>`，其余逐键；docstring 明示 v1 顶层标量归属此节） | 缺 `max_ticks` → ERROR（M-12） |
 | M-6 | `world_rules.<kind>.append`（whisperheads.yaml:880–894：physics.append 5 条 / attribute.append 3 条；murder.yaml:783–799 同形） | `rules/<project>_v1_rules.yaml`（`rules` 列表，`RuleSpec` 形状）：每条 = `{id: rule_v1_<kind>_<NN>, description: <原文逐字>, condition: 'if(1 >= 0, allowed)', priority: <100 - NN>}`（**passthrough 条件**：永不改变可行性；NN = append 序号 01 起） | 每条 → INFO（M-13） |
@@ -930,7 +931,7 @@ MIGRATION_DIAGNOSTIC_CODES: Final[frozenset[str]] = frozenset({
 | M-13 | `MIGRATION_FREEFORM_RULE_FOLDED` | INFO | M-6：每条 `world_rules.<kind>.append` 折叠 |
 | M-14 | `MIGRATION_DUPLICATE_ID` | ERROR | M-3：角色 `id` 缺失 / 重复 |
 | M-15 | `MIGRATION_RULE_REF_OBSOLETE` | WARNING | M-7：每个 `world_rules.<kind>.disable` 编号规则 |
-| M-16 | `MIGRATION_RULE_REF_OBSOLETE` | WARNING | M-3：`character_id` 冗余键（== `id`）丢弃 |
+| M-16 | `MIGRATION_RULE_REF_OBSOLETE` | WARNING | M-3：`character_id` != `id` 冗余键丢弃（== `id` 静默丢弃，零 firing） |
 | M-17 | `MIGRATION_DEPLOYMENT_FIELD` | ERROR | `migrate_simulation`：`simulation.yaml` llm/agents 节部署字段 |
 | （无 M-id） | `MIGRATION_EMPTY_WORLD` | ERROR | M-1 前置：`world` 缺失或 locations 零条（唯一无 M-id 码） |
 
@@ -998,7 +999,7 @@ dynamics/narration）→ 确定性 tick 循环（注入 `LogicalClock` /
 1. 加载 + 构建（A 前件）。
 2. **A6 long action**：player 提案长动作（duration 3 tick）→
    `start_action`（scheduler.py:468）→ ActiveAction（actions.py:207）
-   RUNNING；tick 3 后 COMPLETED（lifecycle 转移经
+   ACTIVE；tick 3 后 COMPLETED（ERR-P9-16：原字面 RUNNING 无此枚举成员）（lifecycle 转移经
    `transition_action`（action_lifecycle.py:257））。
 3. **A7 world time**：逻辑 tick 0→N（`set_logical_tick` :117）→ 游戏
    分钟 = tick × `ticks_per_game_minute`（scenario 声明 0.5）确定值
@@ -1052,7 +1053,7 @@ tick_eval,state_apply}.py` 头部 import 仅 re/random/copy/dataclass/typing
 | D-β DSL parity | `src/game/condition_eval.py::evaluate_condition`（def :35）对 v1 钉死条件集（8 条，取自 v1 测试夹具，确定性子集——零 rand 族） | P5 冻结 `evaluate_condition`（rule_module.py:903）同条件（文法逐字，P5 已声明 v1 对齐） | 判定结果（allowed/uncertain/blocked + 概率）逐条相等 |
 | D-γ 自然差 parity | v1 `compute_attribute_deltas_diff`（attributes.py:59）同输入 | v2 `compute_natural_deltas` | 逐属性相等 |
 | D-δ 迁移字节稳定 | —（自参照） | `migrate_project` 双跑（test_empty/whisperheads/murder） | 输出目录逐文件 sha256 相等（确定性写出） |
-| D-ε 镜像同构（A17） | `tests/fixtures/v2_project_zero_python/`（P5 手工镜像，冻结） | `migrate_project(test_empty.yaml, tmp)` 输出 | 两项目 `load_project`+`build_ir` 后：manifest/scenario/player/world/characters/rules/actions 节 IR 字段**逐一相等**；**唯一允许差异 = items 节**（P5 D-01 未镜像 objects；P9 输出含 items 4 条，state 折叠串钉）——差异本身被断言钉死（非静默） |
+| D-ε 镜像同构（A17） | `tests/fixtures/v2_project_zero_python/`（P5 手工镜像，冻结） | `migrate_project(test_empty.yaml, tmp)` 输出 | 两项目 `load_project`+`build_ir` 后：manifest/scenario/player/world/characters/rules/actions 节 IR 字段**逐一相等**；**实测完整差异集**（ERR-P9-11，原「唯一允许差异 = items 节」被实测证伪）：manifest 三模板字段（project_id/name/description）+ scenario.id + characters（0 vs 1）+ rules（0 vs 2）+ actions（0 vs 1）+ items（P9 输出 4 条 state 折叠串钉 vs P5 镜像 0 条）；player/world IR 逐字段相等——完整差异集被断言逐值钉死（非静默） |
 | D-ζ 持久化 round-trip（A24） | —（P8 冻结面） | sandbox 样例终局 WorldState 经 `to_persistence_snapshot`（snapshot.py:104）→ `dump_persistence_snapshot`（:133）→ `load_persistence_snapshot`（:143）→ `check_persistence_versions`（:176） | 零版本冲突；JSON-clean（`json.dumps` 零失败） |
 
 **差分结论登记**：实现波次将 D-α..D-ζ 实测差（预期 = 零差，D-ε 例外
@@ -1445,7 +1446,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | A3 | galgame 样例：对话回合后 yuki→player `RelationshipState.affinity` 变化值 = `dialogue_relationship_delta` 钉值，事件在组件面可见 | `test_g9_galgame.py::t3_relationship_update` |
 | A4 | galgame 样例：player 观察产出 ≥2 条 `ObservationRecord`（yuki/lena，kind=sight），且 records 不含任何事件文本字段 | `test_g9_galgame.py::t4_observation` |
 | A5 | galgame 样例：`render_narrative_view` 输出 `json.dumps` 零失败（JSON-clean）+ 含 tick/frames/actors_visible 键 + 修改 view 后 WorldState 哈希不变（非权威） | `test_g9_galgame.py::t5_narrative_view` |
-| A6 | sandbox 样例：duration=3 的动作 tick0 start → tick0–2 RUNNING → tick3 COMPLETED（lifecycle 状态序列钉） | `test_g9_sandbox.py::t1_long_action` |
+| A6 | sandbox 样例：duration=3 的动作 tick0 start → tick0–2 ACTIVE → tick3 COMPLETED（lifecycle 状态序列钉；ERR-P9-16） | `test_g9_sandbox.py::t1_long_action` |
 | A7 | sandbox 样例：N 个逻辑 tick 后游戏分钟 = N × 0.5（scenario 声明 ticks_per_game_minute），逐 tick 值钉（零 wall-clock） | `test_g9_sandbox.py::t2_world_time` |
 | A8 | sandbox 样例：仅 wakeup merchant 的 tick 上 backend 调用计数 = 1（merchant）；同 tick wanderer 零调用；未 wakeup 的 tick 零调用 | `test_g9_sandbox.py::t3_npc_wakeup` |
 | A9 | sandbox 样例：同地点 merchant 有观察记录；异地点 wanderer 的 KNOWLEDGE/MEMORY 组件哈希在该 tick 前后逐字节不变 | `test_g9_sandbox.py::t4_knowledge_boundary` |
@@ -1590,7 +1591,7 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | t# | 函数名 | 钉面 |
 |---|---|---|
 | 1 | `test_t1_gate_migration_clause` | **A16**：四输入预期（§3.15.4 表）逐输入断言 |
-| 2 | `test_t2_object_state_folded` | M-4 折叠规范串逐值钉（test_empty 4 对象：`closed=true,unlocked=true` / `glowing=true` / `aged=true` / `one_open=true`） |
+| 2 | `test_t2_object_state_folded` | M-4 折叠规范串逐值钉（test_empty 4 对象完整串：`closed=true,unlocked=true` / `glowing=true,temperature=warm` / `aged=true,readable=true` / `one_open=true,two_sealed=true`；ERR-P9-15：原枚举截断） |
 | 3 | `test_t3_whisperheads_rule_ref_warning` | whisperheads：WARNING ×1（physics.disable [8]，M-15 点名 8）+ 输出可加载 |
 | 4 | `test_t4_murder_append_folded` | murder：append 10 条 → rules yaml 10 条 passthrough（id/description/priority 钉） |
 | 5 | `test_t5_simulation_incompatible` | simulation.yaml：incompatible + `MIGRATION_DEPLOYMENT_FIELD` 点名 llm/agents |
@@ -1848,6 +1849,14 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | ERR-P9-06 | 口径/锚/披露 | W0 设计盲评 R3（1 SUPPLEMENT + 3 PASS；findings 合计 14 = 1 SUPPLEMENT + 3 DOC + 10 INFO；跨评审人去重后 7 项裁决修正） | (a) hex 3×3 odd-r 邻接边集 = **16 无向边 / 32 有向**（python 独立重算；§3.16.3 条目 1 与 §5.2 A12 之「22 边」两处更正）；(b) test_empty.yaml :40–42 实值 = `{closed: true, unlocked: true}`（全文件无对象含 `unlocked: false`）→ M-4 行 :40–42 示例与折叠示例更正（`closed=true,unlocked=true`）；(c) t2 行钉 → 4 对象逐实值（`closed=true,unlocked=true` / `glowing=true` / `aged=true` / `one_open=true`）；(d) §7.3 补 3 行（§23 Scheduler/Time → §2.1 + §3.16.2（A7/A8）；§24 Space → §3.11 + §2.1 + A12；§27/§28/§29 → P9 非责任，plugins 包 = P5 冻结面 D5、llmsim add CLI = presentation 面 §0.4）；(e) §3.0 披露 Spec §44 modules/ 树 9/13（缺 4 名与 ERR-P9-03 同集；13 名权威 = §3.1.2 / A18；§44 树不采用）；(f) D7 行「P4 黑名单 L225–240」→ P4 §3.4（L187–200，12 名闭集口径 L199）（L225–240 实测 = CapabilityTable 代码，锚更正）；(g) 有意差异注记 2 处：MODULE_REQUIRES tactical 行（Spec §41 示例含 standard.attributes = 示例非规范闭集，SOT 按实际依赖声明）+ §3.5 来源段（Spec §12.3 emotion/goals 不在 P5 冻结面 CharacterSpec 内，P9 不建模） | 合法面/他层（不修改）：R1-F04 = G9-16 无 A id 文档化变体（ERR-P9-05 已登记备查）；R1-F05 / R3-F02 = pytest 时长环境波动（备查）；R1-F06 = `.p9/` 评审侧不可读 = 任务书层（协议内，ERR-P9-04(20) 先例）；R2-F02 = 基线提交历史事实（备查）；R2-F03 = 16 门面条行语义四方一致（备查）；R3-F01 = HEAD 漂移（备查） | W0 定案（正文已按 (a)–(g) 更正值落表；设计冻结待 R4 4/4 PASS） |
 | ERR-P9-07 | 口径/签名 | W1 派发前 Leader 侧实现性核验发现 §3.2 两处签名不可实现：P5 `evaluate_condition`（rule_module.py:903）签名 `rng: DslRng` 为必选位置参，而 SOT `evaluate_lock_condition`/`derive_attributes` 签名无 rng 槽位（D6 注入纪律下零全局状态不可补）；且 `parse_dsl`（:812）根产生式 = if-chain，「TruthyNode 化」机制未明定 | (1) `evaluate_lock_condition` 签名 → `(fields, actor_id: str, name: str, condition_dsl: str, rng: DslRng, tick: int) -> bool`；语义钉：`condition_dsl` = 完整 `if(...)` if-chain 串（P5 文法，test 例 `if(a < 1, blocked; allowed)`）、结构错误 → 抛 `DslEvalError`（诊断外化不吞）、返回 = `outcome.feasibility is Feasibility.ALLOWED`（Feasibility 三值 rule_module.py:140）；(2) `derive_attributes` 签名 → 尾部加 `rng: DslRng`；语义钉：spec 值 = 裸表达式，内部唯一包裹点 = `if(<expr>, allowed; blocked)`，派生 `AttributeField.value` = allowed→1.0 / 非 allowed→0.0；(3) v1 数值算术派生（`_ComputeParser`:446）收窄披露 = 新增 DEV-P9-06（fixture 零消费实测）；(4) §8.4 标题 ..05→..06。测试面影响：t8/t9 注入 `dsl_rng`（§6.2）；AD-P9-1 双面不变 | W1 派发前定案（字节真值 = P5 冻结面 rule_module.py:149/:812/:903 实测；R4 评审对象 @ e2dd4b1 不含本条，门③四盲评以最终 SOT 复核） |
 | ERR-P9-08 | 口径/签名 | W2 派发前 Leader 侧实现性核验发现 §3.3 `ItemState` 字段序列在 Python dataclass 语义下不可创建：`position: Mapping[str, int] \| None`（无默认值）紧随 `description`/`object_type`（有默认值），`properties: Mapping[str, object]`（无默认值）紧随 `state`（有默认值）→ `TypeError: non-default argument ... follows default argument`（venv 3.12.14 实测双触） | (1) `ItemState.position` → `position: Mapping[str, int] \| None = None`（补默认值）；(2) `ItemState.properties` → 缺省 `dataclasses.field(default_factory=dict)`（可变缺省唯一合法形）；字段名/型/序零改，构造面不变（全字段显式构造不受影响）；(3) §3.3 ItemState 行已按更正值落表。测试面影响：t1 roundtrip 全字段显式构造（无缺省依赖面） | W2 派发前定案（字节真值 = venv dataclass 序实测 + P5 冻结面 `ObjectSpec` schemas.py:187–200 对照；R4 评审对象 @ e2dd4b1 不含本条，门③四盲评以最终 SOT 复核） |
+| ERR-P9-09 | SOT 内部冲突 | W5 R2 字节核验发现 M-3 行（L894）/ M-16 绑定行（L933）「`character_id`（== `id`）→ 丢弃 + WARNING」与 A16 四输入表（L960–962）钉死值（四输入 character_id 全 == id、零 M-16 firing）互斥 | 实现取 A16 钉死表侧（字节真值优先）：== `id` 静默丢弃（零 firing）；M-16 仅 != `id` 时 firing。L894 诊断列 + L933 绑定行已按更正值落表（编辑 1/2）；W5 实现/测试面（A16 t7_codes_closed 四输入零 M-16）零改 | W5 R2 裁决定案（3 评审同注；G9 收口 docs 提交） |
+| ERR-P9-10 | 签名不可实现 | W6 DEV-W6-8（Leader R1 裁决追认）：§3.11 表行 4 字面签名 `(registry: SpaceRegistry, …) -> None` 不可实现——core `SpaceRegistry`（core/space.py:175）不可变（零公共 mutator，唯一构造入口 = 条目映射 :185）；W6 R1 三评审独立 byte-truth 复验一致 | 签名改 entries 宿主映射形（编辑 3）：`entries: dict[str, tuple[SpatialDomain, SpaceBackend]]` + 域 id 文法 / backend 种类核验 + 幂等覆盖；宿主写毕经 `SpaceRegistry(entries)` 构造（同 W4 注册族 / W5 M-pattern 先例）；W6 实装 space.py:195–230 零改 | W6 R1 裁决定案（G9 收口 docs 提交） |
+| ERR-P9-11 | SOT 前提证伪 | W7 DEV-W7-4（Leader 独立复现证伪）：§3.17 D-ε 行「唯一允许差异 = items 节」与实测不符——migrate_project(test_empty) 输出 vs P5 镜像 v2_project_zero_python 的 IR 差异集 = manifest 三模板字段（project_id/name/description）+ scenario.id + characters（0 vs 1）+ rules（0 vs 2）+ actions（0 vs 1）+ items（4 vs 0）；player/world IR 相等 | D-ε 行差异集改实测完整集（编辑 4）；归因 = W5 迁移器模板面（合法面）+ P5 镜像手工附加（npc01/rule×2/move 为镜像独有，非迁移器产物）——非移植错误；W7 实装 t5 钉死完整集（更严非放宽）零改 | W7 Leader 裁决定案（独立探针复现：diff 集逐值一致） |
+| ERR-P9-12 | 闭集遗漏 | W7 DEV-W7-5：§3.0 导入闭集块字面仅「stdlib + pydantic + engine_v2.*」，但白名单行 15 v1_migration.py 必需 `import yaml`——PyYAML 为既有依赖（pyproject.toml:11 预声明 pyyaml>=6.0，P9-INV-10 零新依赖不违反；冻结 v1 src/config/loader.py 等 + P1–P8 面已 import） | 闭集块补 yaml 既有第三方根（编辑 5）；TestP9Boundary 方法 4 将 yaml 与 pydantic 并列既有根 | W7 Leader 裁决定案（pyproject/v1/冻结面 import 实测） |
+| ERR-P9-13 | 机制澄清 | W7 DEV-W7-6：§2.10「T14 差分测试 import v1 纯函数」与冻结 P1 边界 test_t06（锚文件 L432–466 字节冻结，ast 扫描静态禁 tests/engine_v2/ 一切 v1 import）字面冲突 | 直引实现机制澄清为 importlib.import_module 动态直引（编辑 6；仍「直引非回放」语义——调用真实 v1 代码；SOT L877/L1287 importlib 绕路先例同风格；零断言放宽） | W7 Leader 裁决定案（锚文件 L432–466 + t5/t1/t2 importlib 面实测） |
+| ERR-P9-14 | 签名不可实现 | W7 R1 三评审同证（D-1）：§3.13 L831 `turn: Callable[[DynamicsTurn], ...]` 字面不可实现——`DynamicsTurn`（host.py:40）= 轮驱动结果信封，非 turn 入参形；实装 = W6 冻结宿主缝 `Callable[[WorldState, int], Sequence[ProposedEffect]]`（conftest set_dynamics 面，DEV-W6-3 第 3 项） | turn 形改 W6 冻结缝签名（编辑 7）；W7 实装 dynamics.py DynamicsBinding 零改 | W7 R1 裁决定案（host.py:40 + conftest set_dynamics 面实测） |
+| ERR-P9-15 | 枚举截断 | W7 R1 评审 #2 发现（D-10）：§6.1 W5 t2 行折叠串枚举 4 对象中 3 个截断（`glowing=true` 实际 = `glowing=true,temperature=warm` 等）；实装 t2 `_TEST_EMPTY_STATE_PINS` 钉完整串（更严） | t2 行枚举改完整折叠串（编辑 8）；W5 冻结测试零改 | W7 R1 裁决定案（_TEST_EMPTY_STATE_PINS 实测 == t5 钉一致） |
+| ERR-P9-16 | 措辞失准 | W7 R2 评审 #2 发现（F2-2）：§3.16.2 A6 块（L1001）与 §5.3 A6 行（L1448）用「RUNNING」指称长动作中间态，但 P1 冻结枚举 ActionLifecycleStatus（core actions.py:191–204）无 RUNNING 成员——实际状态名 = ACTIVE（交付物 t1 钉实际值 = byte-truth 正确） | 两处 RUNNING → ACTIVE（编辑 10a/10b）；W7 实装 t1 零改 | W7 R2 裁决定案（枚举成员实测 + t1 钉面复核） |
 
 （后续实现波次勘误按 ERR-P9-NN 续编；行锚漂移以 `git diff aab029c..HEAD`
 + `sed -n` 复测为准，登记时附复测命令与输出摘要。）
