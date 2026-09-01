@@ -398,7 +398,7 @@ tests/engine_v2/
 | `src.engine_v2.core`（根，仅 §2.1 已列消费名）；`src.engine_v2.core.snapshot`（子模块，仅 `snapshot` 函数——DEV-P6 导入路径） | core 其余子模块直引（未列即禁） |
 | `pydantic`（仅 3 名：`Field` / `model_validator` / `ValidationError`——ContractModel 基础设施面，与冻结 core 27 模块同款；D-P8-18） | pydantic 其余名（未列即禁） |
 | `src.engine_v2.dynamics.backend`（仅 `BackendMetadata`，T04） | dynamics 其余子模块直引 |
-| P8 包内：`persistence.base` → 被全部 P8 模块消费；`persistence.snapshot` → filesystem/branch/cli；`persistence.replay` → cli；`persistence.checkpoint` → branch/cli；`persistence.branch` → cli；`devtools.trace_query` → cli；`devtools.intervention` → cli | devtools → persistence 之外的跨包引用（`devtools → persistence.base` 单向允许：错误族单基类，D-P8-11） |
+| P8 包内：`persistence.base` → 被全部 P8 模块消费；`persistence.snapshot` → filesystem/branch/cli；`persistence.filesystem` → cli；`persistence.replay` → cli；`persistence.checkpoint` → branch/cli；`persistence.branch` → cli；`devtools.trace_query` → cli；`devtools.intervention` → cli | devtools → persistence 之外的跨包引用（`devtools → persistence.base` 单向允许：错误族单基类，D-P8-11） |
 
 循环规避：`base.py` 对 `snapshot.py` 仅 `TYPE_CHECKING` 引用（`SaveBundle` 字段注解）；
 运行时导入方向单向：`base ← snapshot ← filesystem/branch ← cli`，`base ← replay/checkpoint ← cli`，
@@ -764,7 +764,8 @@ __all__ = ("TraceQuery", "CausalChain", "TraceQueryError")
 
 ```python
 def __init__(self, records: Sequence[TraceRecord]) -> None: ...
-    # 索引：record_id → record；kind → list；transaction_id → list；
+    # 索引：kind → list；transaction_id → list（2 项；无 record_id
+    # 直查——causal_chain 经 by_kind(DOMAIN_EVENT) 扫描）；
     # 顺序 = 输入序（确定性，D6）
 
 def records(self) -> tuple[TraceRecord, ...]: ...          # 输入序原样
@@ -782,6 +783,7 @@ def revision_timeline(self) -> tuple[dict[str, object], ...]: ...
     # "kinds": <sorted kind 值元组>, "transaction_count", "event_count"}
 def intervention_history(self) -> tuple[TraceRecord, ...]: ...   # kind=DEV_INTERVENTION
 def causal_chain(self, event_id: str) -> CausalChain: ...        # G8-7
+    # 同一 transaction_id 多记录时取输入序末条（trace 文件序）
 ```
 
 Spec §37 12 项（L1873–1884）分配（D-P8-08）：WorldState 检视 / RuntimeState /
@@ -834,7 +836,7 @@ __all__ = (
 | `CLI_TOOL_NAME` | `Final[str] = "llmsim-devcontrol"` | 信封 `tool` 字段；D2 安全（`llm` 后接 `s` 无词边界） |
 | `DEVCONTROL_CLI_SCHEMA_VERSION` | `Final[int] = 1` | 信封 `schema_version`（G8-6 稳定锚；升版 = 波次决策） |
 | `CLI_COMMANDS` | `Final[tuple[str, ...]] = ("inspect", "trace", "replay", "branch", "test")` | 子命令**闭集**（Plan §17 T08 逐字 + `test`） |
-| `build_cli_envelope(command, *, ok, data=None, error_code=None, error_message=None) -> dict[str, object]` | 纯函数 | **顶层恰 6 键**：`{"tool", "schema_version", "command", "ok", "data", "error"}`；`error = None | {"code": <∈ P8_ERROR_CODES>, "message": str}`；`ok=false` 时 `data=None`；构造即 `assert_json_clean`（S2 单面——全部子命令共用） |
+| `build_cli_envelope(command, *, ok, data=None, error_code=None, error_message=None) -> dict[str, Any]` | 纯函数 | **顶层恰 6 键**：`{"tool", "schema_version", "command", "ok", "data", "error"}`；`error = None | {"code": <∈ P8_ERROR_CODES>, "message": str}`；`ok=false` 时 `data=None`；构造即 `assert_json_clean`（S2 单面——全部子命令共用） |
 | `run_devcontrol_cli(argv: Sequence[str], *, base_dir: str \| Path \| None = None, backend: PersistenceBackend \| None = None) -> int` | argparse（stdlib） | 解析 → 执行 → **stdout 单行 JSON**（`json.dumps(..., sort_keys=True, ensure_ascii=False, separators=(",", ":"))`）→ 返回码 |
 
 **返回码闭集**：`0` = `ok=true`；`1` = `ok=false` 且 code ≠ `usage_error`
@@ -848,12 +850,15 @@ __all__ = (
 |---|---|---|---|
 | `inspect` | `<save_id>` | `{"save_id", "world_state", "runtime_state", "backend_refs", "persistence_versions"}`（`runtime_state` 含 `scheduler_queue`/`active_actions`——§37 1–4 项快照派生面；`persistence_versions` = 三层版本读数） | §37 L1873–1876 |
 | `trace` | `<save_id> [--kind <kind>]` | `{"save_id", "records", "count"}`（`records` = `TraceRecord` JSON 数组，保序；`--kind` ∈ 冻结 `TraceKind` 12 值，非法 → `usage_error`） | §37 L1877–1882 |
-| `replay` | `<save_id>` | `{"save_id", "final_world_state", "base_revision", "final_revision", "transactions_applied", "events"}`；registry = 冻结 `default_handler_registry()`（R1：语义型 → 显式 `replay_mismatch`，不静默） | §30.4；G8-2 |
+| `replay` | `<save_id>` | `{"save_id", "final_world_state", "base_revision", "final_revision", "transactions_applied", "events"}`；registry = 冻结 `default_handler_registry()`（R1：语义型 → 显式 `replay_mismatch`，不静默）；walk 最窄实现注（DEV-W4-2 更新）：自快照 revision 起取最长连续已提交前缀——`base_revision` 低于快照 revision 的事务视为已反映于快照态（跳过不重放）；运行结束存档 = 空前缀（applied=0），基线态存档（快照 revision == trace 起点）= 全量重放 | §30.4；G8-2 |
 | `branch` | `<save_id> --new-id <id>` | 成功 = `BranchResult.to_dict()`；拒绝 = `ok=false` + `error.code="branch_rejected"`（非 checkpointable 默认拒绝——G8-4） | §30.5；G8-3/4 |
-| `test` | `<save_id>` | `{"save_id", "ok", "checks"}`；`checks` 行名**闭集 5**：`layout`（闭集布局）/ `envelope_versions`（三层一致）/ `trace_parse`（JSONL 可解析）/ `replay_consistency`（replay 终 revision == 快照 `world_revision`——G8-2 的 save 级最强代理）/ `json_clean`（全体落盘文本过 `assert_json_clean`） | §3.2 validate+test（D-P8-14，DEV-P8-5） |
+| `test` | `<save_id>` | `{"save_id", "ok", "checks"}`；`checks` 行名**闭集 5**：`layout`（闭集布局）/ `envelope_versions`（三层一致）/ `trace_parse`（JSONL 可解析）/ `replay_consistency`（replay 终 revision == 快照 `world_revision`——G8-2 的 save 级最强代理）/ `json_clean`（全体落盘文本过 `assert_json_clean`）；报告面生成 ⇒ 信封恒 ok=true（检查行失败不翻信封/rc；`data["ok"] = all(checks)` 为总体裁决载体——SOT 沉默面，W4-R1 裁定 DEV-W4-4） | §3.2 validate+test（D-P8-14，DEV-P8-5） |
 
 **`--json` 旗标**（Spec §3.2 L212 MUST）：解析器**接受**该旗标；W0 原型输出恒为
 JSON 信封（无人读模式——单面，D-P8-09）；测试断言：有无 `--json` 信封逐字节一致。
+最窄实现注：`--json` 定义于主解析器（全局位置，子命令之前；t13 钉此位置）；
+子命令后位置不接受 → `usage_error`（rc 2）；旗标为 no-op（`json_output`
+dest 从不读取）——SOT 沉默面，W4-R1 裁定 DEV-W4-3。
 
 **`scripts/v2_devcontrol.py`**（薄壳；`scripts/llm_smoke.py` 先例同形）：
 
@@ -1662,6 +1667,45 @@ A↔函数映射非 A 部分（101）+ A（22）`。实现波次若新增/删减
   与仓库确定性序列化惯用法对齐（r4-F01 DOC；纯形式零行为变化，W2 波提交前
   修正，不计实质修复预算——ERR-P8-02 同族口径）；
   计数/白名单/账本零变化（24 / 2975 / 3048 不变）。
+
+- **ERR-P8-04**（W4-R1 评审触发；SOT 6 处标注校准 + W4 预提交修正 2；W4-R1 两条
+  SUPPLEMENT 发现处置）：
+  触发 1 文件:行：`src/engine_v2/devtools/trace_query.py:32`（W4-R1 r2-F01
+  SUPPLEMENT、C5 FAIL：`TransactionStatus` 导入非 §2.1 已列消费名——SOT 全文
+  0 命中；§2.1 L295 core/transaction.py 行仅列 `Transaction`；§3.0 L398 明文
+  「仅 §2.1 已列消费名」；W2 冻结先例 `persistence/replay.py` L171–172 刻意
+  规避枚举并留显式注释）；
+  修正 1（预提交，W2-F01 同族口径：SOT 明文对齐、零行为变化）：删导入 +
+  `committed_transactions` = `commit_revision is not None` 不变量等价判定
+  （Transaction 原子不变量：COMMITTED ⟺ commit_revision 非空，冻结
+  `core/transaction.py` model_validator 双向强制）+ W2 先例同款注释；
+  触发 2 文件:行：`src/engine_v2/devtools/cli.py:236`（W4-R1 r4-F01
+  SUPPLEMENT：`_replay_from_snapshot` walk 自最早 committed 事务起、首个
+  base≠revision 即 break ⇒ mid-history save（快照 revision 居 trace 中段）
+  applied=0，证伪 DEV-W4-2 文档「自快照 revision 起取最长连续已提交前缀」
+  一般陈述；探针 save_p8_mid 实证）；
+  修正 2（预提交，实质修复 1/3：SOT 沉默面行为修正）：walk 增 skip 条款
+  （base 低于快照 revision 视为已反映于快照态、不重放）——mid-history save =
+  前向连续前缀（探针：base=1/final=3/applied=2）；运行结束存档不变
+  （base=final=3/applied=0，t5 重钉）；基线态存档不变（全量重放）；`test`
+  命令 `replay_consistency` 行（L853 口径）对 mid-history save 显式报
+  ok=false（fail-loud，消除空洞假绿）；
+  SOT 6 处标注校准（W4-R1 4 评审独立收敛；全 DOC 面、零行为变化）：
+  (1) §3.0 L401 包内允许边表补 `persistence.filesystem → cli` 边（§3.9 L845
+  缺省 backend 类要求强制；原表遗漏 = SOT 内部不一致）；
+  (2) §3.8 L767 伪码索引 3 项 → 2 项（`kind`/`transaction_id`；无 record_id
+  直查）+ L784 `causal_chain` 补注「同一 transaction_id 多记录取输入序末条」；
+  (3) §3.9 L837 `build_cli_envelope` 返回标注 `dict[str, object]` →
+  `dict[str, Any]`（与实现字节一致；运行时同解，零行为影响）；
+  (4) §3.9 `replay` 行补 walk 最窄实现注（DEV-W4-2 更新：skip 条款 +
+  mid-history save 前向前缀）；
+  (5) §3.9 `test` 行补报告面注（报告面生成 ⇒ 信封恒 ok=true，`data["ok"]`
+  总体裁决载体，检查行失败不翻信封——DEV-W4-4）；
+  (6) §3.9 `--json` 条补最窄实现注（主解析器全局位置；子命令后 →
+  `usage_error` rc 2；no-op——DEV-W4-3，SOT 沉默面）；
+  影响面：W4 5 文件行数 1301→1308（trace_query 269→273，cli 392→395）；
+  W4 偏差登记更新（DEV-W4-1/2 保留 + DEV-W4-2 语义更新 + DEV-W4-3/4 新增）；
+  计数/白名单/账本零变化（26 / 3026 / 3048 不变）。
 
 （后续实现波次勘误按 `ERR-P8-NN` 续编；每条必含：触发文件:行 / 原口径 / 修正口径 /
 影响面。本区之外零自由文本。）
