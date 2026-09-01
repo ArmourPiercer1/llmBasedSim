@@ -1718,8 +1718,8 @@ module_face → 边界块（module_face 依赖 13 模块齐备）。
 | §8.5 ViewState（L626–638） | §3.14 + P9-INV-8 + A5 |
 | §11 Action（L736–802；六固定动作 L743–748 / Registry yaml L757–768 / ActionProposal L774–785 / 生命周期 L791–802） | §3.9（43.2-4「fixed six」移除面：标准集 = 执行器库覆盖集，非固定类型） |
 | §12.2 BehaviorPolicy（L814–838） | §3.5（NpcBehaviorPolicy 实现面） |
-| §12.3 CharacterDefinition/State（L840–868） | §3.5（CharacterRecord 形状面） |
-| §32 叙述渲染 text/image（L1678–1732） | §3.14（text 侧）+ §0.4（image = P10） |
+| §12.3 Standard Character Model（L840–868；CharacterDefinition/CharacterState 树） | §3.5（CharacterRecord 形状面） |
+| §32 Presentation Contract（L1678–1732；32.1 text/image 平行） | §3.14（text 侧）+ §0.4（image = P10） |
 | §40 Standard Modules（L1944–1966，13 模块名逐字） | §0.1 / §3.0 / §3.1.2（OFFICIAL_MODULE_IDS） |
 | §41 requires 声明 + 依赖图检查（L1970–1985） | §3.1.2（MODULE_REQUIRES）+ §2.4（module_graph 11 名消费） |
 | §25 GameplayMode/GameplayContext（L1396–1452） | §3.12（tactical overlay 消费面） |
