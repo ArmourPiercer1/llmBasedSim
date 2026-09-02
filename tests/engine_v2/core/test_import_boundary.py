@@ -2632,3 +2632,8 @@ class TestP9Boundary:
 TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
     "9c6a6f820336c8f71e97c4fb4bcb42194afbcb89ad3a7980624a08fa5e8ed580"
 )
+# W3 续（ERR-P10-09）：skeleton +1 "presentation.tactical" + 计数文案 15→16
+# → v1 冻结哈希清单刷新（P9 块字面量零修改；最后赋值生效；W4 续同形语句）。
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
+    "59c0a8c0be6020ed7d60889fa7456a5f1454bb3a9d22e43423a93e0770065fa7"
+)

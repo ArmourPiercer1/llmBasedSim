@@ -37,6 +37,7 @@ from src.engine_v2.core.components import ComponentTypeId
 from src.engine_v2.core.entity import EntityRecord
 from src.engine_v2.core.space import SPACES_COMPONENT, decode_spaces
 from src.engine_v2.core.state import WorldState
+from src.engine_v2.presentation.tactical.layout import build_tactical_layout
 
 if TYPE_CHECKING:
     from src.engine_v2.core.entity import EntityView
@@ -290,8 +291,10 @@ def derive_scene_view(
     - ``actors`` = 可见 actor 面（id 排序；``{"id", "name", "position",
       "mood", "tags"}``，position 按空间域投影）；
     - ``environment`` = 环境描述面（4 键）；
-    - ``tactical_overlay``：W1 期 = None（``tactical_domain_id`` 为
-      W3 ``tactical/layout.py`` 落盘的保留 seam，SOT §3.1/§3.6）；
+    - ``tactical_overlay``：``tactical_domain_id`` 非 None 时经
+      ``build_tactical_layout(world, domain_id=tactical_domain_id)``
+      填充（SOT §3.1/§3.6；ERR-P10-11 闭集增行，单向依赖零环）；
+      None → None（W1 默认分支不变，test_view t4 钉面零影响）；
     - ``image_slot``：None（纯函数钉；回投 = 会话层槽唯一写入点，W4）；
     - ``clock`` = ``{"logical_tick", "game_time"}``（P9 NarrativeView.
       clock 同形）。
@@ -299,7 +302,10 @@ def derive_scene_view(
     零反作用：返回容器与 WorldState 零别名（嵌套 dict 全部新建）；
     同输入恒同输出（D6 双跑字节相等）。
     """
-    del tactical_domain_id  # W3 layout.py 落盘后消费（本波保留 seam）
+    if tactical_domain_id is not None:
+        tactical_overlay = build_tactical_layout(world, domain_id=tactical_domain_id)
+    else:
+        tactical_overlay = None
     tick = _logical_tick(world)
     actor_ids = _sorted_actor_ids(world)
     environment = _environment(world)
@@ -338,7 +344,7 @@ def derive_scene_view(
         narrative=narrative,
         actors=actors,
         environment=environment,
-        tactical_overlay=None,
+        tactical_overlay=tactical_overlay,
         image_slot=None,
         clock=clock,
     )

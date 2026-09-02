@@ -38,9 +38,10 @@ SUBPACKAGES = [
     "devtools",
     "adapters",
     "presentation",
-    # P10（SOT §11 行 2/4；ERR-P10-09 计数面机械追加；W3/W4 续 +2）：
+    # P10（SOT §11 行 2/4/8；ERR-P10-09 计数面机械追加；W4 续 +1）：
     "presentation.text",
     "presentation.image",
+    "presentation.tactical",
 ]
 
 # G1 门禁：Core import 不需要 LangGraph / OpenAI；骨架期整树禁止引入。
@@ -150,11 +151,11 @@ def test_engine_v2_init_files_are_docstring_only():
 
     P1 收尾豁免（设计文档 §0.4，骨架纪律的自然收尾）：仅 ``core/__init__.py``
     额外允许 re-export 语句（从同包 core 子模块导入契约类型）与 ``__all__``
-    清单语句；其余 15 个子包（含 P10 嵌套子包，ERR-P10-09）+ 根包保持
+    清单语句；其余 16 个子包（含 P10 嵌套子包，ERR-P10-09）+ 根包保持
     "仅 docstring"纪律不变。
     """
     init_files = sorted(ENGINE_DIR.rglob("__init__.py"))
-    assert len(init_files) == len(SUBPACKAGES) + 1, "子包数量与任务包清单不符（应为 15 子包（含嵌套）+ 根包）"
+    assert len(init_files) == len(SUBPACKAGES) + 1, "子包数量与任务包清单不符（应为 16 子包（含嵌套）+ 根包）"
     core_init = ENGINE_DIR / "core" / "__init__.py"
     for init_path in init_files:
         tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
