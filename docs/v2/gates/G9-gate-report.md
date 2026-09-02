@@ -337,7 +337,7 @@ M   tests/engine_v2/core/test_import_boundary.py
 | R1 | T09 自由文本规则折叠语义漂移 | 闭合 | D-P9-08 passthrough 条件 `if(1 >= 0, allowed)` 永不改可行性（whisperheads physics 5 / attribute 3 + murder 同形）；逐条 INFO 诊断（MIGRATION_FREEFORM_RULE_FOLDED）；T14 差分面 D-α..D-ζ 实测零差（D-ε = 完整差异集披露，ERR-P9-11） |
 | R2 | 大文件迁移覆盖不全 | 闭合 | 三项目全文件迁移非节选（897/802/154 行）；A17 同构面（P5 zero_python 镜像对照）；A22 诊断闭集断言（test_v1_migration t7） |
 | R3 | hex 邻接与 GridSpace 边界混淆 | 闭合 | `modules/space.py` hex → GraphSpace 纯函数映射（A12：16/32 逐边常量 + 距离 2 双钉 + GridSpace 曼哈顿对照 + AD-P9-4）；两空间域 SpatialDomain 分离（conftest 参数化构造）；W6 R1 几何独立复核（§5 记录） |
-| R4 | 边界锚文件纯追加体积增长 | 闭合 | TestP9Boundary 6 方法 W7 EOF 纯追加（实测 +521 行，2071→2592；P8 R8 先例 +442 同量级）；L1–L2071 逐字节不变（head-2071 sha256 前后恒等 26fc0528… 自证）；唯一修改模式纪律门③ ⑤ 核 |
+| R4 | 边界锚文件纯追加体积增长 | 闭合 | TestP9Boundary 6 方法 W7 EOF 纯追加（实测 +554 行，2071→2625〔勘误：原行误记 +521/2592，byte-truth = 2625〕；P8 R8 先例 +442 同量级）；L1–L2071 逐字节不变（head-2071 sha256 前后恒等 26fc0528… 自证）；唯一修改模式纪律门③ ⑤ 核 |
 | R5 | v1 纯函数直引 import 风险 | 闭合 | W0 预验实测：`src/game/{attributes,condition_eval,deterministic_rules,tick_eval,state_apply}.py` 零第三方 import（re/random/copy/dataclass/typing）；`src/models/*.py` 仅 pydantic；T14 差分 6 平铺零 import 失败（W7 绿） |
 | R6 | G8 三条 s2 评估面滞留 | 闭合（移交保留） | §0.4 登记非范围；P9 零消费零评估；G8 报告 L201–202 移交面（branch-audit payload / replay ABORTED / snapshot-derived inspect + D-P7-13）原样承继至本报告 §9 移交面 |
 | R7 | 样例 fixture 膨胀 | 闭合 | 3 样例项目 × 5 文件、单文件 ≤150 行、id 小写蛇形、yaml 顶层键字母序（§6.4 落盘后字节冻结，跨波 sha 复测）；白名单逐行编号门② 对账 |
