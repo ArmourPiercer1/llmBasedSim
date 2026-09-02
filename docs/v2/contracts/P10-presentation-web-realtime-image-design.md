@@ -7,7 +7,7 @@
 | 分支 | `architecture-v2` |
 | 本文件角色 | P10 W0 设计 SOT **冻结版**（初稿 + Leader 终审裁定并入，`.p10/p10-w0-leader-adjudication.md`）。实现波次以本文件为唯一依据（冻结版 4 盲设计评审按 Leader 后续动作序进行，勘误链续编收敛） |
 | 结构口径 | 骨架纪律借 `docs/v2/contracts/P9-official-modules-migration-design.md`（1868 行 @ 918480d，ERR-P9-01..16 全链；只借结构不抄内容）；节序按 `.p9/p10-w0-design-brief.md` §7 大纲（§0–§11） |
-| 允许写盘 | W0 阶段零代码/测试/git 写（仅本文件 + `.p10/`）；实现波次白名单 = §11（36 行） |
+| 允许写盘 | W0 阶段零代码/测试/git 写（仅本文件 + `.p10/`）；实现波次白名单 = §11（38 行） |
 | 任务书 | `.p9/p10-w0-design-brief.md`（148 行）+ `.p9/p10-design-inputs.md`（62 行）；冲突处以本文件为准并登记 §8.4 / §9 |
 | 状态 | **已终审**（`.p10/p10-w0-leader-adjudication.md` 裁定并入：12 决策全批 / Q1–Q10 裁定 / SceneView 10 键全批 / DEV-P10-05 登记）——§4 决策 12 条、§5 A 判据 12 条、§10 波次、§11 白名单全部冻结 |
 
@@ -151,7 +151,10 @@ Plan 原文（L836–850 逐字；L838「自动：」、L845「人工：」为�
 - **D6 确定性**：P10 全部公开函数纯函数或显式注入状态；时钟 = 注入
   （core `LogicalClock` / P6 `FixedMonotonicClock`）；零 wall-clock、零
   模块级全局 RNG；图像字节 = f(intent) 纯函数（A10 双跑字节相等）。
-- **D7 K8 词表闭集**：P10 src 字符串字面量（含 docstring）12 名零命中
+- **D7 K8 词表闭集**：P10 src 字符串字面量（含 docstring）× 12 名：
+  唯一允许命中 = narrator.py `TEXT_SOURCES` 钉元组（"llm" = 脚本命中
+  推理路径标签，类别标签非供应商名；SOT §3.2/§5.2/§6.1 三处钉面；
+  ERR-P10-10），其余字面量 × 12 名零命中
   （openai / anthropic / langchain / litellm / ollama / gemini / gpt /
   claude / llm / provider / api_key / base_url；P4 §3.4 12 名闭集）+
   engine_v2 全树 import 零 langgraph/langchain。测试侧模型名用
@@ -204,7 +207,7 @@ Plan 原文（L836–850 逐字；L838「自动：」、L845「人工：」为�
 | P10-INV-6 | K5 零真实 LLM：Narrator / VisualDirector 的 LLM 面 = 显式注入 InferenceBackend（测试 = FakeInferenceBackend 脚本，键 (logical_role, base_revision, seq)）；零网络 / 零 API key / 零 provider | A8 + 边界方法 4（llm 消费仅 adapter 冻结面）+ t1（template 零调用） |
 | P10-INV-7 | K8 零推词：P10 src（含 static JS/HTML/CSS 字符串字面量与 docstring）12 名闭集零命中；engine_v2 全树 import 零 langgraph/langchain | face t3 + 边界方法 3/4 |
 | P10-INV-8 | 零新第三方依赖：`pyproject.toml` 字节冻结、uv.lock 零变更；import 闭集 = stdlib + pydantic + engine_v2 冻结根（§3.0）（S4） | face t4/t6 + 边界方法 4/6 + 门④ diff |
-| P10-INV-9 | v1 冻结面（含 `src/web/` `src/ui/` `web/` 根）与 P9 冻结面（15 模块 + 15 测试 + 3 样例 + 占位二件套）字节不变；边界锚唯一修改模式 = EOF 纯追加 | 边界方法 5/6（sha256 清单）+ 门④② diff |
+| P10-INV-9 | v1 冻结面（含 `src/web/` `src/ui/` `web/` 根）与 P9 冻结面（15 模块 + 15 测试 + 3 样例 + 占位二件套）字节不变；边界锚唯一修改模式 = EOF 纯追加；唯一例外 = `tests/test_engine_v2_skeleton.py` 计数面扩展（ERR-P10-09） | 边界方法 5/6（sha256 清单）+ 门④② diff |
 | P10-INV-10 | JSON-clean：P10 全部对外输出面（SceneView / RenderIntent / ImageSlot / TacticalLayout / state_snapshot / inspector / workbench 视图）`json.dumps` 零失败 | 各 A 的 json.dumps 断言（t4 族）+ face 面 |
 
 ---
@@ -352,6 +355,10 @@ src/engine_v2/adapters/
 ```text
 presentation/view.py:
     stdlib + engine_v2.core（§2.1 面）
+                    + engine_v2.presentation.tactical.layout（tactical 填充
+                      分支；ERR-P10-11：原闭集漏行与 §3.1「tactical_domain_id
+                      非 None 时填 tactical_overlay」语义面矛盾——ERR-P10-02
+                      同类；单向依赖零环）
 presentation/text/*:
     stdlib + pydantic + engine_v2.core + engine_v2.llm.adapter
                     + engine_v2.presentation.view（narrator SceneView 签名；
@@ -847,12 +854,13 @@ __all__ = [
 - **备选**：(a) presentation 每子包多文件膨胀（否决：T02–T04 各 1 文件
   即可，过度结构）；(b) **包级 view.py + 三子包平铺单文件**（采纳）。
 - **选择**：§3.0 包树（src 19 新文件：presentation 9 + adapters/web 7 +
-  static 3）；测试 16 新文件 + 1 边界 M（§11 白名单 36 行；ERR-P10-04：
-  原「15」= ERR-P10-03 同类误计残留，§11 行 20–35 实测 16 个 tests A）；零 fixture
+  static 3）；测试 16 新文件 + 2 M（边界锚 + skeleton 计数面；§11 白名单
+  38 行；ERR-P10-04：原「15」= ERR-P10-03 同类误计残留，§11 行 20–35
+  实测 16 个 tests A；ERR-P10-09/10/11 勘误增量）；零 fixture
   文件（§3.13）。
 - **Leader 终审**：批准（备注：包级 view.py 披露〔DEV-P10-04 既有〕）。
 - **理由**：与 P9 单包平铺纪律（D-P9-01）同构；Spec §44 树逐字对齐
-  （+ 包级 view.py 披露，DEV-P10-04）；白名单可控（36 行 vs P9 47 行
+  （+ 包级 view.py 披露，DEV-P10-04）；白名单可控（38 行 vs P9 47 行
   同量级）。
 - **机械验证面**：face t1/t2 + 边界方法 1/2 + 门④② diff。
 
@@ -1044,7 +1052,7 @@ __all__ = [
 
 | t# | 函数名 | 钉面 |
 |---|---|---|
-| 1 | `test_narrator_t1_template_zero_backend` | template 路径：注入 backend.calls == ()（A8 辅助；K5） |
+| 1 | `test_narrator_t1_template_zero_backend` | template 路径（backend=None，§3.2 路径选择）：探针 backend（脚本预置命中键、未注入）calls == ()；source == template（A8 辅助；K5；ERR-P10-12 钉文自洽） |
 | 2 | `test_narrator_t2_scripted_llm_path` | 脚本 (narrator, rev, 1) 命中 → text 含命中文本 + source == "llm"（A8） |
 | 3 | `test_narrator_t3_artifact_tagged` | artifact.view_revision / scene_id == view 面值；to_dict JSON-clean |
 | 4 | `test_narrator_t4_determinism_rerun` | 同 view 双跑 → TextArtifact 字段相等 + json.dumps 相等（D6） |
@@ -1135,7 +1143,7 @@ __all__ = [
 |---|---|---|
 | 1 | `test_p10_face_t1_src_tree_closed` | `src/engine_v2/presentation/` + `src/engine_v2/adapters/web/` 文件集 == 白名单行 1–19（static 3 文件含） |
 | 2 | `test_p10_face_t2_export_ledger` | 12 模块 `__all__` 计数/名 == §8.2 台账（49 名）逐字 |
-| 3 | `test_p10_face_t3_k8_literals` | 19 src 文件全部字符串字面量（含 docstring）× 12 名黑名单零命中（大小写不敏感） |
+| 3 | `test_p10_face_t3_k8_literals` | 19 src 文件全部字符串字面量（含 docstring）× 12 名黑名单：唯一允许命中 = narrator.py `TEXT_SOURCES` 钉元组 `llm`（ERR-P10-10），其余零命中（大小写不敏感） |
 | 4 | `test_p10_face_t4_import_closure` | AST：P10 src import 根闭集 ⊆ §3.0（含 http.server 仅 server.py、jinja2 零、图像库零、v1 src.* 零）+ text/↔image/ 零互 + engine_v2 全树零 langgraph/langchain |
 | 5 | `test_p10_face_t5_no_control_bytes` | 19 src 文件零裸 0x5C 0x62 序列（D3） |
 | 6 | `test_p10_face_t6_no_frontend_build_artifacts` | src/ 全树零 package.json / package-lock.json / bun.lockb / vite.config.* / webpack*；static == 3 文件闭集；app.js 零 import/require/document.write |
@@ -1206,7 +1214,7 @@ __all__ = [
 |---|---|---|---|
 | 1 | `test_p10_src_tree_closed` | `src/engine_v2/presentation/` + `src/engine_v2/adapters/web/` 文件集 == 白名单行 1–19（19 项，含 static 3 + 4 子包 `__init__` + 既有占位二件套不计——二件套属冻结面，由方法 6 哈希钉） | 白名单外新文件 / 缺失文件 |
 | 2 | `test_p10_test_tree_closed` | `tests/engine_v2/presentation/` 文件集 == 白名单行 20–26（7 项：`__init__` + conftest + 5 测试文件）；`tests/engine_v2/adapters/` 文件集 == 白名单行 27–35（9 项：2 包件 + conftest + 6 测试文件） | 同上 |
-| 3 | `test_p10_string_literal_k8` | AST 遍历 P10 src 19 文件全部字符串字面量（含 docstring）× 12 名黑名单（复用既有 `P4_LLM_PROVIDER_BLACKLIST`，:225–240 @ 2071 行时点）零命中；大小写不敏感子串面 | K8 词泄漏（P10-INV-7） |
+| 3 | `test_p10_string_literal_k8` | AST 遍历 P10 src 19 文件全部字符串字面量（含 docstring）× 12 名黑名单（复用既有 `P4_LLM_PROVIDER_BLACKLIST`，:225–240 @ 2071 行时点）：唯一允许命中 = narrator.py `TEXT_SOURCES` 钉元组 `llm`（SOT §3.2/§5.2/§6.1 三处钉面；ERR-P10-10），其余零命中；大小写不敏感子串面 | K8 词泄漏（P10-INV-7） |
 | 4 | `test_p10_import_closure` | AST 遍历 P10 src 19 文件全部 import：根闭集 ⊆ §3.0（stdlib / pydantic / engine_v2.core / llm.adapter / persistence.snapshot / devtools.trace_query / presentation.* / adapters.web；http.server 仅 server.py；零 jinja2 / 零图像库 / 零 v1 `src.*`）+ P10 src 19 文件零 `random` / `time` / `datetime` / `timeit` 模块 import（D6 零 wall-clock / 零随机机械面；ERR-P10-07）+ text/ ↔ image/ 零互 import + inspector/workbench 零 core.entity/core.components 直读 + **engine_v2 全树**（含 P1–P9 冻结面 + P10 面）import 零 `langgraph` / `langchain` | 边界越权 / 互依赖 / 旁路直读 / LangGraph 依赖回归 / D6 随机源回归（P10-INV-3/5/7/8 + D6） |
 | 5 | `test_v1_p10_frozen_hashes` | v1 路径集（P9-INV-1 口径：`src/**` 除 `src/engine_v2/**` + `public_start/**` + `config/**` + `tests/**` 除 `tests/engine_v2/**` + `pyproject.toml`）sha256 == 嵌入清单（W5 自 G9 收口工作树计算；含 `src/web/` `src/ui/` `web/` 三 web 子树——D-P10-08 反例锚面） | v1 冻结面被修改（P10-INV-9） |
 | 6 | `test_p10_frozen_surfaces_untouched` | (a) `pyproject.toml` sha256 不变（P10-INV-8）；(b) 占位二件套（§2.6）sha256 不变；(c) `src/engine_v2/{core,content,llm,prompts,dynamics,persistence,plugins,devtools,modules}` + `tests/engine_v2/{core,content,llm,prompts,dynamics,persistence,plugins,modules}` 子树哈希不变（含 P9 15 模块 + P9 测试 + P9 3 样例——G9 收口后冻结面；**锚文件自身**以「至 G9 收口点行 sha256 == 基线值」特判，排除 P10 纯追加段）；(d) `tests/fixtures/` 既有 7 + P9 3 项目目录哈希不变 | kernel / P9 冻结面被修改（P10-INV-8/9） |
@@ -1275,7 +1283,8 @@ G9 门级 R1 4 盲 + W7 R4 4 盲共 8 次独立复跑一致）
 交叉恒等式（自检项，门④逐条复算）：
 
 - 波表累计：7+10+11+11+18 = 57（§10）== §6.1 合计 57；
-- 白名单 36 行 = 19 src（全 A）+ 17 tests（16 A + 1 M，M = 边界锚纯追加；
+- 白名单 38 行 = 19 src（18 A + 1 M：view.py tactical 填充 ERR-P10-11）
+  + 18 tests（16 A + 2 M：边界锚纯追加 + skeleton 计数面 ERR-P10-09；
   ERR-P10-03：原公式 19+16=35 误计）（§11）；
 - 导出 49（§8.2）= face t2 台账核对基准；
 - A 判据 12 = 4 门面条（A1–A4，G10-1..4 1:1）+ 8 辅助（A5–A12）；
@@ -1314,6 +1323,10 @@ G9 门级 R1 4 盲 + W7 R4 4 盲共 8 次独立复跑一致）
 | ERR-P10-05 | 摘要失准 | P10 W0 R2 评审 #1 发现（F-R2-01）：§2.3 llm/adapter 行用途列「Workbench prompt 史（T07：calls → (seq, logical_role, base_revision, model, text) 投影）」5 字段摘要与 §3.11 `prompt_history` 规范（6 键：seq / logical_role / base_revision / model / prompt_metadata_ref / response_text）不符——漏 prompt_metadata_ref 且 text 应为 response_text（规范面 §3.11/§6.1 t1 自洽，仅 §2.3 摘要面失准） | §2.3 用途列改 6 键逐字投影（与 §3.11 同文）；实现面按 §3.11 规范零影响 | P10 W0 R2 裁决定案（Leader byte-verify：§3.11 表行 6 键实测） |
 | ERR-P10-06 | 行锚尾差 | P10 W0 R2 评审 #3（F-P10-R2-3-3）/ #4（F-R4-01）独立同证：§0.4 非范围表引「Spec §46 L2300–2309 第 1/2/3/8/9 项」，磁盘实测第 9 项（complete branch debugger UI）= Spec L2310（上界差 1 行，项号/项名/内容全对） | §0.4 引文上界改 L2300–2310；零设计影响 | P10 W0 R2 裁决定案（Leader byte-verify：Spec §46 第 8/9/10 项行号实测） |
 | ERR-P10-07 | 机械面补强 | P10 W0 R2 评审 #3 发现（F-P10-R2-3-2，DOC 级纪律闭合项）：§3.0 导入闭集 stdlib 开根未显式排除 `random` / `time` / `datetime` / `timeit` 模块——`random` import 不触 face t4 / 边界方法 4，D6 零随机机械面原靠双跑测试（语义面）+ 每模块零随机声明覆盖不均（显式仅 §3.1/3.4/3.5/3.7） | §3.0 禁止清单显式补 4 模块 + §7 边界方法 4 AST 检查域补「P10 src 19 文件零 4 模块 import」（机械面补强，非断言放宽；双跑测试保留）；方法数 6 / 平铺名 57 零变化 | P10 W0 R2 裁决定案（Leader 采纳评审建议；D6 纪律面补强） |
+| ERR-P10-09 | 盲点遗漏 | P10 W2 dev 发现（F-W2-01，dev 停手报裁；Leader byte-verify）：SOT 全文零引用 `tests/test_engine_v2_skeleton.py`（v1 路径集成员，ERR-P9-05(1) 口径）——其 `test_engine_v2_init_files_are_docstring_only`（:145–153）钉 `src/engine_v2/` 下 `__init__.py` 总数 = SUBPACKAGES（13 直接子包）+ 1 根包（rglob 递归计数）；SOT 白名单行 2/4/8/10 自身要求 4 个新嵌套子包包件（text/image/tactical/web）→ 计数断言 W2（16≠14）/ W3（17）/ W4（18）结构性红，G10 3205/0 不可达；该文件不在白名单 → 波次纪律内无修复路径。**二次发现（Leader 实跑）**：该文件 sha256 另被 P9 边界 `TestP9Boundary._V1_FROZEN_MANIFEST`（锚文件 L2292，P9 块冻结区 L2127–2625 内）钉死 → 修改即触发 `test_v1_frozen_hashes` 红；P9 块字面量不可改（行 36 M 模式 L1–2625 逐字节不变 + L1–2071 sha 自证） | §11 增行 37 M（`tests/test_engine_v2_skeleton.py`；修改面 = SUBPACKAGES 列表 + 计数文案仅：W2 +2 / W3 +1 / W4 +1 每波机械追加；docstring-only 检查逻辑字节不变——新包件入冻结纪律检查域）；**行 36 P10 块（EOF 纯追加区）含 v1 清单刷新语句 = 每波一行字面量 `TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = <sha256>`（最后赋值生效；P9 块 L2127–2625 字面量零修改）——双钉（skeleton 计数 + P9 哈希）唯一自洽闭合**；P10-INV-9 加唯一例外条款；门④② 基准 36→37 行；§8.3 自检公式同步；套件测试函数数零变化（3205 恒等式不变） | P10 W2 裁决定案（Leader byte-verify：skeleton test :27–40/:54/:145–153 实测 + G9 3142 绿 = 14 计数基线复测 + P9 清单 L2292 条目实测 + 差集 = 唯一条目复现 + SOT 白名单行 2/4/8/10 vs rglob 计数结构性矛盾成立；D8 勘误 = 唯一自洽解） |
+| ERR-P10-10 | 内部矛盾 | P10 W2 dev 发现（F-W2-02；dev 按钉面值落码）：SOT 自相矛盾——§7 方法 3 / face t3 / D7 = 19 src 文件全部字符串字面量（含 docstring）× 12 名黑名单（含 "llm"）零命中，而 §3.2 / §5.2 A8 / §6.1 t2 三处逐字钉 `TEXT_SOURCES = ("template", "llm")` + `source == "llm"`（artifact.source 闭集之 "llm" = 脚本命中推理路径标签）→ W5 face t3 / 方法 3 于 narrator.py 钉元组结构性红，G10 3205/0 不可达 | D7 / §7 方法 3 / face t3 改「唯一允许命中 = narrator.py `TEXT_SOURCES` 钉元组 `llm`，其余字面量 × 12 名零命中」（三处钉面 > 通则；W2 落码实测 src 全树恰 1 命中 = 该钉元组行，已核唯一）；扫描实现 = 排除钉元组字面量后 × 12 名零命中 + 其余 11 名全量零命中 | P10 W2 裁决定案（Leader byte-verify：test_import_boundary.py:225–240 12 名清单实测（含 "llm"）+ SOT §3.2/§5.2 A8/§6.1 t2 三处钉面实测 + dev 1 命中唯一性复测） |
+| ERR-P10-11 | 内部矛盾（闭集漏行） | P10 W2 收口期 Leader 预读 W3 面发现（W3 dev 派发前拦截）：§3.1 derive_scene_view 语义列「tactical_domain_id 非 None 时填 tactical_overlay（§3.6）」vs §3.0 导入闭集 `presentation/view.py: stdlib + engine_v2.core`（无 presentation.tactical）→ 填充分支在闭集内不可实现；W1 落码 = None 占位 + seam 注记（合法面 2，dev 从闭集）；ERR-P10-02 同类（闭集漏行与签名/语义面矛盾）。裁决域排除项：image_slot 先例是「view 返 None + 会话层回投」，tactical 参数设计（derive 内传 domain_id）与之刻意不同 = 填充意在 derive 内 | §3.0 闭集 view.py 行增 `+ engine_v2.presentation.tactical.layout`（单向依赖：tactical/* = stdlib + core，零环；A2 互禁不受影响）；§11 增行 38 M（view.py 仅 tactical 填充分支：W3 期 `del tactical_domain_id` + `tactical_overlay=None` → 非 None 时 build_tactical_layout 填充；其余逻辑/`__all__` 零改）；§10.1 W3 波行文件列 = 行 7–9 + 行 38 M；W1 t4 L106「默认调用 overlay is None」钉面零影响（参数 None 分支不变）；门④② 基准 37→38 行；§8.3 公式同步；套件函数数零变化（3205 不变） | P10 W2 收口裁决定案（Leader byte-verify：§3.1 L414 语义面 vs §3.0 闭集行实测矛盾成立 + W1 view.py L293–302/341 seam 落码实测 + test_view L106 默认 None 钉实测 + tactical 闭集无 view 依赖 = 零环复算） |
+| ERR-P10-12 | 内部矛盾（钉文自反） | P10 W2 R1 评审 #1（F-R1-01）/ #4（F-R1-01 DOC）独立同证：§6.1 t1 钉文「template 路径：注入 backend.calls == ()」vs §3.2 路径选择语义「template 路径 = 确定性模板（零 backend 调用）；llm 路径（backend 非 None）」——按钉文注入命中键 backend 必走 llm 路径（calls 必非空），钉文在 §3.2 语义下不可实现；W2 落码 = narrate_scene 零注入（backend=None）+ 探针构造不注入 = §3.2 唯一自洽实现（2 评审裁定非违例） | §6.1 t1 钉文改「template 路径（backend=None，§3.2 路径选择）：探针 backend（脚本预置命中键、未注入）calls == ()；source == template」（规范语义面 §3.2 为准；W2 落码零返工——代码与更后钉文一致）；W2 docstring 预提交修正（「注入的」→ 探针未注入表述） | P10 W2 R1 裁决定案（Leader byte-verify：§3.2 行 26 路径选择语义实测 + §6.1 t1 钉文实测矛盾成立 + W2 test_narrator.py t1 落码（narrate_scene 零注入 + fake.calls == () 断言在位）实测） |
 
 （后续实现波次勘误按 ERR-P10-NN 续编；行锚漂移以 `sed -n` 复测为准，
 登记时附复测命令与输出摘要。）
@@ -1332,7 +1345,7 @@ G9 门级 R1 4 盲 + W7 R4 4 盲共 8 次独立复跑一致）
 |---|---|---|---|---|---|
 | W1 | T01 | 行 1（view.py） | 行 20–22（包件 + conftest + test_view） | 7 | 3149 |
 | W2 | T02 + T03 | 行 2–6（text 包件 + narrator + image 包件 + contract + director，共 5 文件） | 行 23–24（test_narrator + test_render_intent） | 5 + 5 = 10 | 3159 |
-| W3 | T04 + tactical 面（T08 机械面先行） | 行 7–9（backend + tactical 包件 + layout） | 行 25–26（test_image_backend + test_tactical_layout） | 8 + 3 = 11 | 3170 |
+| W3 | T04 + tactical 面（T08 机械面先行） | 行 7–9 + 行 38 M（view.py tactical 填充，ERR-P10-11） | 行 25–26（test_image_backend + test_tactical_layout） | 8 + 3 = 11 | 3170 |
 | W4 | T05 | 行 10–12、15–19（web 包件 + session + api + views + server + static 3，共 8 文件） | 行 27–31（adapters 包件 + web 包件 + conftest + test_session_manager + test_web_api） | 6 + 5 = 11 | 3181 |
 | W5 | T06 + T07 + T08 收口（+ 边界块） | 行 13–14（inspector + workbench） | 行 32–35（test_inspector + test_workbench + test_g10_gate + test_p10_face）+ **行 36 M（TestP10Boundary 6 方法，锚文件 EOF 纯追加）** | 4 + 4 + 4 + 6 = 18（+ 边界方法 6） | **3205 = 门④期望**（3142 + 57 + 6） |
 
@@ -1348,7 +1361,7 @@ conftest 一经落盘跨波不改（§6.4）；W5 波内序 = inspector → work
    → 记录门④ HEAD；确认晚于 G9 收口 commit
      `99455650f964aa0aee5416a70a1a655135077419`（architecture-v2 分支；§0.3.1 回填值）。
 ② git diff --name-status 99455650f964aa0aee5416a70a1a655135077419..HEAD -- src tests scripts
-   → 非空行集与 §11 白名单 36 行逐行相等（A/M 模式匹配；表外路径 =
+   → 非空行集与 §11 白名单 38 行逐行相等（A/M 模式匹配；表外路径 =
      FAIL；v1 路径集与 P9 树零行——D-P10-08 / P10-INV-9）。
 ③ PYTHONPATH=. .venv/bin/python -m pytest -q
    → passed 计数 == G9_final + 63 = 3142 + 63 = 3205（§8.3
@@ -1379,14 +1392,15 @@ conftest 一经落盘跨波不改（§6.4）；W5 波内序 = inspector → work
 
 ---
 
-## §11 白名单（门④ diff 判定基准；36 行，**冻结定稿**（行号 = 冻结版行号自定））
+## §11 白名单（门④ diff 判定基准；38 行，**冻结定稿**（行号 = 冻结版行号自定））
 
 > 判定规则：门④② `git diff --name-status 99455650f964aa0aee5416a70a1a655135077419..
 > HEAD -- src tests scripts` 的非空行**必须**与下表逐行相等（A 新增 / M
 > 修改）；表外任何路径（含 docs/ 以外文件、`.git*`）出现 = FAIL。
 > **冻结定稿**（行号 = 冻结版行号自定；实现波次不得提前落盘表外文件）。
 
-**src（行 1–19，全部 A）**
+**src（行 1–19，18 A + 1 M〔行 1 = W3 tactical 填充面，见行 38；
+ERR-P10-11〕）**
 
 | # | 路径 | 章节 |
 |---|---|---|
@@ -1431,13 +1445,15 @@ conftest 一经落盘跨波不改（§6.4）；W5 波内序 = inspector → work
 | 34 | `tests/engine_v2/adapters/web/test_g10_gate.py` | §6.1（4） |
 | 35 | `tests/engine_v2/adapters/web/test_p10_face.py` | §6.1（6） |
 
-**既有文件修改（行 36，M = EOF 纯追加）**
+**既有文件修改（行 36–38，M = EOF 纯追加 / 计数面扩展 / tactical 填充）**
 
 | # | 路径 | 模式 | 章节 |
 |---|---|---|---|
 | 36 | `tests/engine_v2/core/test_import_boundary.py` | **M（L2625 后 EOF 纯追加；L1–2625 逐字节不变，边界方法 6 自证：L1–2071 sha256 = 26fc0528… §0.3.1）** | §7 |
+| 37 | `tests/test_engine_v2_skeleton.py` | **M（ERR-P10-09：仅 SUBPACKAGES 列表 + 计数文案——W2 +2〔presentation/text, presentation/image〕/ W3 +1〔presentation/tactical〕/ W4 +1〔adapters/web〕，每波机械追加一条；docstring-only 检查逻辑字节不变，新包件入冻结纪律检查域；P10-INV-9 唯一例外）** | §9 ERR-P10-09 |
+| 38 | `src/engine_v2/presentation/view.py` | **M（ERR-P10-11：仅 tactical 填充分支——W3 期 `del tactical_domain_id` + `tactical_overlay=None` → 非 None 时经 build_tactical_layout（§3.6）填充；§3.0 闭集增行配套；其余逻辑 / `__all__` 零改）** | §3.1/§3.6 |
 
-**自检项**：白名单 36 行 = 19 src（全 A）+ 17 tests（16 A + 1 M；ERR-P10-03）；
+**自检项**：白名单 38 行 = 19 src（18 A + 1 M）+ 18 tests（16 A + 2 M；ERR-P10-03/09/11）；
 §10.1 波表行号引用与本表逐字一致；fixture 行 = 0（D-P10-06 / §3.13）。
 
 ---

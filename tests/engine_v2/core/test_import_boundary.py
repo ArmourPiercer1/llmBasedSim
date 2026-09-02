@@ -2623,3 +2623,12 @@ class TestP9Boundary:
             assert self._subtree_digest(f"tests/fixtures/{dirname}") == expected, (
                 f"既有 fixture 目录 {dirname} 哈希漂移（P9-INV-2）"
             )
+
+
+# ── P10 块（行 36 M 模式：L1–2625 逐字节不变；ERR-P10-09/10）──────────
+# ERR-P10-09：skeleton test 计数面扩展（白名单行 37 M；W2 +2 子包条目）
+# → v1 冻结哈希清单刷新（P9 块 L2127–2625 字面量零修改；最后赋值生效；
+# W3/W4 各续一行同形语句）。
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
+    "9c6a6f820336c8f71e97c4fb4bcb42194afbcb89ad3a7980624a08fa5e8ed580"
+)
