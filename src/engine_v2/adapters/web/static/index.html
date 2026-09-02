@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P10 Web · 玩法页（静态兜底面）</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<h1>P10 Web · 玩法页（静态兜底面）</h1>
+<header>
+<nav>
+<a href="#play">玩法</a>
+<a href="#inspector">检查器</a>
+<a href="#workbench">工作台</a>
+</nav>
+</header>
+<main>
+<section id="play" class="panel">
+<h2>玩法</h2>
+<label for="session-input">会话 ID</label>
+<input id="session-input" type="text" placeholder="会话 ID" autocomplete="off">
+<button id="connect-btn" type="button">连接</button>
+<pre id="state-box" class="state-box">未连接</pre>
+<form id="action-form">
+<input id="action-input" type="text" placeholder="自由文本或命令" autocomplete="off">
+<button id="action-btn" type="submit">发送</button>
+</form>
+<h3>图像槽</h3>
+<pre id="image-slot" class="state-box">无图像</pre>
+<img id="image-view" alt="实时图像">
+</section>
+<section id="inspector" class="panel">
+<h2>检查器（12 节）</h2>
+<button id="inspector-btn" type="button">取检查器数据</button>
+<dl id="inspector-views">
+<details><summary>world_state</summary>
+<pre class="section-body" data-section="world_state">-</pre>
+</details>
+<details><summary>runtime_state</summary>
+<pre class="section-body" data-section="runtime_state">-</pre>
+</details>
+<details><summary>scheduler</summary>
+<pre class="section-body" data-section="scheduler">-</pre>
+</details>
+<details><summary>active_action</summary>
+<pre class="section-body" data-section="active_action">-</pre>
+</details>
+<details><summary>effect_chain</summary>
+<pre class="section-body" data-section="effect_chain">-</pre>
+</details>
+<details><summary>event_chain</summary>
+<pre class="section-body" data-section="event_chain">-</pre>
+</details>
+<details><summary>authority_decision</summary>
+<pre class="section-body" data-section="authority_decision">-</pre>
+</details>
+<details><summary>producer</summary>
+<pre class="section-body" data-section="producer">-</pre>
+</details>
+<details><summary>causal_root</summary>
+<pre class="section-body" data-section="causal_root">-</pre>
+</details>
+<details><summary>revision_timeline</summary>
+<pre class="section-body" data-section="revision_timeline">-</pre>
+</details>
+<details><summary>branch_replay</summary>
+<pre class="section-body" data-section="branch_replay">-</pre>
+</details>
+<details><summary>intervention_history</summary>
+<pre class="section-body" data-section="intervention_history">-</pre>
+</details>
+</dl>
+</section>
+<section id="workbench" class="panel">
+<h2>工作台（prompt 史）</h2>
+<button id="workbench-btn" type="button">取工作台数据</button>
+<pre id="workbench-view" class="state-box">未连接</pre>
+<table id="prompt-history">
+<thead>
+<tr>
+<th>seq</th><th>logical_role</th><th>base_revision</th>
+<th>model</th><th>prompt_metadata_ref</th><th>response_text</th>
+</tr>
+</thead>
+<tbody id="prompt-history-body"></tbody>
+</table>
+</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

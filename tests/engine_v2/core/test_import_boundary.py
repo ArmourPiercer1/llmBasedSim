@@ -2637,3 +2637,8 @@ TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
 TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
     "59c0a8c0be6020ed7d60889fa7456a5f1454bb3a9d22e43423a93e0770065fa7"
 )
+# W4 续（ERR-P10-09）：skeleton +1 "adapters.web" + 计数文案 16→17
+# → v1 冻结哈希清单刷新（P9 块字面量零修改；最后赋值生效）。
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
+    "f6017411b1a8d9f0997504ad76ad0029c57758f491c5c4b193f9839b4e772569"
+)

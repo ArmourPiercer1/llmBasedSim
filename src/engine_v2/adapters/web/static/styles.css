@@ -1,0 +1,81 @@
+/* P10 Web 静态样式面（SOT §3.9；零依赖；100 行以内）。
+ * 层次 = 标题 / 块 / 表；D2 行宽 <= 100。 */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  font-family: sans-serif;
+  background: #101418;
+  color: #e6e9ed;
+}
+
+nav a {
+  margin-right: 1rem;
+  color: #7fb4ff;
+  text-decoration: none;
+}
+
+.panel {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #2c333b;
+}
+
+.state-box {
+  background: #161b21;
+  border: 1px solid #2c333b;
+  padding: 0.75rem;
+  min-height: 4rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+input {
+  background: #161b21;
+  border: 1px solid #2c333b;
+  color: #e6e9ed;
+  padding: 0.4rem 0.6rem;
+  margin-right: 0.5rem;
+}
+
+button {
+  background: #1f6feb;
+  border: none;
+  color: #ffffff;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+table {
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+th,
+td {
+  border: 1px solid #2c333b;
+  padding: 0.3rem 0.5rem;
+}
+
+details {
+  margin: 0.4rem 0;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.section-body {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+img {
+  max-width: 256px;
+  margin-top: 0.5rem;
+}

@@ -676,7 +676,10 @@ __all__ = [
 **来源**：Spec §38（L1888–1901，10 项 SHOULD——本 SOT 最小化承接：
 prompt 面 + logical profile + model + token + structured output 面；
 critic/repair、replay with different model、A/B = 非范围标志位 false）；
-数据源 = 注入 backend 的调用史（FakeInferenceBackend.calls，K5 脚本面）。
+数据源 = backend 调用史 (request, response) 对（测试经
+`backend.generate` 显式收集 pairs；FakeInferenceBackend.calls =
+请求史只读面，K5 脚本面；W4 web 会话无 LLM 面——§3.7 权威签名
+零推理参数，ERR-P10-15）。
 
 #### `__all__`（逐字按序）
 
@@ -691,8 +694,8 @@ __all__ = [
 | 名 | 形 | 语义 |
 |---|---|---|
 | `WORKBENCH_SECTIONS` | `Final[tuple[str, ...]]`，8 名：`assembled_prompt` / `prompt_layers` / `context_provenance` / `token_usage` / `logical_profile` / `resolved_model` / `structured_output` / `critic_repair` | 8 节闭集（t 钉）；Spec §38 之 replay / A/B 2 项 = 非范围（§0.4） |
-| `build_workbench_view` | `(session: WebSession) -> dict[str, object]` | 纯投影：assembled_prompt = 最近 InferenceRequest.messages 投影 / prompt_layers = messages 层序 / context_provenance = base_revision + prompt_metadata_ref（InferenceRequest:98 11 字段面）/ token_usage = 最近 InferenceResponse.input_tokens/output_tokens（None 显式保留：FakeInferenceBackend 未测 = None，None = 「未测量」≠ 0（零估值捏造），KBC-7 语义；Leader 终审 Q9 裁定）/ logical_profile = logical_role / resolved_model = request.model（K8：测试值 `fake-model-1`，t2 钉零推词）/ structured_output = response.text（解析失败原样保留）/ critic_repair = {"supported": false}（非范围标志） |
-| `prompt_history` | `(session: WebSession) -> tuple[dict, ...]` | 调用史投影：每条 = `{"seq", "logical_role", "base_revision", "model", "prompt_metadata_ref", "response_text"}`（seq = calls 序 1-based，与 FakeInferenceBackend 脚本键同址——T07 核心钉 t1） |
+| `build_workbench_view` | `(calls: Sequence[tuple[InferenceRequest, InferenceResponse]]) -> dict[str, object]` | 纯投影：assembled_prompt = 最近 InferenceRequest.messages 投影 / prompt_layers = messages 层序 / context_provenance = base_revision + prompt_metadata_ref（InferenceRequest:98 11 字段面）/ token_usage = 最近 InferenceResponse.input_tokens/output_tokens（None 显式保留：FakeInferenceBackend 未测 = None，None = 「未测量」≠ 0（零估值捏造），KBC-7 语义；Leader 终审 Q9 裁定）/ logical_profile = logical_role / resolved_model = request.model（K8：测试值 `fake-model-1`，t2 钉零推词）/ structured_output = response.text（解析失败原样保留）/ critic_repair = {"supported": false}（非范围标志）〔签名重钉 ERR-P10-15：calls pairs 面，非 session〕 |
+| `prompt_history` | `(calls: Sequence[tuple[InferenceRequest, InferenceResponse]]) -> tuple[dict, ...]` | 调用史投影：每条 = `{"seq", "logical_role", "base_revision", "model", "prompt_metadata_ref", "response_text"}`（seq = calls 序 1-based，与 FakeInferenceBackend 脚本键同址——T07 核心钉 t1）〔签名重钉 ERR-P10-15：calls pairs 面，非 session；response_text = response.text〕 |
 
 ### 3.12 服务端渲染 + 薄壳服务（`adapters/web/views.py` + `server.py`；T06/T07/T05；导出 3 + 2 名）
 
@@ -1171,7 +1174,10 @@ __all__ = [
     宿主循环：clock.set_logical_tick + scheduler 相位 + 效果经 kernel
     应用面落位；P1 runtime 未来承接生产实现，§0.4）；
   - `manager` / `session`：SessionManager + create_session（注入
-    driver + script_backend + DeterministicImageBackend）；
+    driver + DeterministicImageBackend；W4 会话无 LLM 面——§3.7
+    权威签名零推理参数，ERR-P10-15）；
+  - `script_backend`：W1 冻结 fixture re-export（W5 workbench 测试
+    直消费 pairs 收集面；不注入会话——ERR-P10-15）；
   - `trace_manager_session`：known_event_sequence 世界 + trace_records
     注入的会话（inspector/workbench 数据源）。
 
@@ -1328,6 +1334,8 @@ G9 门级 R1 4 盲 + W7 R4 4 盲共 8 次独立复跑一致）
 | ERR-P10-11 | 内部矛盾（闭集漏行） | P10 W2 收口期 Leader 预读 W3 面发现（W3 dev 派发前拦截）：§3.1 derive_scene_view 语义列「tactical_domain_id 非 None 时填 tactical_overlay（§3.6）」vs §3.0 导入闭集 `presentation/view.py: stdlib + engine_v2.core`（无 presentation.tactical）→ 填充分支在闭集内不可实现；W1 落码 = None 占位 + seam 注记（合法面 2，dev 从闭集）；ERR-P10-02 同类（闭集漏行与签名/语义面矛盾）。裁决域排除项：image_slot 先例是「view 返 None + 会话层回投」，tactical 参数设计（derive 内传 domain_id）与之刻意不同 = 填充意在 derive 内 | §3.0 闭集 view.py 行增 `+ engine_v2.presentation.tactical.layout`（单向依赖：tactical/* = stdlib + core，零环；A2 互禁不受影响）；§11 增行 38 M（view.py 仅 tactical 填充分支：W3 期 `del tactical_domain_id` + `tactical_overlay=None` → 非 None 时 build_tactical_layout 填充；其余逻辑/`__all__` 零改）；§10.1 W3 波行文件列 = 行 7–9 + 行 38 M；W1 t4 L106「默认调用 overlay is None」钉面零影响（参数 None 分支不变）；门④② 基准 37→38 行；§8.3 公式同步；套件函数数零变化（3205 不变） | P10 W2 收口裁决定案（Leader byte-verify：§3.1 L414 语义面 vs §3.0 闭集行实测矛盾成立 + W1 view.py L293–302/341 seam 落码实测 + test_view L106 默认 None 钉实测 + tactical 闭集无 view 依赖 = 零环复算） |
 | ERR-P10-12 | 内部矛盾（钉文自反） | P10 W2 R1 评审 #1（F-R1-01）/ #4（F-R1-01 DOC）独立同证：§6.1 t1 钉文「template 路径：注入 backend.calls == ()」vs §3.2 路径选择语义「template 路径 = 确定性模板（零 backend 调用）；llm 路径（backend 非 None）」——按钉文注入命中键 backend 必走 llm 路径（calls 必非空），钉文在 §3.2 语义下不可实现；W2 落码 = narrate_scene 零注入（backend=None）+ 探针构造不注入 = §3.2 唯一自洽实现（2 评审裁定非违例） | §6.1 t1 钉文改「template 路径（backend=None，§3.2 路径选择）：探针 backend（脚本预置命中键、未注入）calls == ()；source == template」（规范语义面 §3.2 为准；W2 落码零返工——代码与更后钉文一致）；W2 docstring 预提交修正（「注入的」→ 探针未注入表述） | P10 W2 R1 裁决定案（Leader byte-verify：§3.2 行 26 路径选择语义实测 + §6.1 t1 钉文实测矛盾成立 + W2 test_narrator.py t1 落码（narrate_scene 零注入 + fake.calls == () 断言在位）实测） |
 | ERR-P10-13 | 内部矛盾（错误类落位环） | P10 W3 dev 发现（F-W3-01，dev 按闭集落码并报裁；Leader byte-verify）：§3.6 钉「域缺席 → `PresentationError(code="scene_key_invalid")`」vs §3.0 闭集 `tactical/*: stdlib + engine_v2.core` + ERR-P10-11 零环裁定（view → tactical.layout 单向）——PresentationError 唯一定义于 view.py，layout 顶层 import 之 = view↔tactical 顶层互 import 环（Python 模块循环；dev 双 import 序运行时实测均 ImportError，证据在 dev 报告 §3.7）→ 钉面在闭集内不可实现 | §3.6 钉文改「域缺席 → ValueError 族错误（layout.py 私有具名类，`code == "scene_key_invalid"` 钉值保留）」（W3 落码 = 该选择，零返工；钉值面 = code 属性，消费方按 code 判别不按类名）；错误类不入 `__all__`（私有，与 W1 PRESENTATION_ERROR_CODES 私有先例同形）；无专属测试函数——域缺席行为钉在 t1 内（pytest.raises 私有类 + code 断言，超集合法；§6.1 3 函数钉面零变化，3170 恒等式不变）；session 层（W4）按 code 面消费错误 | P10 W3 裁决定案（Leader byte-verify：§3.6 L572 原钉文实测 + §3.0 闭集行 + ERR-P10-11 零环裁定实测 + layout.py import 面（core only 零 view）实测 + dev 双序 ImportError 证据在案） |
+| ERR-P10-14 | 口径误计（门④② 行数） | P10 W4 收口期 Leader 门④② 预演发现（W5 派发前拦截）：ERR-P10-11 增行 38 M（view.py）后，§11 表 = 38 行但 view.py 双列（行 1 A + 行 38 M）——`git diff --name-status`（9945565..HEAD）对同一文件仅出一行（view.py 相对 G9 = 新增 A；W3 填充分支 = 文件内修改，不产生独立 diff 行）→ 门④②「非空行集 38 行逐行相等」严格双射结构不可达（diff 恒 37 唯一路径：19 src A + 16 tests A + 2 M）；ERR-P10-03/04 同类计数面（行数 vs 路径数） | 门④② + §11 判定规则改「非空行（37 唯一路径）与白名单路径集逐路径 A/M 模式匹配（行 1/行 38 同路径：diff 行 = A〔行 1 模式〕，行 38 M 面 = 文件内 W3 修改面描述，非独立 diff 行；表外路径 = FAIL）」；§11 表本体 38 行不变（行计数 = 表行数口径，§8.3 公式零变化）；3205 恒等式零影响 | P10 W4 收口裁决定案（Leader byte-verify：git diff --name-status 9945565 实测 37 唯一路径复算 + §11 表 38 行逐行实测 view.py 双列 + ERR-P10-11 行 38 语义面核） |
+| ERR-P10-15 | 签名矛盾（§3.11/§6.2 vs §3.7 冻结签名） | P10 W4 R1 盲评 #4 上报（Leader 独立复现：§3.11「数据源 = 注入 backend 的调用史」+ §6.2「create_session 注入 script_backend」vs §3.7 WebSession.__init__ 权威签名（session_id/world/driver/player_policy/image_backend/stale_policy/trace_records/save_sink——零推理参数）+ SessionManager 双工厂签名（driver_factory/image_backend_factory——零推理工厂）；W4 dev 从 §3.7 落码（byte-truth 权威）= 会话无推理 backend 槽 → §3.11 build_workbench_view/prompt_history 的 `(session: WebSession)` 签名对 W4 冻结会话无推理史可读（机械不可达）；ERR-P10-12 同类（SOT 内部矛盾，落码从权威签名面） | §3.11 签名重钉 = `build_workbench_view(calls: Sequence[tuple[InferenceRequest, InferenceResponse]])` / `prompt_history(calls: …)`——数据源 = 测试经 `backend.generate` 显式收集的调用对（FakeInferenceBackend.calls = 请求史只读面 + 确定性 response 规则：text = script[(logical_role, base_revision, seq)] 缺省 default_text / model = request.model / token = None 显式保留；llm.adapter 闭集合法）；§6.2 web conftest = create_session 注入面去 script_backend + script_backend 行改 W1 re-export（W5 直消费面）；W4 落码零返工（§3.7 签名面原样合法）；test_workbench t1–t4 函数名 + 钉面值不变（「脚本 2 调用」= 测试驱动 2 次 generate 收集 pairs）；inspector 零影响（§3.10 签名不变：世界组件只读投影经会话同包私有面 + 链全经 TraceQuery = INV-5 合规） | P10 W4 收口裁决定案（Leader byte-verify：§3.7 签名行 + §3.11/§6.2 原钉文实测 + W4 落码 session.py 属性面 grep 复现 + FakeInferenceBackend.generate/calls 落码面实测） |
 
 （后续实现波次勘误按 ERR-P10-NN 续编；行锚漂移以 `sed -n` 复测为准，
 登记时附复测命令与输出摘要。）
@@ -1362,8 +1370,11 @@ conftest 一经落盘跨波不改（§6.4）；W5 波内序 = inspector → work
    → 记录门④ HEAD；确认晚于 G9 收口 commit
      `99455650f964aa0aee5416a70a1a655135077419`（architecture-v2 分支；§0.3.1 回填值）。
 ② git diff --name-status 99455650f964aa0aee5416a70a1a655135077419..HEAD -- src tests scripts
-   → 非空行集与 §11 白名单 38 行逐行相等（A/M 模式匹配；表外路径 =
-     FAIL；v1 路径集与 P9 树零行——D-P10-08 / P10-INV-9）。
+   → 非空行集（37 唯一路径）与 §11 白名单路径集逐路径 A/M 模式
+     匹配（表外路径 = FAIL；行 1 / 行 38 同路径 view.py：diff 行 =
+     A〔行 1 模式〕，行 38 M 面 = 文件内 W3 修改面描述，非独立
+     diff 行——ERR-P10-14；v1 路径集与 P9 树零行——D-P10-08 /
+     P10-INV-9）；
 ③ PYTHONPATH=. .venv/bin/python -m pytest -q
    → passed 计数 == G9_final + 63 = 3142 + 63 = 3205（§8.3
      恒等式，实测重算完成）；failed/error/skipped == 0。
@@ -1396,8 +1407,10 @@ conftest 一经落盘跨波不改（§6.4）；W5 波内序 = inspector → work
 ## §11 白名单（门④ diff 判定基准；38 行，**冻结定稿**（行号 = 冻结版行号自定））
 
 > 判定规则：门④② `git diff --name-status 99455650f964aa0aee5416a70a1a655135077419..
-> HEAD -- src tests scripts` 的非空行**必须**与下表逐行相等（A 新增 / M
-> 修改）；表外任何路径（含 docs/ 以外文件、`.git*`）出现 = FAIL。
+> HEAD -- src tests scripts` 的非空行（37 唯一路径）与本表逐路径 A/M 模式
+> 匹配（行 1 / 行 38 同路径 view.py 双列 = A 新增面 + W3 填充分支 M 面，
+> diff 仅出一行 A——ERR-P10-14）；表外任何路径（含 docs/ 以外文件、
+> `.git*`）出现 = FAIL。
 > **冻结定稿**（行号 = 冻结版行号自定；实现波次不得提前落盘表外文件）。
 
 **src（行 1–19，18 A + 1 M〔行 1 = W3 tactical 填充面，见行 38；
