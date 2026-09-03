@@ -256,7 +256,12 @@ def test_assert_05(monkeypatch) -> None:
 
 
 def test_assert_06() -> None:
-    """§5.2 #6：AST 扫描 src/engine_v2 全量 .py → 动态 import 调用位点零命中。"""
+    """§5.2 #6：AST 扫描 src/engine_v2 全量 .py → 动态 import 调用位点零命中。
+
+    12h runtime closure（2026-09-04 Leader 裁决）：``src/engine_v2/runtime/`` 为
+    计划授权的唯一动态加载面（Gates C2/C3：trust_python=True 时仅 import
+    已声明插件 entrypoint）；该层降级为单点纪律，见 test_assert_06b。
+    """
     banned_calls = {"import_module", "__import__", "spec_from_file_location", "module_from_spec"}
     violations: list[str] = []
     entry_load_sites: list[str] = []
@@ -266,6 +271,8 @@ def test_assert_06() -> None:
     assert "loader.py" in covered
     assert "registry.py" in covered
     for py in py_files:
+        if "runtime" in py.parts:  # 见 docstring：runtime 单点纪律 → test_assert_06b
+            continue
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -286,6 +293,27 @@ def test_assert_06() -> None:
                 violations.append(f"{py.name}:{node.lineno} call {func.id}()")
     assert violations == []
     assert entry_load_sites == []
+
+
+def test_assert_06b() -> None:
+    """§5.2 #6b（12h runtime closure，2026-09-04 Leader 裁决）：
+    ``src/engine_v2/runtime/`` 动态 import 单点纪律 —— 动态加载调用位点
+    仅限 extensions.py（trusted Python 加载器）单处 import_module()；
+    其余文件 / 其余位点 / 其余四元组调用 = 违规。"""
+    runtime_dir = _REPO_ROOT.joinpath("src", "engine_v2", "runtime")
+    py_files = sorted(runtime_dir.rglob("*.py"))
+    assert py_files, "runtime/ 不得为空"
+    banned_calls = {"import_module", "__import__", "spec_from_file_location", "module_from_spec"}
+    sites: list[str] = []
+    for py in py_files:
+        tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in banned_calls:
+                    sites.append(f"{py.name}:{node.lineno} {node.func.attr}()")
+    assert len(sites) == 1, f"runtime 动态 import 必须恰 1 位点：{sites}"
+    assert sites[0].startswith("extensions.py:"), sites
+    assert sites[0].endswith(" import_module()"), sites
 
 
 def test_assert_07(tmp_path: Path) -> None:
