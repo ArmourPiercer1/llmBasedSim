@@ -1,9 +1,13 @@
 # complex_minimal 提示策略节：看火人场景策略（模板文件 = prompts/watchman_scene.txt）。
+# 变量口径：仅可声明 P5 CONTEXT_VARIABLES 封闭 13 名（= ActorDecisionContext
+# 字段名集）；character_name / temperature_celsius / machine_power 等场景量
+# 不在封闭集内（K4 天花板）→ 不入 variables。
 prompts:
   - id: watchman_scene
     scope: character_scene
     template_ref: prompts/watchman_scene.txt
     variables:
-      - character_name
-      - temperature_celsius
-      - machine_power
+      - actor_id
+      - tick
+      - wake_reason
+      - candidate_actions

@@ -90,7 +90,7 @@ P9 冻结纯函数）**：
 （LookupError 族，CX-INV-1 显式错误，不静默）。
 
 纪律（contract §0）：零 WorldState 写（只读权威状态）；零 LLM / plugin；
-零 schema 扩展；import 风格一律 ``from src.engine_v2...``；零 import tests；
+零 schema 扩展；import 风格一律 ``from src.engine_v2...``；零测试包导入；
 标准库仅 ``math``（ceil 半径钳制，§3.4 黑名单外）。
 """
 

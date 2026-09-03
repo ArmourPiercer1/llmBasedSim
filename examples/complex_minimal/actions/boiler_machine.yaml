@@ -7,11 +7,11 @@ actions:
     requires_components:
       - machine
   - id: cool
-    name: 启动降温
+    name: 降温
     verb: cool
-    description: 锅炉房温度直接降低 3 度（下限 0 度）。
+    description: 锅炉功率档位减一（下限 0）；功率越低，锅炉房温度平衡点越低。
     requires_components:
-      - temperature
+      - machine
   - id: toggle_machine
     name: 开关机器
     verb: toggle

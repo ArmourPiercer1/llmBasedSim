@@ -49,7 +49,7 @@ TYPE_CHECKING 纪律——"零运行时依赖，并行模块就位前可 import"
 
 纪律：K2 零 WorldState 写（binding 只产纯数据）；零 DSL 解析；零 metadata
 二次校验（``metadata()`` 输出受信任，词表校验归 P7 构造期）；K7 零 asyncio /
-零 random / 零墙钟 / 零模块级可变状态；src 零 ``import tests``。
+零 random / 零墙钟 / 零模块级可变状态；src 零测试包导入。
 """
 
 from __future__ import annotations

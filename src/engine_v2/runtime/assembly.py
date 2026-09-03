@@ -36,7 +36,9 @@ engine=None / instance=None，assumption A1）：
     ``inference_backend`` 均 None = headless 合法，warning 由其诊断承载，
     T5）；
 12. policies = ``{**lb.policies, **merged.policies}``（extension policy
-    覆盖 LLM 默认；无 merged → 原样）；
+    覆盖 LLM 默认；无 merged → 原样），再按 ERR-C-02 键空间重映射为
+    世界实体 id 键（``ent_authoring_<slug>``；T2 engine 契约），全部经
+    :class:`JsonCleanContextPolicyAdapter` 包裹（ERR-C-03）；
 13. :class:`WorldInstance` 构造（contract §1 字段序，全 keyword 传参）；
 14. :class:`EngineInstance`（**不传** ``context_builder``——缺省 lazy 路径
     = T4 生产面，T2）；
@@ -122,7 +124,7 @@ from src.engine_v2.runtime.extensions import (
     ProducerGrant,
     load_extensions,
 )
-from src.engine_v2.runtime.llm_binding import bind_llm_policies
+from src.engine_v2.runtime.llm_binding import JsonCleanContextPolicyAdapter, bind_llm_policies
 from src.engine_v2.runtime.materialize import materialize_world
 from src.engine_v2.runtime.observability import InMemoryTraceSink
 from src.engine_v2.runtime.world_instance import WorldInstance
@@ -481,10 +483,26 @@ def assemble_project(
     )
     diagnostics.extend(llm.diagnostics)
 
-    # —— 12. policies（extension 覆盖 LLM 默认）——
+    # —— 12. policies（extension 覆盖 LLM 默认；ERR-C-02 键空间重映射 +
+    #    ERR-C-03 JSON-clean 适配）——
+    # 键空间 = 世界实体 id（T2 engine 契约：``policies.get(str(actor_id))``；
+    # test_engine gate3 同款）。LLM 绑定面以 authoring slug（``character.id``）
+    # 为键（T5 冻结面，不改）→ 经内容侧确定性命名
+    # ``ent_authoring_<slug>``（ids.py:68 约定；T4 ``_AUTHORING_ENTITY_PREFIX``
+    # 同款）映射；extension policy 键直通（作者以实体 id 直键），若恰为
+    # character slug 则同一重映射（双口径兼容，不猜）。全部 policy（LLM /
+    # extension 双源）经 :class:`JsonCleanContextPolicyAdapter` 包裹（P4 富
+    # 类型 context → P5 assembler JSON-clean 边界；T11 G2 修复位）。
+    _slug_to_entity = {
+        character.id: f"ent_authoring_{character.id}" for character in ir.characters
+    }
     policies = {**llm.policies}
     if merged is not None:
         policies.update(merged.policies)
+    policies = {
+        _slug_to_entity.get(actor_key, actor_key): JsonCleanContextPolicyAdapter(policy)
+        for actor_key, policy in policies.items()
+    }
 
     # —— 13. WorldInstance（contract §1 字段序，全 keyword）——
     instance = WorldInstance(

@@ -21,7 +21,11 @@ from src.engine_v2.runtime.extensions import (
     ProducerGrant,
     load_extensions,
 )
-from src.engine_v2.runtime.llm_binding import LLMBindingResult, bind_llm_policies
+from src.engine_v2.runtime.llm_binding import (
+    JsonCleanContextPolicyAdapter,
+    LLMBindingResult,
+    bind_llm_policies,
+)
 from src.engine_v2.runtime.materialize import (
     CHARACTER_PROFILE_COMPONENT,
     WorldMaterialization,
@@ -44,6 +48,7 @@ __all__ = [
     "ExtensionContext",
     "ExtensionLoadResult",
     "InMemoryTraceSink",
+    "JsonCleanContextPolicyAdapter",
     "LLMBindingResult",
     "ProducerGrant",
     "RuntimeTraceSink",

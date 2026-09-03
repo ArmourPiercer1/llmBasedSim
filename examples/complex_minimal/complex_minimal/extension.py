@@ -7,9 +7,9 @@
   分派）；
 - 1 个数值 :class:`BoilerThermalBackend`：锅炉房温度离散积分
   （热源由 ``machine.power`` 驱动）；
-- 2 个 :class:`ProducerGrant`：executor / dynamics 的 producer_id 各自与其
-  effects 的 ``source`` / ``metadata.producer_id`` 一致，组件覆盖 =
-  machine / temperature。
+- 1 个 :class:`ProducerGrant`（executor 侧，machine 独占写权）；dynamics
+  侧 grant 由 host（T9 assembly）从 ``metadata().domains``（temperature）
+  自动派生——P2 首条匹配拍板语义下的单写权拆分（每组件恰一 writer）。
 
 纪律：
 
@@ -86,12 +86,8 @@ OFF_POWER: Final[int] = 0
 #: 默认功率（toggle 自停机恢复的目标）。
 DEFAULT_POWER: Final[int] = 2
 
-# —— 温度边界与降温步长 ——
+# —— 温度缺省值 ——
 
-#: 温度下限（摄氏度）。
-MIN_CELSIUS: Final[float] = 0.0
-#: 单次降温步长（摄氏度）。
-COOL_STEP_CELSIUS: Final[float] = 3.0
 #: 温度组件缺位时的缺省值（= game.yaml schema default）。
 DEFAULT_CELSIUS: Final[float] = 20.0
 
@@ -158,9 +154,15 @@ class BoilerMachineExecutor:
     ``duration_ticks = 0`` 短动作）：
 
     - ``inject_heat``：power += 1；结果 > MAX_POWER → 参数越界 failure；
-    - ``cool``：celsius -= COOL_STEP_CELSIUS；结果 < MIN_CELSIUS →
-      参数越界 failure；
+    - ``cool``：power -= 1；结果 < OFF_POWER → 参数越界 failure（F2 修复
+      窗：冷却改走 machine 侧单写权——temperature 归 dynamics 独占，
+      P2 首条匹配拍板下一组件仅一个有效 writer）；
     - ``toggle_machine``：开机 → power 置 OFF_POWER；停机 → 置 DEFAULT_POWER。
+
+    machine 组件缺位（F1 修复窗：P5 作者面无组件挂载面、materialize 不产
+    machine）→ 首个动作自举：power 取 schema 缺省（DEFAULT_POWER = 2，与
+    game.yaml component_schemas default 一致），由效果经管道落位（与
+    dynamics 温度自举同款）。
     """
 
     def execute(
@@ -182,11 +184,18 @@ class BoilerMachineExecutor:
     def _machine_state(
         self, world: "WorldState"
     ) -> "tuple[EntityId | None, int | None, str | None]":
-        """(锅炉实体 id, 当前功率, 失败面)；成功时 error = None。"""
+        """(锅炉实体 id, 当前功率, 失败面)；成功时 error = None。
+
+        F1：machine 组件缺位 → power 取 schema 缺省 DEFAULT_POWER（自举
+        口径，见类 docstring）；组件在场但 power 非法（非 int / bool）→
+        显式 failure（不猜）。
+        """
         entity_id = _resolve_entity_id(world, BOILER_SLUG, MACHINE_COMPONENT)
         if entity_id is None:
             return None, None, "锅炉房缺少锅炉实体（machine 组件）"
         power = _read_component(world, entity_id, MACHINE_COMPONENT).get("power")
+        if power is None:
+            return entity_id, DEFAULT_POWER, None
         if not isinstance(power, int) or isinstance(power, bool):
             return entity_id, None, f"machine 组件 power 字段非法：{power!r}"
         return entity_id, power, None
@@ -228,25 +237,24 @@ class BoilerMachineExecutor:
         return ExecutorResult((effect,), None, 0)
 
     def _cool(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
-        entity_id = _resolve_entity_id(world, ROOM_SLUG, TEMPERATURE_COMPONENT)
-        if entity_id is None:
-            return ExecutorResult((), "锅炉房缺少温度实体（temperature 组件）", 0)
-        celsius = _read_component(world, entity_id, TEMPERATURE_COMPONENT).get("celsius")
-        if not _valid_number(celsius):
-            return ExecutorResult((), f"temperature 组件 celsius 字段非法：{celsius!r}", 0)
-        new_celsius = float(celsius) - COOL_STEP_CELSIUS
-        if new_celsius < MIN_CELSIUS:
+        """F2：冷却 = 功率档位减一（machine 侧单写权；温度由 dynamics 按
+        功率积分自然回落，平衡温度 = AMBIENT + POWER_HEAT_RATE * power）。"""
+        entity_id, power, error = self._machine_state(world)
+        if error is not None:
+            return ExecutorResult((), error, 0)
+        new_power = power - 1
+        if new_power < OFF_POWER:
             return ExecutorResult(
                 (),
-                f"cool 参数越界：温度 {new_celsius} 低于下限 {MIN_CELSIUS}",
+                f"cool 参数越界：power {new_power} 低于下限 {OFF_POWER}",
                 0,
             )
         effect = self._set_component(
             proposal,
             world,
             entity_id,
-            TEMPERATURE_COMPONENT,
-            {"celsius": round(new_celsius, _ROUND_DIGITS)},
+            MACHINE_COMPONENT,
+            {"power": new_power},
             "cool",
         )
         return ExecutorResult((effect,), None, 0)
@@ -303,7 +311,9 @@ class BoilerThermalBackend:
         return BackendMetadata(
             backend_id="complex_minimal.boiler_thermal",
             producer_id=str(DYNAMICS_PRODUCER_ID),
-            domains=(str(MACHINE_COMPONENT), str(TEMPERATURE_COMPONENT)),
+            # F2 单写权拆分：dynamics 只写 temperature（machine 归 executor
+            # 独占）；host（T9）从本 domains 自动派生 dynamics grant。
+            domains=(str(TEMPERATURE_COMPONENT),),
             determinism="deterministic",
             implementation_type="numerical",
             fidelity="discrete_1d",
@@ -380,9 +390,12 @@ def build_extension(context: "ExtensionContext") -> ExtensionBundle:
       全部 3 个 action id 下（分派按 ``proposal.action_id``）；
     - ``dynamics_backends``：单个 :class:`BoilerThermalBackend`；
     - ``policies``：空（NPC 策略归 runtime 装配面，不经扩展）；
-    - ``producer_grants``：executor / dynamics 各 1 条——producer_id 与其
-      effects 的 source / metadata.producer_id 一致，组件覆盖 =
-      machine / temperature。
+    - ``producer_grants``：仅 executor 侧 1 条（machine 独占写权）。
+      F2 单写权拆分：P2 授权面「优先级 → 特异性 → 注册序，首条匹配拍板」
+      语义下一组件仅一个有效 writer——executor 独占 machine、dynamics
+      独占 temperature（其 grant 由 host 从 ``metadata().domains`` 自动
+      派生，T3 契约；显式重复声明只会触发 LLMSIM_DUPLICATE_ID 且遮蔽
+      动作侧授权，故不声明）。
     """
     del context  # 见 docstring：最小闭环不消费
     executor = BoilerMachineExecutor()
@@ -397,11 +410,7 @@ def build_extension(context: "ExtensionContext") -> ExtensionBundle:
         producer_grants=(
             ProducerGrant(
                 producer_id=str(EXECUTOR_PRODUCER_ID),
-                component_types=(str(MACHINE_COMPONENT), str(TEMPERATURE_COMPONENT)),
-            ),
-            ProducerGrant(
-                producer_id=str(DYNAMICS_PRODUCER_ID),
-                component_types=(str(MACHINE_COMPONENT), str(TEMPERATURE_COMPONENT)),
+                component_types=(str(MACHINE_COMPONENT),),
             ),
         ),
     )

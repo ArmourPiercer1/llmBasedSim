@@ -3262,3 +3262,16 @@ TestP10Boundary._SUBTREE_MANIFEST["tests/engine_v2/content"] = (
 TestP10Boundary._SUBTREE_MANIFEST["tests/engine_v2/core"] = (
     "00b0b2fa2db76c67408add909e42b03ac001fc82c490b857080f1320fff474db"
 )
+
+# ERR-C-01 第二波（T11 E2E 验收后的 Leader 修复窗）：
+#   (g) src/engine_v2/runtime/__init__.py 新增 JsonCleanContextPolicyAdapter
+#       导出（ERR-C-03 适配器，24→25 符号台账）→ 占位清单条目再刷新；
+#   (h) examples/complex_minimal（extension.py F1/F2、actions/prompts F3
+#       语义面）——不在任何嵌入清单键内（v1 清单覆盖面 = src 非
+#       engine_v2 / public_start / config / tests 非 engine_v2 /
+#       pyproject），无需刷新；
+#   (i) tests/engine_v2/runtime（T11 E2E 重钉 + T9 gate4/规则公式更新）
+#       ——同在 (b) 域，不在清单键内，无需刷新。
+TestP9Boundary._PLACEHOLDER_MANIFEST["src/engine_v2/runtime/__init__.py"] = (
+    "146734b74ac1edf36b867715e58fdeedbf543a051baa1ced448586908363177d"
+)

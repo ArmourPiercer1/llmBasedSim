@@ -42,14 +42,15 @@ code 作证据引用）。排序 = 按 (code, path, refs)（P5 D-P5-12 口径）
 
 模块纪律：同步面；零网络；零非确定根源（确定性 = 同输入同诊断序）；
 import 边界 = content/core/llm/prompts 冻结面（DAG 向下，llm 包不 import
-runtime，无环）；src 零 ``import tests``。
+runtime，无环）；src 零测试包导入。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from src.engine_v2.content.schemas import (
     Diagnostic,
@@ -61,10 +62,14 @@ from src.engine_v2.core.behavior_policy import BehaviorPolicy
 from src.engine_v2.llm.adapter import InferenceBackend
 from src.engine_v2.llm.deployment import DeploymentProfile
 from src.engine_v2.llm.policy import TraceSink, build_llm_policy
-from src.engine_v2.prompts.assembler import CharDivisorTokenEstimator
+from src.engine_v2.prompts.assembler import CONTEXT_VARIABLES, CharDivisorTokenEstimator
 from src.engine_v2.prompts.registry import TemplateStore
 
-__all__ = ["LLMBindingResult", "bind_llm_policies"]
+if TYPE_CHECKING:  # 仅注解用（house 模式；运行时零 import）
+    from src.engine_v2.core.actions import ActionProposal
+    from src.engine_v2.core.context_provider import ActorDecisionContext
+
+__all__ = ["JsonCleanContextPolicyAdapter", "LLMBindingResult", "bind_llm_policies"]
 
 #: P5 18 码闭集内本模块消费的诊断码（content/schemas.py DIAGNOSTIC_CODES）。
 _DIAG_UNRESOLVED_REF: Final[str] = "LLMSIM_UNRESOLVED_REF"
@@ -72,6 +77,60 @@ _DIAG_DUPLICATE_ID: Final[str] = "LLMSIM_DUPLICATE_ID"
 
 #: token 估计除数（§3.10 缺省面 = CharDivisorTokenEstimator 默认值）。
 _TOKEN_DIVISOR: Final[float] = 4.0
+
+
+class JsonCleanContextPolicyAdapter:
+    """P4 context → P5 assembler JSON-clean 边界适配器（ERR-C-03 修复窗）。
+
+    背景（T11 E2E 验收发现 G2）：P4 :class:`ActorDecisionContext` 携带富类型
+    字段（``self_view`` = EntityView、``visible_entities`` = frozenset 等），
+    而 P5 ``assembler`` 的 L3 运行时上下文块对全部 13 个 CONTEXT_VARIABLES
+    无条件 ``json.dumps``——真实 context 首次端到端组装必然抛 ValueError
+    （P4/P5 各自冻结契约自洽、跨面张力的首个端到端暴露）。本适配器是
+    closure 装配层（runtime）对该跨面张力的适配位：
+
+    - ``decide(context)`` 先行探测 13 字段 JSON-clean 性（与 assembler
+      ``context_variable_value`` 完全同口径的 dumps 参数）；
+    - 不可序列化字段 → ``dataclasses.replace`` 影子 context 以 ``None`` 替
+      代（assembler 渲染为字面 ``"null"``——与 ``global_entity_views``
+      未授权同款 K4 不泄漏面）；全 clean → 原实例直通（零拷贝）；
+    - 确定性（K7）：同 context → 同影子（dumps 探测纯函数、无状态）；
+    - 不改变 :class:`BehaviorPolicy` 协议面（``decide`` 单参同步、
+      ``ActionProposal | None`` 返回；``resolved`` 属性透传审计面）。
+
+    纪律：零网络、零随机、零墙钟、零模块级可变状态。
+    """
+
+    def __init__(self, policy: BehaviorPolicy) -> None:
+        self._policy = policy
+
+    @property
+    def resolved(self):
+        """P6 resolved 面透传（审计/绑定面读取兼容）。"""
+        return self._policy.resolved
+
+    def decide(self, context: "ActorDecisionContext") -> "ActionProposal | None":
+        return self._policy.decide(_json_clean_context(context))
+
+
+def _json_clean_context(context: "ActorDecisionContext") -> "ActorDecisionContext":
+    """13 字段 JSON-clean 探测 + 影子 context（ERR-C-03）。
+
+    探测口径与 P5 ``context_variable_value`` 的 dumps 参数逐字一致
+    （sort_keys=True, ensure_ascii=False, separators=(",", ":")）；
+    ``global_entity_views`` 为 None 时 assembler 走字面 ``"null"`` 特判
+    （不 dumps）——本探测对 None dumps 得 ``"null"``，结论一致，无需特判。
+    """
+    standins: dict[str, object] = {}
+    for name in sorted(CONTEXT_VARIABLES):
+        value = getattr(context, name)
+        try:
+            json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError, RecursionError):
+            standins[name] = None
+    if not standins:
+        return context
+    return replace(context, **standins)
 
 
 @dataclass(frozen=True)

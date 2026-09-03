@@ -281,9 +281,15 @@ def test_gate4_llm_policy_bound_with_deployment() -> None:
         inference_backend=FakeInferenceBackend(script={}),
     )
     assert result.engine is not None
-    assert "watchman" in result.instance.policies  # NPC 有 LLM policy
+    # 修复窗 G1（ERR-C-02）：WorldInstance.policies 键空间 = 世界实体 id
+    # （T2 engine 契约）；LLM 绑定面的 slug 键经 assembly 步 12 重映射。
+    assert "ent_authoring_watchman" in result.instance.policies  # NPC 有 LLM policy
     # player 不绑（人类输入面，T5 冻结语义）
     assert "operator" not in result.instance.policies
+    # 适配器包裹（ERR-C-03）：policy 经 JsonCleanContextPolicyAdapter（resolved 透传面）
+    from src.engine_v2.runtime import JsonCleanContextPolicyAdapter
+
+    assert isinstance(result.instance.policies["ent_authoring_watchman"], JsonCleanContextPolicyAdapter)
 
 
 def test_gate4_headless_variant_policies_empty_with_warning() -> None:
@@ -377,11 +383,16 @@ def test_authority_rules_card_formula() -> None:
             rule.rule_id
             == f"rtclosure.{str(rule.allowed_writers[0])}.{str(rule.selector.component_type)}"
         )
-    # Gate 3 依赖面：dynamics 侧规则先于动作侧（assumption A8；同
-    # priority/specificity 时注册序 tiebreak + 首条匹配拍板）
-    assert rule_ids.index("rtclosure.complex_minimal.dynamics.temperature") < rule_ids.index(
-        "rtclosure.complex_minimal.actions.temperature"
+    # 修复窗 F2（T11 E2E 验收发现）：单写权拆分——P2「首条匹配拍板」语义
+    # 下一组件仅一个有效 writer；complex_minimal 样例 = machine 归 executor
+    # 独占、temperature 归 dynamics 独占（dynamics grant 由 host 从
+    # metadata().domains 派生），故每 component_type 恰 1 条规则，无竞争。
+    component_types = [str(rule.selector.component_type) for rule in rules]
+    assert len(component_types) == len(set(component_types)), (
+        "同组件多规则 = 首条匹配拍板下的写权竞争（F2 单写权口径违例）"
     )
+    assert "rtclosure.complex_minimal.dynamics.temperature" in rule_ids
+    assert "rtclosure.complex_minimal.actions.machine" in rule_ids
 
 
 def test_diagnostics_step_order_preserved() -> None:
