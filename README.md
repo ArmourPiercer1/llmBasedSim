@@ -21,16 +21,21 @@ v2 代码 → `CONTRIBUTING.md` + `docs/v2/usage/`；LLM 协作者
 
 ### 1.1 当前状态
 
-- 分支 `architecture-v2`；全量测试 **3205 passed / 0 failed**
-  （恒等式 3142 G9 基线 + 63 P10 增量）；
+- 分支 `architecture-v2`；全量测试 **3348 passed / 0 failed**
+  （恒等式 3205 closure 基线 + 143 closure 增量：T1–T8 +103 /
+  T9 +23 / P5-06b +1 / T11 E2E +16；G10 基线 3205 = 3142 G9 + 63 P10）；
 - Phase 1–10 全部过门禁（`docs/v2/gates/G0…G10-*.md`；G10 人工
   面 S11 待判定，见 `docs/v2/gates/G10-test-acceptance-plan.md`）；
+- **runtime closure 完成**（production game path：YAML 项目 + 受信
+  Python 扩展 → 权威世界 → 五相位 tick → 单一提交管道 → 场景视图；
+  Gate C1–C9 9/9，见 `docs/v2/gates/runtime-closure-gate-report.md`）；
 - 已建：Core Kernel、Scheduler/Action、Actor/Context/Space、
   LLM Runtime（provider-neutral 抽象）、Project Format / 9 官方
  模块 / 插件、WorldDynamics、Persistence/Replay/Devtools、
-  Presentation/Web（会话 API + 确定性图像 backend）；
-- 未建（P11+ 承接）：CLI/DSH 适配器、真实 LLM/图像 backend
-  开箱装配、inspector/workbench 页面路由、官方装配 API。
+  Presentation/Web（会话 API + 确定性图像 backend）、
+  Runtime 生产装配（`src.engine_v2.runtime.assemble_project` 单入口）；
+- 未建（P11+ 承接）：CLI/DSH 适配器、零配置默认 LLM 部署、
+  inspector/workbench 页面路由。
 
 ### 1.2 60 秒概念模型
 
@@ -77,6 +82,18 @@ PYTHONPATH=. .venv/bin/python -m src.engine_v2.content.cli validate path/to/proj
 
 # ⑤ 开发控制平面（存档检视/追踪/重放/分支）
 PYTHONPATH=. .venv/bin/python scripts/v2_devcontrol.py inspect <save_id>
+
+# ⑥ headless 装配并 tick 一个 v2 游戏（runtime closure 单入口；
+#    reference game = examples/complex_minimal，trust_python=True 激活
+#    Python 扩展；deployment 参数可开 LLM NPC，缺省 headless）
+PYTHONPATH=. .venv/bin/python -c "
+from src.engine_v2.runtime import assemble_project
+result = assemble_project('examples/complex_minimal', trust_python=True)
+engine = result.engine
+for _ in range(3):
+    engine.advance(1)
+print('revision:', int(engine.instance.world.world_revision))
+"
 ```
 
 v2 不需要 API Key 即可运行全部机械面（K5：演示宿主 = 确定性
@@ -94,6 +111,9 @@ policy/backend）。「接真 LLM 玩一局」= P11+ 承接面。
 | `docs/plans/llmBasedSim_Architecture_v2_Refactor_Development_Plan.md` | 执行计划（Phase/任务/门禁） |
 | `docs/v2/contracts/P1…P10-*.md` | 各 Phase 冻结设计 SOT（含 §9 勘误链） |
 | `docs/v2/gates/G0…G10-*.md` | 门禁报告（收口证据） |
+| `docs/v2/gates/runtime-closure-gate-report.md` | runtime closure 门禁（Gate C1–C9 证据） |
+| `docs/plans/llmBasedSim_12h_complex_game_runtime_closure_subagent_plan.md` | 12h closure 计划（T1–T11 波次 + Gate 定义） |
+| `src/engine_v2/runtime/README.md` | runtime 层：装配入口 / tick 循环 / 授权面 / 观测 |
 | `docs/v2/gates/G10-test-acceptance-plan.md` | G10 人工面验收方案（S11） |
 | `src/engine_v2/README.md` | 引擎目录布局 + v2 冻结规则 |
 
