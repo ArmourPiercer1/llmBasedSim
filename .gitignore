@@ -11,6 +11,14 @@ build/
 
 # Virtual environment
 .venv/
+.venv-acceptance/
+.acceptance-chrome/
+
+# G10 验收工具运行时产物
+acceptance/*.log
+acceptance/*.pid
+acceptance/*-report.json
+docs/v2/gates/evidence-g10/
 
 # User data
 saves/
