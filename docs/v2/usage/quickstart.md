@@ -34,7 +34,11 @@ PYTHONPATH=. .venv/bin/python scripts/v2_g10_acceptance.py --port 8000
 #   open http://127.0.0.1:8000/ （会话 ID 填入页面输入框）
 ```
 
-参数：`--host 127.0.0.1`（缺省）、`--port 8000`（缺省）。Ctrl-C 停。
+参数：`--host 127.0.0.1`（缺省）、`--port 8000`（缺省）、`--living`
+（活世界宿主；缺省 = 静态宿主，世界内容不随 tick 变化）。Ctrl-C 停。
+
+`--living` 下每次动作：时间 +3h（24h 循环）、天气周期切换、player
+位置周期、NPC mood 周期 → 图像背景色随之变化（见下「图像何时变化」）。
 
 > **为什么没有 LLM 也能跑**：v2 的 K5 不变量 = Agent 是 Policy 不
 > 是 Engine。演示宿主全部用确定性 policy / backend（零真实 LLM /
@@ -59,6 +63,20 @@ PYTHONPATH=. .venv/bin/python scripts/v2_g10_acceptance.py --port 8000
    的 `error_message` 透传显示）——数据面已实现（`inspector.py` /
    `workbench.py`），页面路由属 P11+ 承接；
 5. 刷新页面重连同一会话 ID——快照连续（会话由服务端持有）。
+
+### 图像何时变化
+
+确定性参考 backend 的图像字节 = f(场景, 环境, 主体 ID 集, mood)：
+
+| 要素 | 来源 | 何时变 |
+|---|---|---|
+| 背景色 | environment（time_of_day / weather / location / description）哈希 | 时段桶切换 / 天气变 / 场景变 |
+| 每主体色带 | 仅主体 ID（**位置不影响颜色与布局**） | 主体集变化 |
+| 边框色 | 最近叙事帧 mood | 宿主无帧 = 恒 "calm" |
+
+静态宿主世界内容不变 → 图像不变（by-design，非故障）；要观察图像
+变化用 `--living`（环境时钟触发）。真实位置 / 表情 / 外观 = 真实图像
+backend（P11+ / S4）。技术细节：G10 报告 §9.3。
 
 ### 会话 HTTP API（9 路由闭集）
 

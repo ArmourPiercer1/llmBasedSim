@@ -41,16 +41,21 @@ Architecture deviations: D-P10-01..12 决策登记（SOT §4，12 条全
        DEV-P10-05 = uuid4 身份标签例外）
 Open risks: （§7 风险登记册 SOT §0.6 R1–R5 闭合状态；R4 机械面
        已承接 = face t6，前端构建栈 = 非范围标志位）
-Human review required: S11 三人工判据挂起面（G10-5 GUI 信息层次
-       可读 / G10-6 实时图像不错场 / G10-7 Galgame 场景视觉连续性
-       可接受）——判定人 = 用户（人），Leader 不自裁；记录格式 =
-       SOT §10.2 注记钉（判定人 / 时间 / G10 三人工判据逐条结论
-       （G10-5/6/7）/ 截图或文本证据路径）；机械面（本 gate）不
-       替代人工判定。Plan §24 S4（引入新的重大依赖 / License 风险）
-       同面核验：JS/Node 工具链 = 非范围，face t6 零构建产物（§8）
+Human review required: S11 三人工判据 —— 首轮人工判定已交付并入
+       2026-09-03（判定人 = 用户；Leader 仅记录，不自裁）：G10-5
+       部分可读（壳分区清晰 / 状态框原始 JSON 非人类可读 / 错误面
+       未实测 + 保留面文案机器向 / inspector 12 节全空 = 保留面
+       by-design）；G10-6 未见错场（rev 单调 + 重连一致通过；单
+       场景静态宿主下对应性本质上不可判）；G10-7 不可判定（P10
+       参考面 = 机械参考面，判定面缺口 → P11 承接）。共性根因 =
+       P10 最小调试/验收面，非人类呈现面（§9.1 记录 / §9.2 承接
+       表 / §9.3 图像触发面技术说明）。Plan §24 S4（引入新的重大
+       依赖 / License 风险）同面核验：JS/Node 工具链 = 非范围，
+       face t6 零构建产物（§8）
 Decision: PASS（SOT §8.3 门面条数 7 = 自动 4 + 人工 3：自动
        G10-1..4 全绿 + 结构面 face t1–t6 全绿；人工 G10-5..7 =
-       S11 延期挂起，非 FAIL）
+       首轮判定已并入〔§9.1〕：部分可读 / 未见错场 / 不可判定，
+       部分闭合非 FAIL；G10-7 判定面缺口 = P11 承接〔§9.2〕）
 ```
 
 ### 1.1 Tasks completed 明细
@@ -116,9 +121,9 @@ Decision: PASS（SOT §8.3 门面条数 7 = 自动 4 + 人工 3：自动
 | G10-2（A2） | 双 backend 结构化 view 独立 | test_g10_gate_t2（同 SceneView → narrate_scene + derive_render_intent 独立消费）+ 特例钉 text ↔ image 零互 import（face t4 同源） | 绿 |
 | G10-3（A3） | Web 无 module-level singleton World | test_g10_gate_t3（AST 扫 adapters/web + presentation 全树 19 文件：零模块级 WorldState()/SessionManager()/WebSession()/Scheduler()/LogicalClock() 实例化 + 零模块级 session 全局） | 绿 |
 | G10-4（A4） | inspector 定位 event → transaction → effect → producer | test_g10_gate_t4 + test_inspector_t2（inspect_event = TraceQuery.causal_chain（trace_query.py:199）→ CausalChain.to_dict()（:75）端到端；六字段全量投影；事件缺席 TraceQueryError 透传 404 面） | 绿 |
-| G10-5（人工①） | GUI 信息层次可读 | 服务端渲染三页（index/inspector/workbench，§3.12）承载面在位（机械）；**判定 = S11 人工延期（判定人 = 用户）** | 挂起 |
-| G10-6（人工②） | 实时图像不错场 | stale 标记面（slot.stale，§3.3）+ scene 敏感面（A10/t3 + view t5）支撑面在位（机械）；**判定 = S11 人工延期（判定人 = 用户）** | 挂起 |
-| G10-7（人工③） | Galgame 场景视觉连续性可接受 | scene_id 确定性派生（§3.1）+ continuity_refs（§3.4）+ P9 galgame 样例（只读）世界源在位（机械）；**判定 = S11 人工延期（判定人 = 用户）** | 挂起 |
+| G10-5（人工①） | GUI 信息层次可读 | 服务端渲染三页（index/inspector/workbench，§3.12）承载面在位（机械）；**首轮判定 = 部分可读**（壳分区清晰 / 图像槽注记清晰；状态框原始 JSON 非人类可读 / 错误文案机器向 / inspector 数据未接线——§9.1/§9.2） | 首轮已判（P11 承接项已登记） |
+| G10-6（人工②） | 实时图像不错场 | stale 标记面（slot.stale，§3.3）+ scene 敏感面（A10/t3 + view t5）支撑面在位（机械）；**首轮判定 = 未见错场**（rev 单调通过 / 重连一致通过 / 单场景宿主无错场现场；「对应性」可判定面受限——§9.1） | 首轮已判 |
+| G10-7（人工③） | Galgame 场景视觉连续性可接受 | scene_id 确定性派生（§3.1）+ continuity_refs（§3.4）+ P9 galgame 样例（只读）世界源在位（机械）；**首轮判定 = 不可判定**（参考图像面 = id 级哈希投影，无位置/外观/表情信息——§9.3；判定面缺口 = P11 真实图像 backend） | 首轮已判（判定面缺口 → P11） |
 
 ## 3. 门④ 六步执行（SOT §10.2，2026 收口时点实测）
 
@@ -324,10 +329,11 @@ ERR-P10-11〕；diff 面 = 19 A）**
   测试零调用；D6 零 wall-clock）；
 - **S10 — 性能目标需要架构级 tradeoff**：未触发——P10 零性能
   判据面（K5 假 backend；性能面 = 非 P10 范围）；
-- **S11 — 多模态主观验收无法确定**：挂起（非触发非闭合）——
-  G10-5/6/7 三人工判据 = 本条对象；判定人 = 用户（Leader 不自
-  裁）；记录格式 = SOT §10.2 注记钉（判定人 / 时间 / G10-5/6/7
-  逐条结论 / 截图或文本证据路径）；
+- **S11 — 多模态主观验收无法确定**：首轮已判定（非触发非闭合 →
+  部分闭合）——G10-5 = 部分可读 / G10-6 = 未见错场（可判定面受
+  限）/ G10-7 = 不可判定（参考图像面 = 机械参考面，无位置/外观/
+  表情信息，§9.3）；判定人 = 用户（2026-09-03 首轮交付，§9.1）；
+  G10-7 判定面缺口 + G10-5 人类可读面 = P11 承接登记（§9.2）。
 - **S12 — Agent 想重构超出工作包边界**：未触发——门④② 37 唯一
   路径封闭集 + 白名单外零写盘（表外零路径；P10-INV-8/9 冻结面
   哈希钉）。
@@ -340,10 +346,81 @@ ERR-P10-11〕；diff 面 = 19 A）**
 DEV 链 + §9 15 行勘误链更新完成）。T01–T08 全部交付；D1–D8 纪律
 全程在位；P10-INV-1..10 全链机械面闭合。
 
-**人工面（S11）挂起**：G10-5（GUI 信息层次）/ G10-6（实时图像
-不错场）/ G10-7（Galgame 视觉连续性）三判据判定人 = 用户；Leader
-以 galgame 样例世界源驱动 web 会话的验收方案 = gate 时点人工执行
-（Plan §21 L901 记录格式）。本 gate 机械面不替代人工判定。
+**人工面（S11）首轮判定已并入**：G10-5 / G10-6 / G10-7 三判据判定人
+= 用户（2026-09-03 首轮交付）；记录 = §9.1（SOT §10.2 格式）；承接 =
+§9.2；图像触发面技术说明 = §9.3。本 gate 机械面不替代人工判定。
+
+### 9.1 S11 首轮人工判定记录（SOT §10.2 格式）
+
+- 判定人: 用户（人）
+- 时间: 2026-09-03（首轮）
+- 执行路径: `scripts/v2_g10_acceptance.py`（静态宿主 + `--living` 活世界
+  宿主两面）→ galgame 样例世界源驱动 web 会话；证据 = 判定人 GUI 直接
+  观察 + Leader 机械核验（§9.3）
+- G10-5 GUI 信息层次: **部分可读**
+  1. 壳分区（操作面 / 状态面 / 图像槽 / inspector / workbench）= 清晰，
+     操作路径通过（Step 3.1 通过）；
+  2. 状态框显示原始 JSON，非人类可读数据结构（判定原文：“JSON 不是一个
+     人类可读的数据结构”）→ 人类可读状态面板 = P11 承接（§9.2 F1）；
+  3. 图像槽动作后出图 + rev 单调递增 + 注记清晰（Step 3.2-3 通过）；
+  4. 错误面未实测（Step 3.2-4/6 未跑）+ workbench 保留面文案“错误：数据面
+     保留（W5 落点）：/api/workbench/{id}”= 机器向文案 → 人类向错误文案
+     = P11 承接（§9.2 F2）；
+  5. inspector 12 节全为短横线占位 = P10 保留面 by-design（数据面不在
+     P10 落地）→ 路由落位 = P11 承接（§9.2 F3）。
+- G10-6 实时图像不错场: **未见错场**（可判定面受限）
+  1. rev 单调 = 通过；
+  2. 重连后图像恢复为重连前状态 = 一致性通过（Step 3.3-2/4）；
+  3. 单场景静态宿主无法构造“动作↔图像对应性”反例 → 对应性本质不可判
+     （静态宿主 = by-design 静态图像，§9.3）；
+  4. 单次对话内图像状态不变 = 与 §9.3 触发面在静态宿主下不触发一致。
+- G10-7 Galgame 场景视觉连续性: **不可判定**
+  1. P10 参考图像 = 机械参考图像（色带 = 主体 ID / 背景 = 环境哈希 /
+     边框 = mood 常数），无位置 / 外观 / 表情信息 → 视觉连续性判定面缺口；
+  2. 不可判定 ≠ 不通过；缺口根因 = 确定性 PPM 参考 backend（K5），真实
+     图像 backend = P11+ / S4 范围（§9.2 F4）。
+- 综合: 首轮 = 部分闭合（G10-5 部分可读 / G10-6 未见错场 / G10-7 不可
+  判定）；Gate 决策维持 PASS（机械面）+ 人工面部分闭合；机械面不替代
+  人工判定，Leader 不自裁。
+
+### 9.2 首轮发现 → P11 承接表
+
+| # | 发现 | 根因分类 | P11 承接 |
+|---|---|---|---|
+| F1 | 状态框 = 原始 JSON，非人类可读 | P10 最小验收面（by-design 最小面） | 人类可读状态面板（snapshot 人类向投影） |
+| F2 | 错误/保留面文案机器向（“数据面保留（W5 落点）”） | P10 最小验收面 | 人类向错误文案 + workbench/inspector 数据面落地 |
+| F3 | inspector 12 节全空 / workbench 路由保留 404 | P10 数据面保留（W5 落点 by-design） | inspector / workbench 路由 + 真实数据投影 |
+| F4 | 参考图像无位置/表情/外观，单次对话内不变 | K5 确定性 PPM 参考 backend（by-design） | 真实图像 backend（P11+ / S4）；`--living` 宿主已提供环境时钟触发面 |
+| F5 | 图像触发知识缺口（“不知道触发它变化的要素”） | 文档缺口 | quickstart 图像触发面小节 + 本节 §9.3 |
+
+注：F1–F4 均属 P10 冻结面（零 src 修改），不以 P10 勘误方式修复，登记
+为 P11 范围；F5 = 文档面，本波已补。
+
+### 9.3 图像触发面技术说明（判定人 Q&A + Leader 机械核验）
+
+判定人 Q:“图片始终不变。触发它变化的要素到底是什么？我应该怎么触发？”
+
+- 确定性参考 backend（`presentation/image/backend.py`）图像字节 =
+  f(scene_id, environment, 主体 ID 集, mood):
+  - 背景色 = `seed_color("scene_id|background|environment_json")` —— 唯一
+    环境敏感要素；
+  - 每主体色带 = `seed_color("scene_id|subject|subject_id")` —— 仅消费
+    ID，**不消费世界位置**（矩形位置 = 按索引等分）；
+  - 边框色 = `seed_color("scene_id|border|mood")` —— mood = 最近叙事帧；
+    宿主面无帧 → 恒 "calm"；
+- scene_id = f(主 location ID, 排序后 actor ID 序列) —— **位置不在
+  scene_id 内**；
+- 故图像仅当 场景（位置/actor 集）/ 环境（time_of_day / weather /
+  location / description）/ 主体 ID 集 / mood 之一变化时才变化。**静态
+  宿主（`HostTickDriver`）世界内容不变 → 图像不变 = by-design**；
+- `--living` 活世界宿主（`scripts/v2_g10_acceptance.py --living`）= 宿主
+  策略合法面（K5，零 src 修改）：tick+1 / hour+3 mod 24 / weather 周期
+  切换 / player 位置周期 / NPC mood 周期 → 背景色随 time_of_day ×
+  weather 16-tick 周期变化；
+- Leader 核验实验: 完整 16-tick 环境周期内同一环境两时点图像字节一致
+  （t31≡t47，sha256 99f8ff59…）；不同环境 = 不同字节（背景 (240,251,133)
+  上午晴朗 vs (172,196,50) 夜间薄雨）；16/16 POST 全 ok；
+- 真实位置/表情/外观 = 真实图像 backend（P11+ / S4）范围。
 
 P10 收口。后续波次（P11+：adapters/{cli,dsh} 面 / core F2 修复
 承接〔ERR-P10-08〕/ S11 人工面执行）不在本阶段范围。
