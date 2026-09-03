@@ -96,7 +96,7 @@ def _workbench_table_body() -> str:
 
 
 def _page_head(title_placeholder: str) -> list[str]:
-    """页头源（零构建；styles.css 相对引用；$title 占位）。"""
+    """页头源（零构建；styles.css 绝对引用（ERR-P10-16）；$title 占位）。"""
     return [
         "<!DOCTYPE html>",
         '<html lang="zh-CN">',
@@ -104,7 +104,7 @@ def _page_head(title_placeholder: str) -> list[str]:
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         f"<title>{title_placeholder}</title>",
-        '<link rel="stylesheet" href="styles.css">',
+        '<link rel="stylesheet" href="/static/styles.css">',
         "</head>",
         "<body>",
         f"<h1>{title_placeholder}</h1>",
@@ -112,9 +112,10 @@ def _page_head(title_placeholder: str) -> list[str]:
 
 
 def _page_tail() -> list[str]:
-    """页尾源（app.js 尾部引用；零外部资源，SOT §3.9 零依赖面）。"""
+    """页尾源（app.js 绝对引用尾部（ERR-P10-16）；零外部资源，
+    SOT §3.9 零依赖面）。"""
     return [
-        '<script src="app.js"></script>',
+        '<script src="/static/app.js"></script>',
         "</body>",
         "</html>",
     ]
