@@ -1,0 +1,21 @@
+# complex_minimal 角色节：看火人（NPC；speech_examples 为真实中文语料）。
+characters:
+  - id: watchman
+    name: 老周
+    personality:
+      background: 在锅炉房干了十多年的老看火人，机器的每个阀门和开关他都熟。
+      motivations: 想把温度整夜留在安全区间，天亮时平稳交班。
+      speech_style: 短句，沉稳，偶尔带老看火人的口吻。
+      traits:
+        - steady
+        - attentive
+    position:
+      x: 1.0
+      y: 1.0
+    relationships:
+      operator: 0.4
+    speech_examples:
+      - 火是稳的，别急着动阀门。
+      - 温度过了六十就得先降，这是规矩。
+      - 机器的状态看仪表，不用猜。
+    starting_inventory: []

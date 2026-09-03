@@ -1,0 +1,13 @@
+# 样例项目根包声明（K8 扫描面：本文件受 deployment 禁名词扫描，保持最小）。
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "complex_minimal"
+version = "0.1.0"
+description = "锅炉房值守最小闭环样例游戏（P5 内容 + Python 数值仿真扩展）。"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["complex_minimal"]

@@ -1,0 +1,57 @@
+# complex_minimal 样例游戏（runtime closure T10；P5 顶层 8 键封闭集子集）。
+# 最小闭环：锅炉房值守——温度按离散积分演化，动作/能力/提示全部 YAML 声明。
+manifest:
+  schema_version: "2"
+  project_id: complex_minimal
+  name: 锅炉房值守
+  description: 最小闭环样例：锅炉房夜班值守，温度由离散积分驱动，动作与规则经 YAML 声明。
+  engine_version: ">=0.5.0"
+scenario:
+  id: scenario_boiler_duty
+  max_ticks: 24
+  ticks_per_game_minute: 0.5
+  game_time:
+    hour: 2
+    minute: 0
+  starting_scene_description: 凌晨两点的锅炉房，炉火稳定，老周坐在控制台旁的凳子上，仪表的绿光映在脸上。
+  narrative_style: 冷静的夜班叙事，短句，聚焦数值与设备状态。
+player:
+  player_id: operator
+  name: 夜班值班员
+  persona: 刚接班的值班员，安静，习惯先看仪表再说话。
+  position:
+    x: 2.0
+    y: 2.0
+  capabilities:
+    sight_range_m: 6.0
+    hearing_range_m: 10.0
+  speech_examples:
+    - 我盯着表。
+    - 数值越界你就喊我。
+component_schemas:
+  - id: machine
+    description: 机器功率档位组件。
+    fields:
+      - name: power
+        type: number
+        required: true
+        default: 2
+        description: 功率档位（整数，0 表示停机）。
+  - id: temperature
+    description: 锅炉房环境温度组件（挂在地点实体上）。
+    fields:
+      - name: celsius
+        type: number
+        required: true
+        default: 20.0
+        description: 环境温度（摄氏度）。
+capabilities:
+  - id: npc_policy
+    capability: npc_policy
+    min_tier: 1
+    ideal_tier: 2
+    notes: 看火人依据当前温度与机器状态决定添热、降温或开关机器。
+plugin_descriptors:
+  - id: simulation
+    source: local
+    description: 锅炉房值守数值仿真 Python 扩展（动作执行器 + 数值动力学）。

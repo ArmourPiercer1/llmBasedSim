@@ -1,0 +1,20 @@
+# complex_minimal 动作节：锅炉房三动作（语义由 Python 扩展的动作执行器实现）。
+actions:
+  - id: inject_heat
+    name: 添热
+    verb: stoke
+    description: 锅炉功率档位加一（上限 4）；功率越高，锅炉房温度趋向值越高。
+    requires_components:
+      - machine
+  - id: cool
+    name: 启动降温
+    verb: cool
+    description: 锅炉房温度直接降低 3 度（下限 0 度）。
+    requires_components:
+      - temperature
+  - id: toggle_machine
+    name: 开关机器
+    verb: toggle
+    description: 锅炉在停机与默认功率之间切换（power 0 与 2 互换）。
+    requires_components:
+      - machine

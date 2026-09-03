@@ -1,0 +1,14 @@
+# complex_minimal 世界节（单值 WorldSpec；地点 = 温度组件挂载实体）。
+world:
+  name: 锅炉房
+  description: 凌晨两点的锅炉房，老式锅炉靠墙，控制台就在手边。
+  environment:
+    time_of_day: night
+    weather: clear
+    temperature_c: 20.0
+  locations:
+    - id: boiler_room
+      name: 锅炉房
+      description: 混凝土墙与炉火光，锅炉低鸣，仪表绿光。
+      connections: {}
+      properties: {}

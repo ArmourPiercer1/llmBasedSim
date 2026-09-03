@@ -1,0 +1,12 @@
+# complex_minimal 物品节：锅炉 = 机器实体（承载 machine 组件）。
+items:
+  - id: boiler
+    object_type: machine
+    name: 老锅炉
+    description: 锅炉房里的老式蒸汽锅炉，功率档位决定房内的热量产出，可以开关。
+    position:
+      x: 3.0
+      y: 1.0
+    state: running
+    properties:
+      weight_kg: 800.0
