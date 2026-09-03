@@ -3223,3 +3223,42 @@ class TestP10Boundary:
             assert self._p10_subtree_digest(dirname) == expected, (
                 f"fixture 目录 {dirname} 哈希漂移（P10-INV-9 域）"
             )
+
+
+# ── 12h closure 块（行 36 M 模式：L1–3225 逐字节不变；EOF 纯追加；
+#    ERR-C-01：既有字面量零修改，最后赋值生效；W2 续段同形语句）────
+# ERR-C-01：12h runtime closure（docs/plans/llmBasedSim_12h_complex_game_
+# runtime_closure_subagent_plan.md；T1–T11）授权变更：
+#   (a) src/engine_v2/runtime/__init__.py：P9 占位五件套成员 → 24 符号
+#       导出台账（T9 收口填充）；
+#   (b) src/engine_v2/runtime/ 新增 9 模块（T1–T9）——不在 P9/P10 子树
+#       清单键内，不影响任何嵌入清单；
+#   (c) tests/engine_v2/runtime/ 新增 10 测试文件（T1–T9 + T11）——同
+#       (b)，不在清单键内；
+#   (d) tests/engine_v2/content/test_p5_gate_scenario.py：P5 gate #6
+#       runtime 动态 import 域豁免 + #6b 单点纪律（新测试 21 项）→
+#       tests/engine_v2/content 子树摘要刷新；
+#   (e) tests/engine_v2/core/test_contracts.py：ERR-C-01 fresh-import
+#       save/restore 纪律补全 → tests/engine_v2/core 子树摘要刷新（锚
+#       文件特判：前 2071 行 / 前 2625 行 sha 零漂移，本块纯追加）；
+#   (f) tests/test_engine_v2_skeleton.py：runtime/__init__.py re-export
+#       豁免（同 P1 收尾 core 豁免先例）→ v1 冻结清单 skeleton 条目刷
+#       新（P10 m5 双钉自 P9 清单取值，自动一致）。
+TestP9Boundary._PLACEHOLDER_MANIFEST["src/engine_v2/runtime/__init__.py"] = (
+    "5ac1d51b236f3da9ce271a93cd4c7e2581271c8b453d001786c12f407b421945"
+)
+TestP9Boundary._SUBTREE_MANIFEST["tests/engine_v2/content"] = (
+    "2f067e84601ab28d7c5243d58f79401d6c89f37272a31a464877dca81041fe65"
+)
+TestP9Boundary._SUBTREE_MANIFEST["tests/engine_v2/core"] = (
+    "94966bb6d5017d2c9aa7a33d0c2abc9fc6f016e71d77cb81453ebc37e9b36459"
+)
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/test_engine_v2_skeleton.py"] = (
+    "4f5e7bc104d3f5ac94ea600b425ce6ec74cc6eb94cb7a87e81552c1293db57b4"
+)
+TestP10Boundary._SUBTREE_MANIFEST["tests/engine_v2/content"] = (
+    "2f067e84601ab28d7c5243d58f79401d6c89f37272a31a464877dca81041fe65"
+)
+TestP10Boundary._SUBTREE_MANIFEST["tests/engine_v2/core"] = (
+    "00b0b2fa2db76c67408add909e42b03ac001fc82c490b857080f1320fff474db"
+)

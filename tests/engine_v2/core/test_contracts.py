@@ -1405,7 +1405,14 @@ class TestImportBoundary:
             violations.add(dotted)
 
     def test_fresh_import_pulls_no_forbidden_modules(self) -> None:
-        """B2 口径：fresh import 五个新模块不新载入黑名单依赖。"""
+        """B2 口径：fresh import 五个新模块不新载入黑名单依赖。
+
+        ERR-C-01（12h closure）：补 B2 同款 save/restore 纪律——fresh
+        import 产生的新模块对象不得泄漏进全局 sys.modules（core 类对象
+        身份一致性：runtime 闭合层的 Python 扩展模块在测试期首次导入
+        时绑定 sys.modules 现存类身份，旧/新模块身份混装即 isinstance
+        断裂）。
+        """
         names = [
             "src.engine_v2.core.provenance",
             "src.engine_v2.core.effects",
@@ -1413,16 +1420,22 @@ class TestImportBoundary:
             "src.engine_v2.core.events",
             "src.engine_v2.core.transaction",
         ]
-        for name in names:
-            sys.modules.pop(name, None)
-        before = set(sys.modules)
-        for name in names:
-            importlib.import_module(name)
-        pulled = set(sys.modules) - before
-        forbidden_prefixes = ("langgraph", "langchain", "openai", "rich", "yaml")
-        bad = sorted(
-            name
-            for name in pulled
-            if any(name == p or name.startswith(p + ".") for p in forbidden_prefixes)
-        )
-        assert not bad, f"import T04 模块过程中新载入了禁止依赖：{bad}"
+        saved = {name: sys.modules[name] for name in names if name in sys.modules}
+        try:
+            for name in names:
+                sys.modules.pop(name, None)
+            before = set(sys.modules)
+            for name in names:
+                importlib.import_module(name)
+            pulled = set(sys.modules) - before
+            forbidden_prefixes = ("langgraph", "langchain", "openai", "rich", "yaml")
+            bad = sorted(
+                name
+                for name in pulled
+                if any(name == p or name.startswith(p + ".") for p in forbidden_prefixes)
+            )
+            assert not bad, f"import T04 模块过程中新载入了禁止依赖：{bad}"
+        finally:
+            for name in [n for n in sys.modules if n in names]:
+                del sys.modules[name]
+            sys.modules.update(saved)

@@ -112,27 +112,25 @@ def _is_docstring_node(node: ast.stmt) -> bool:
     )
 
 
-def _is_core_reexport_node(node: ast.stmt) -> bool:
-    """P1 收尾豁免（设计文档 §0.4）：仅 ``core/__init__.py`` 适用的放宽口径。
+def _is_reexport_node(node: ast.stmt, prefix: str) -> bool:
+    """re-export 豁免的通用检查（包前缀 ``prefix`` 口径）。
 
-    只放宽 **re-export 语句** 与 ``__all__`` 导出清单，其余纪律不放宽：
-
-    - re-export import：仅允许从同包 core 子模块拉取契约名称——绝对
-      ``src.engine_v2.core.<模块>`` 或 core 包内相对 import（``from .<模块>``，
-      level 恰为 1，不得相对穿出 core 包）；
+    - re-export import：仅允许从同包子模块拉取名称——绝对
+      ``<prefix>.<模块>`` 或包内相对 import（``from .<模块>``，level 恰
+      为 1，不得相对穿出本包）；
     - ``__all__ = [...]``：单个 Name 目标为 ``__all__``、值为字符串常量
       列表/元组的单一赋值（导出清单）；
-    - 其余一切语句（函数/类定义、其他赋值、表达式、指向 core 之外的 import）
+    - 其余一切语句（函数/类定义、其他赋值、表达式、指向包外的 import）
       仍属违规。
     """
     if isinstance(node, ast.ImportFrom):
         if node.level == 1 and node.module:
-            return True  # core 包内相对 import（from .<模块> import ...）
+            return True  # 包内相对 import（from .<模块> import ...）
         return node.level == 0 and node.module is not None and node.module.startswith(
-            "src.engine_v2.core"
+            prefix
         )
     if isinstance(node, ast.Import):
-        return all(alias.name.startswith("src.engine_v2.core") for alias in node.names)
+        return all(alias.name.startswith(prefix) for alias in node.names)
     if isinstance(node, ast.Assign):
         return (
             len(node.targets) == 1
@@ -147,27 +145,43 @@ def _is_core_reexport_node(node: ast.stmt) -> bool:
     return False
 
 
+def _is_core_reexport_node(node: ast.stmt) -> bool:
+    """P1 收尾豁免（设计文档 §0.4）：仅 ``core/__init__.py`` 适用的放宽口径。
+
+    只放宽 **re-export 语句** 与 ``__all__`` 导出清单，其余纪律不放宽
+    （通用检查见 :func:`_is_reexport_node`，prefix = ``src.engine_v2.core``）。
+    """
+    return _is_reexport_node(node, "src.engine_v2.core")
+
+
 def test_engine_v2_init_files_are_docstring_only():
     """骨架纪律：每个 __init__.py 仅含模块 docstring，无 import / 赋值 / 定义。
 
-    P1 收尾豁免（设计文档 §0.4，骨架纪律的自然收尾）：仅 ``core/__init__.py``
+    P1 收尾豁免（设计文档 §0.4，骨架纪律的自然收尾）：``core/__init__.py``
     额外允许 re-export 语句（从同包 core 子模块导入契约类型）与 ``__all__``
-    清单语句；其余 17 个子包（含 P10 嵌套子包，ERR-P10-09）+ 根包保持
-    "仅 docstring"纪律不变。
+    清单语句；ERR-C-01（12h closure，同先例同口径）：``runtime/__init__.py``
+    额外允许 re-export 语句（从同包 runtime 子模块导入装配/运行面公开名）
+    与 ``__all__`` 清单语句；其余 17 个子包（含 P10 嵌套子包，ERR-P10-09）
+    + 根包保持 "仅 docstring" 纪律不变。
     """
     init_files = sorted(ENGINE_DIR.rglob("__init__.py"))
     assert len(init_files) == len(SUBPACKAGES) + 1, "子包数量与任务包清单不符（应为 17 子包（含嵌套）+ 根包）"
-    core_init = ENGINE_DIR / "core" / "__init__.py"
+    reexport_exempt = {
+        ENGINE_DIR / "core" / "__init__.py": "src.engine_v2.core",
+        ENGINE_DIR / "runtime" / "__init__.py": "src.engine_v2.runtime",
+    }
     for init_path in init_files:
         tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
         rel = init_path.relative_to(REPO_ROOT)
         for node in tree.body:
             allowed = _is_docstring_node(node) or (
-                init_path == core_init and _is_core_reexport_node(node)
+                init_path in reexport_exempt
+                and _is_reexport_node(node, reexport_exempt[init_path])
             )
             assert allowed, (
                 f"{rel} 骨架 __init__.py 应仅含模块 docstring"
-                "（core/__init__.py 额外允许 re-export 语句与 __all__ 清单），"
+                "（core/__init__.py 与 runtime/__init__.py 额外允许 re-export "
+                "语句与 __all__ 清单），"
                 f"发现违规语句：{ast.dump(node)[:120]}"
             )
 
