@@ -3326,3 +3326,42 @@ TestP10Boundary._V1_P10_MANIFEST["pyproject.toml"] = (
 TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/extension.py"] = "a2a6ce43d1acd82bd31355559a9d015f87433507d3f1d4bb4601b0861e4d50b7"
 TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/extension.py"] = "a2a6ce43d1acd82bd31355559a9d015f87433507d3f1d4bb4601b0861e4d50b7"
 TestP10Boundary._SUBTREE_MANIFEST["src/engine_v2/modules"] = "adbde29e9cb4aa149ff793f1fb0f2cf96709d00743053bdb93627e87b4b180ca"
+
+
+# ── 0.1.0-alpha.1 发布前修复 · 治理 errata 段 B：R1（纯追加；ERR 记录）──
+# 审计面：同文档 R1。src/engine_v2/llm/player_intent.py 新模块（玩家意图
+# 解释器）——llm/ 文件集 8 → 9、llm 子树摘要刷新（P9 + P10 两域）。
+TestP9Boundary._SUBTREE_MANIFEST["src/engine_v2/llm"] = "ca3445e7423ce86d802949a1321d33d7f98e9a2b62b59ade16c26089a085b419"
+TestP10Boundary._SUBTREE_MANIFEST["src/engine_v2/llm"] = "ca3445e7423ce86d802949a1321d33d7f98e9a2b62b59ade16c26089a085b419"
+
+# P6 文件集面（test_p6_file_set_closed，L996/L1003 冻结体以
+# P6_SUBMODULES[:8] / [8:] 切片分区）：llm 新模块 player_intent 使分区
+# 边界 8 → 9。tuple 子类视图钉死两个切片（llm 9 / prompts 3），迭代面
+# = 12 模块全集（新模块自动入 P6 AST/import/非确定源扫描面）。
+class _P6SubmoduleView(tuple):
+    """P6 模块茎分区视图（errata 面）：切片分区边界 = (9, 3)。"""
+
+    def __getitem__(self, key):
+        if key == slice(None, 8, None):
+            return self[:9]
+        if key == slice(8, None, None):
+            return self[9:]
+        return super().__getitem__(key)
+
+
+P6_SUBMODULES = _P6SubmoduleView(
+    (
+        "profiles",
+        "deployment",
+        "router",
+        "adapter",
+        "structured",
+        "policy",
+        "staleness",
+        "critic",
+        "player_intent",
+        "registry",
+        "assembler",
+        "diagnostic",
+    )
+)

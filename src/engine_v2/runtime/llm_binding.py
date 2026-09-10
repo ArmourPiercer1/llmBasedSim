@@ -61,7 +61,13 @@ from src.engine_v2.content.schemas import (
 from src.engine_v2.core.behavior_policy import BehaviorPolicy
 from src.engine_v2.llm.adapter import InferenceBackend
 from src.engine_v2.llm.deployment import DeploymentProfile
+from src.engine_v2.llm.player_intent import (
+    PLAYER_INTENT_CAPABILITY,
+    PlayerIntentInterpreter,
+    build_action_grounding,
+)
 from src.engine_v2.llm.policy import TraceSink, build_llm_policy
+from src.engine_v2.llm.router import resolve_capability
 from src.engine_v2.prompts.assembler import CONTEXT_VARIABLES, CharDivisorTokenEstimator
 from src.engine_v2.prompts.registry import TemplateStore
 
@@ -69,7 +75,13 @@ if TYPE_CHECKING:  # 仅注解用（house 模式；运行时零 import）
     from src.engine_v2.core.actions import ActionProposal
     from src.engine_v2.core.context_provider import ActorDecisionContext
 
-__all__ = ["JsonCleanContextPolicyAdapter", "LLMBindingResult", "bind_llm_policies"]
+__all__ = [
+    "JsonCleanContextPolicyAdapter",
+    "LLMBindingResult",
+    "PlayerIntentBindingResult",
+    "bind_llm_policies",
+    "bind_player_intent",
+]
 
 #: P5 18 码闭集内本模块消费的诊断码（content/schemas.py DIAGNOSTIC_CODES）。
 _DIAG_UNRESOLVED_REF: Final[str] = "LLMSIM_UNRESOLVED_REF"
@@ -298,4 +310,126 @@ def bind_llm_policies(
         policies=policies,
         diagnostics=tuple(sorted(diagnostics, key=lambda d: (d.code, d.path, d.refs))),
         resolved_models=resolved_models,
+    )
+
+
+@dataclass(frozen=True)
+class PlayerIntentBindingResult:
+    """玩家意图解释器绑定结果（0.1.0-alpha.1 发布前修复 R3；frozen）。
+
+    - ``interpreter``：None = disabled（无 deployment/backend）或 router
+      失败或无 capability profile——宿主此时不开放自然语言面（显式降级，
+      不静默）；
+    - ``diagnostics``：P5 :class:`Diagnostic` 元组，按 (code, path, refs)
+      排序（与 :class:`LLMBindingResult` 同口径——P6 router 失败码经
+      :func:`_resolve_failed_diagnostic` 转写，refs 携带原 P6 码证据）；
+    - ``resolved_model``：player_intent 能力解析出的 model_id（审计面；
+      仅成功者，None = 失败）。
+    """
+
+    interpreter: PlayerIntentInterpreter | None
+    diagnostics: tuple[Diagnostic, ...]
+    resolved_model: str | None
+
+
+def _resolve_failed_diagnostic(
+    capability: str, router_diagnostics: tuple
+) -> Diagnostic:
+    """router 解析失败诊断（error；P6 码转写进 P5 闭集，refs 携带原码）。"""
+    return Diagnostic(
+        code=_DIAG_UNRESOLVED_REF,
+        severity=DiagnosticSeverity.ERROR,
+        path="capabilities",
+        message=(
+            f"player intent binding failed (capability {capability!r}): "
+            + "; ".join(f"{d.code}: {d.message}" for d in router_diagnostics)
+        ),
+        refs=(capability, *(d.code for d in router_diagnostics)),
+    )
+
+
+def bind_player_intent(
+    ir: ProjectIR,
+    *,
+    deployment: DeploymentProfile | None,
+    backend: InferenceBackend | None,
+    sink: "TraceSink",
+    capability: str = PLAYER_INTENT_CAPABILITY,
+) -> PlayerIntentBindingResult:
+    """玩家意图解释器绑定（审计 R3：接入 capability/deployment 系统）。
+
+    与 :func:`bind_llm_policies` 同构的次序钉死（复用同一 requirement
+    选取纪律与诊断转写口径）：
+
+    1. ``deployment is None or backend is None`` → 单条 warning +
+       interpreter None（headless assembly 合法路径，不抛异常）；
+    2. requirement 选取：``ir.capabilities`` 中 ``capability == <capability>``
+       零条 → 单条 error；多条 → id casefold 排序首条 + warning
+       （确定性兜底，与 npc_policy 同纪律）；
+    3. ``resolve_capability(deployment, requirement)``（P6 router 唯一
+       入口——``inference_profiles`` 按 capability 键选模型，player_intent
+       与 npc_policy 可配不同模型，零跨 capability 借用）；
+    4. resolved=None → 单条 error（P6 码转写）+ interpreter None；
+       resolved → :class:`PlayerIntentInterpreter`（grounding = 本项目
+       ``ir.actions`` 构建，审计 R2 薄 seam）。
+
+    本函数不注册任何引擎组件（解释器 = 宿主侧 seam，不入
+    WorldInstance.policies——player 不经 BehaviorPolicy，Spec:833）。
+    """
+    if deployment is None or backend is None:
+        return PlayerIntentBindingResult(
+            interpreter=None,
+            diagnostics=(_disabled_diagnostic(deployment, backend),),
+            resolved_model=None,
+        )
+    matches = tuple(p for p in ir.capabilities if p.capability == capability)
+    if not matches:
+        return PlayerIntentBindingResult(
+            interpreter=None,
+            diagnostics=(_no_requirement_diagnostic(capability),),
+            resolved_model=None,
+        )
+    matches = tuple(sorted(matches, key=lambda p: p.id.casefold()))
+    diagnostics: list[Diagnostic] = []
+    if len(matches) > 1:
+        diagnostics.append(_multiple_requirement_diagnostic(capability, matches))
+    requirement = matches[0]
+    router = resolve_capability(deployment, requirement)
+    if router.resolved is None:
+        return PlayerIntentBindingResult(
+            interpreter=None,
+            diagnostics=tuple(
+                sorted(
+                    (
+                        *diagnostics,
+                        _resolve_failed_diagnostic(capability, router.diagnostics),
+                    ),
+                    key=lambda d: (d.code, d.path, d.refs),
+                )
+            ),
+            resolved_model=None,
+        )
+    interpreter = PlayerIntentInterpreter(
+        capability=capability,
+        resolved=router.resolved,
+        backend=backend,
+        grounding=build_action_grounding(ir),
+        sink=sink,
+    )
+    # router 建议级诊断（BELOW_IDEAL 等，P6 码）转写进 P5 闭集（同 error
+    # 转写口径；refs 携带原 P6 码作证据引用，机器可溯源）。
+    diagnostics.extend(
+        Diagnostic(
+            code=_DIAG_UNRESOLVED_REF,
+            severity=DiagnosticSeverity.WARNING,
+            path="capabilities",
+            message=f"player intent router: {d.code}: {d.message}",
+            refs=(capability, d.code),
+        )
+        for d in router.diagnostics
+    )
+    return PlayerIntentBindingResult(
+        interpreter=interpreter,
+        diagnostics=tuple(sorted(diagnostics, key=lambda d: (d.code, d.path, d.refs))),
+        resolved_model=router.resolved.model_id,
     )

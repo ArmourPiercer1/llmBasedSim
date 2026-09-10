@@ -60,6 +60,11 @@ capabilities:
     min_tier: 1
     ideal_tier: 2
     notes: 看火人依据当前温度与机器状态决定添热、降温或开关机器。
+  - id: player_intent
+    capability: player_intent
+    min_tier: 1
+    ideal_tier: 2
+    notes: 玩家自然语言意图 → 结构化动作提案（发布前修复 R1/R3；推理组件只提动作，权威 outcome 归引擎管道）。
 plugin_descriptors:
   - id: simulation
     source: local

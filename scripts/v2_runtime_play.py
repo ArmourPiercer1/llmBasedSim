@@ -40,10 +40,13 @@ import sys
 from typing import Final
 
 from src.engine_v2.core.ids import EntityId
+from src.engine_v2.core.reducer import guard
 from src.engine_v2.llm.adapter import HttpxInferenceBackend, InferenceResponse
 from src.engine_v2.llm.deployment import DeploymentEntry, DeploymentProfile
+from src.engine_v2.llm.player_intent import build_player_intent_context
 from src.engine_v2.llm.profiles import ModelCapabilityProfile
 from src.engine_v2.runtime import assemble_project
+from src.engine_v2.runtime.llm_binding import bind_player_intent
 
 # —— 实体 id（= ent_authoring_<authoring slug>，materialize 命名契约）——
 PLAYER: Final[str] = "ent_authoring_operator"
@@ -60,7 +63,9 @@ PLAYER_ACTIONS: Final[dict[str, str]] = {
 
 HELP_TEXT = (
     "命令：heat=添热  cool=降温  toggle=开关机器  wait=观望  "
-    "scene=详查  llm=看NPC最近输出  quit=结算退出"
+    "scene=详查  llm=看最近推理输出  quit=结算退出\n"
+    "其他输入 = 玩家自然语言（真实面经意图解释器 → 结构化动作；"
+    "--fake 面走脚本化关键词映射）"
 )
 
 
@@ -104,8 +109,10 @@ def _build_deployment(
     api_key_env: str | None,
     temperature: float,
 ) -> DeploymentProfile:
-    """真 LLM 部署面：单 model（tier 2，满足 game.yaml npc_policy
-    min_tier=1 / ideal_tier=2）+ 单 capability 条目。"""
+    """真 LLM 部署面：单 model（tier 2，满足 game.yaml npc_policy /
+    player_intent min_tier=1 / ideal_tier=2）+ 双 capability 条目
+    （审计 R3：player_intent 与 npc_policy 走同一 deployment 系统，
+    可配不同模型——本轮同 model 简化面）。"""
     profile = ModelCapabilityProfile(
         model_id=model,
         tier=2,
@@ -123,7 +130,14 @@ def _build_deployment(
                 base_url=base_url,
                 api_key_env=api_key_env,
                 temperature=temperature,
-            )
+            ),
+            "player_intent": DeploymentEntry(
+                provider="openai-compatible",
+                model=model,
+                base_url=base_url,
+                api_key_env=api_key_env,
+                temperature=temperature,
+            ),
         },
     )
 
@@ -265,6 +279,94 @@ def _final_summary(inst, total_llm_calls: int) -> None:
     print("  确定性注记：同 GameProject + 同部署 + 同输入序列 → 同世界（K7）。")
 
 
+# —— 玩家自然语言面（0.1.0-alpha.1 发布前修复 R4）——
+
+#: fake 面脚本化意图关键词 → 动作 id（宿主级 demo 便利面：--fake 时玩家
+#: NL 零 LLM 调用、零 backend 序号消费——与 _ScriptedSmokeBackend 的 NPC
+#: 脚本序正交；确定性 = 源码序遍历）。真 backend 面走
+#: PlayerIntentInterpreter（不消费本表）。
+_FAKE_PLAYER_INTENT_KEYWORDS: Final[dict[str, str]] = {
+    "添热": "inject_heat",
+    "加煤": "inject_heat",
+    "炉火": "inject_heat",
+    "加热": "inject_heat",
+    "降温": "cool",
+    "冷却": "cool",
+    "太热": "cool",
+    "开关": "toggle_machine",
+    "切换": "toggle_machine",
+    "启停": "toggle_machine",
+}
+
+
+def _fake_player_intent(line: str) -> dict:
+    """--fake 脚本化玩家意图（关键词 → 动作 id；未命中 = 合法 no-op）。"""
+    lowered = line.casefold()
+    for keyword, action_id in _FAKE_PLAYER_INTENT_KEYWORDS.items():
+        if keyword in lowered:
+            return {
+                "action_id": action_id,
+                "arguments": {},
+                "intent": f"脚本化意图（fake 面关键词 {keyword!r}）",
+            }
+    return {"action_id": None, "arguments": {}, "intent": None}
+
+
+def _submit_player_intent(
+    engine,
+    inst,
+    action_id: str | None,
+    arguments: dict,
+    intent: str | None,
+) -> None:
+    """[result] 面：no-op / 显式拒绝（幻觉 action，未提交）/ 提交同管道。"""
+    if action_id is None:
+        print("  [result] 无对应动作（no-op，世界零变更）")
+        return
+    if action_id not in inst.action_registry.specs:
+        print(
+            f"  [result] 显式拒绝：未知动作 {action_id!r}"
+            "（未提交，世界零变更；引擎 unknown_action 为最终门）"
+        )
+        return
+    step = engine.submit_action(
+        EntityId(PLAYER), action_id, dict(arguments), intent=intent
+    )
+    _print_player_result(step)
+
+
+def _player_natural_language(
+    engine,
+    inst,
+    line: str,
+    pi_binding,
+    player_name: str,
+) -> None:
+    """真实 LLM 玩家意图面（R4 debug 面：[input]/[interpreted]/[result]）。
+
+    世界每刻重取（不可变状态机：WorldState 对象每 commit 替换）；只读面
+    经 guard() 门面投影（与 executor 面同款 K2 纪律）。
+    """
+    world = engine.instance.world
+    ctx = build_player_intent_context(
+        guard(world), PLAYER, player_name=player_name
+    )
+    result = pi_binding.interpreter.interpret(
+        text=line, context=ctx, base_revision=int(world.world_revision)
+    )
+    print(f"  [input] {line}")
+    print(
+        f"  [interpreted] action_id={result.action_id} "
+        f"arguments={result.arguments} intent={result.intent!r} "
+        f"confidence={result.confidence}"
+    )
+    for diagnostic in result.diagnostics:
+        print(f"  [interpreted] ! {diagnostic.code}: {diagnostic.message}")
+    _submit_player_intent(
+        engine, inst, result.action_id, result.arguments, result.intent
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="v2 runtime closure 实玩验收（H-closure）")
     parser.add_argument("--root", default="examples/complex_minimal", help="GameProject 根目录")
@@ -314,6 +416,28 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     engine = result.engine
     inst = result.instance
+    # 玩家意图面（R4）：真实 backend 才绑 PlayerIntentInterpreter；--fake
+    # 走脚本化关键词映射（零 LLM 调用、不消费 _ScriptedSmokeBackend 序号）。
+    pi_binding = None
+    if not args.fake:
+        pi_binding = bind_player_intent(
+            inst.ir,
+            deployment=deployment,
+            backend=backend,
+            sink=inst.trace_sink,
+        )
+        if pi_binding.interpreter is None:
+            print(
+                "注意：玩家意图面不可用（绑定诊断）："
+                + "; ".join(f"{d.code}: {d.message}" for d in pi_binding.diagnostics)
+            )
+        else:
+            print(
+                f"玩家意图面：已绑定（capability=player_intent，"
+                f"model={pi_binding.resolved_model}）——直接输入自然语言。"
+            )
+    else:
+        print("玩家意图面：--fake 脚本化关键词映射（零 LLM 调用）。")
     print("装配成功。" + HELP_TEXT + "\n")
 
     llm_calls = 0
@@ -339,8 +463,28 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 _print_player_result(step)
             else:
-                print(f"  未知命令：{line!r}。" + HELP_TEXT)
-                continue
+                # 自然语言输入（R4）：fake = 脚本化映射；真实面 = 意图解释器。
+                if args.fake:
+                    fake_res = _fake_player_intent(line)
+                    print(f"  [input] {line}")
+                    print(
+                        f"  [interpreted]（fake 脚本面）action_id="
+                        f"{fake_res['action_id']} intent={fake_res['intent']!r}"
+                    )
+                    _submit_player_intent(
+                        engine,
+                        inst,
+                        fake_res["action_id"],
+                        fake_res["arguments"],
+                        fake_res["intent"],
+                    )
+                elif pi_binding is not None and pi_binding.interpreter is not None:
+                    _player_natural_language(
+                        engine, inst, line, pi_binding, inst.ir.player.name
+                    )
+                else:
+                    print(f"  未知命令：{line!r}。" + HELP_TEXT)
+                    continue
             before_calls = len(
                 [e for e in inst.trace_sink.records if e.kind == "llm_call"]
             )
