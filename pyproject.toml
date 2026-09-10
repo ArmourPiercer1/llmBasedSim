@@ -1,6 +1,6 @@
 [project]
 name = "llm-based-sim"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "LLM-based multi-agent interactive simulation game"
 requires-python = ">=3.12"
 dependencies = [
@@ -26,6 +26,18 @@ dev = [
     "langgraph-checkpoint-sqlite>=2.0",
     "ruff>=0.5",
 ]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# 打包面（alpha.1 M5：clean install 可复跑）：代码 import 面冻结为
+# ``src.engine_v2.*`` / ``src.game.*`` / ``src.agents.*``（双引擎全库）——
+# setuptools 默认 src-layout 自动发现会把 src/ 子包拆成顶层包
+# （engine_v2 / game / agents…），干净环境 import 与 ``llmsim`` 入口
+# 全部失效。显式声明：安装完整 ``src`` 包树（零 import 面改动）。
+[tool.setuptools]
+packages = {find = {where = ["."], include = ["src*"], exclude = ["src.__pycache__*"]}}
 
 [tool.ruff]
 line-length = 100

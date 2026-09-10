@@ -21,9 +21,13 @@ v2 代码 → `CONTRIBUTING.md` + `docs/v2/usage/`；LLM 协作者
 
 ### 1.1 当前状态
 
-- 分支 `architecture-v2`；全量测试 **3348 passed / 0 failed**
-  （恒等式 3205 closure 基线 + 143 closure 增量：T1–T8 +103 /
-  T9 +23 / P5-06b +1 / T11 E2E +16；G10 基线 3205 = 3142 G9 + 63 P10）；
+- 分支 `architecture-v2`；**版本 0.1.0a1（tag `v0.1.0-alpha.1`）**——
+  首个可发布 alpha：authoring data → tick-0 权威状态、自定义
+  executor/dynamics + 纯 solver、component 与 state-domain 双
+  authority、动态世界时间、production-only runner + 中性 contract
+  E2E（M1–M5 计划见 §1.4 能力边界）；全量测试 **3383 passed /
+  0 failed**（恒等式 3205 closure 基线 + 143 closure 增量 +
+  alpha.1 增量：M1/M2 +19 / M4 +16）；
 - Phase 1–10 全部过门禁（`docs/v2/gates/G0…G10-*.md`；G10 人工
   面 S11 待判定，见 `docs/v2/gates/G10-test-acceptance-plan.md`）；
 - **runtime closure 完成**（production game path：YAML 项目 + 受信
@@ -94,12 +98,56 @@ for _ in range(3):
     engine.advance(1)
 print('revision:', int(engine.instance.world.world_revision))
 "
+
+# ⑦ alpha.1 最小 runner（production-only：任意 GameProject 根 +
+#    动作序列 + tick 数；确定性输入序列 → 确定性世界）
+PYTHONPATH=. .venv/bin/python scripts/v2_alpha_run.py \
+    --root examples/complex_minimal \
+    --action "inject_heat:ent_authoring_operator" --ticks 2
+
+# ⑧ 实玩验收 REPL（值班员 vs LLM 看火人；--fake 零 Key 冒烟，
+#    缺省走 OpenAI 兼容端点 + DEEPSEEK_API_KEY env 名传凭据）
+PYTHONPATH=. .venv/bin/python scripts/v2_runtime_play.py --fake
 ```
 
 v2 不需要 API Key 即可运行全部机械面（K5：演示宿主 = 确定性
-policy/backend）。「接真 LLM 玩一局」= P11+ 承接面。
+policy/backend）。
 
-### 1.4 文档索引
+### 1.4 0.1.0-alpha.1 能力边界（`0.1.0a1`）
+
+定位：**authority-mediated、component-based、Python-extensible 的
+headless simulation/game runtime**。作者提供 GameProject（YAML
+authoring + 受信 Python 扩展），引擎负责 load → materialize →
+action → dynamics → authority → transaction → reducer → 权威
+WorldState。
+
+**alpha.1 支持**（`docs/plans/llmBasedSim_0.1.0-alpha.1_feature_support.md`
+= 功能承诺 SOT）：
+
+- tick-0 初始状态物化：player/character attributes、initial
+  inventory（引用 = authoritative entity ID）、item/object
+  state + properties——不依赖首次访问自举；
+- 任意 JSON-compatible 业务数值（engine 不内置 HP/STR 等字段）；
+  自定义 ActionExecutor / DynamicsBackend 可读、算、经
+  ProposedEffect 替换组件（一次动作 0..N 效果、多实体）；
+- 纯函数 solver 可由 executor 调用；数值/物理后端 production 绑定；
+- item 自由 state/properties + 交互元数据自解释（通用 action 按
+  target 数据分派 / 不同 action 绑不同 executor；无预设交互词表）；
+- 动态世界时间：存于权威 world_variables，每 tick 增量可为
+  WorldState 的函数；state-domain（world_variables / scenario）
+  写入经正式 authority 管道（domain grant）；
+- failure / deny 零状态变更；closed-by-default 授权；
+  deterministic replay-by-input（K7）；
+- production-only 运行入口（`assemble_project` 单入口 +
+  `scripts/v2_alpha_run.py` runner），clean install 可复跑。
+
+**alpha.1 不承诺**（P11+ 承接，非缺陷）：derived stat 图 /
+buff-debuff / modifier 堆叠、装备槽 / 堆叠 / 容器嵌套、crafting /
+交易经济 / 负重、完整战斗框架、通用 component authoring YAML
+DSL、自由文本 NPC 对话（LLM NPC 为实验性存在，非发布承诺）、
+Web UI / 持久化 save UX / replay debugger / DSH 控制平面。
+
+### 1.5 文档索引
 
 | 文档 | 内容 |
 |---|---|
@@ -113,6 +161,8 @@ policy/backend）。「接真 LLM 玩一局」= P11+ 承接面。
 | `docs/v2/gates/G0…G10-*.md` | 门禁报告（收口证据） |
 | `docs/v2/gates/runtime-closure-gate-report.md` | runtime closure 门禁（Gate C1–C9 证据） |
 | `docs/plans/llmBasedSim_12h_complex_game_runtime_closure_subagent_plan.md` | 12h closure 计划（T1–T11 波次 + Gate 定义） |
+| `docs/plans/llmBasedSim_0.1.0-alpha.1_development_plan.md` | 0.1.0-alpha.1 开发计划（M1–M5 工作包） |
+| `docs/plans/llmBasedSim_0.1.0-alpha.1_feature_support.md` | **alpha.1 功能支持清单**（开发者承诺边界 SOT） |
 | `src/engine_v2/runtime/README.md` | runtime 层：装配入口 / tick 循环 / 授权面 / 观测 |
 | `docs/v2/gates/G10-test-acceptance-plan.md` | G10 人工面验收方案（S11） |
 | `src/engine_v2/README.md` | 引擎目录布局 + v2 冻结规则 |
