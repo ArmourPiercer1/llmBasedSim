@@ -11,6 +11,8 @@ K2：零直写——只返回 ProposedEffect；K7：零随机 / 零墙钟 / 零 
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final
 
 from src.engine_v2.core.components import ComponentTypeId
@@ -29,7 +31,7 @@ from src.engine_v2.runtime.extensions import ExtensionBundle, ProducerGrant
 
 if TYPE_CHECKING:
     from src.engine_v2.core.actions import ActionProposal
-    from src.engine_v2.core.state import WorldState
+    from src.engine_v2.core.reducer import GuardedWorldState
     from src.engine_v2.dynamics.backend import DynamicsContext, Stimulus, WorldSnapshot
     from src.engine_v2.runtime.extensions import ExtensionContext
 
@@ -74,17 +76,35 @@ def clamp_add(value: float, delta: float, lo: float, hi: float) -> float:
     return round(min(hi, max(lo, value + delta)), _ROUND)
 
 
-def _entity(world: "WorldState", slug: str) -> EntityId | None:
+def _entity(world: "GuardedWorldState", slug: str) -> EntityId | None:
     eid = EntityId(f"ent_authoring_{slug}")
     return eid if world.has_entity(eid) else None
 
 
-def _component_data(world: "WorldState", slug: str, ct: ComponentTypeId) -> dict:
+def _json_default(value: object) -> object:
+    """guard 深冻结视图 → JSON 原生 plain 值（递归；json.dumps default
+    钩子对每一层不可序列化对象各触发一次）。"""
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    raise TypeError(f"组件数据含非 JSON 原生值：{type(value).__name__}")
+
+
+def _component_data(world: "GuardedWorldState", slug: str, ct: ComponentTypeId) -> dict:
     eid = _entity(world, slug)
     if eid is None:
         return {}
     data = world.entities[eid].components.get(ct)
-    return dict(data) if data is not None else {}
+    if data is None:
+        return {}
+    # P0-A（审计发布前修复）：production 执行器面 = GuardedWorldState 深冻结
+    # 视图——嵌套值是 _FrozenMapping / 冻结序列（非 JSON 原生值，不得入
+    # ProposedEffect payload）。组件合并重写模式（读全量 → 改字段 → 整体
+    # 写回）在此显式递归转 JSON 原生 plain 值（deterministic、无损）。
+    return json.loads(
+        json.dumps(dict(data), default=_json_default, ensure_ascii=False)
+    )
 
 
 def _num(data: dict, key: str, default: float) -> float:
@@ -106,7 +126,7 @@ class ActionsExecutor:
     """
 
     def execute(
-        self, proposal: "ActionProposal", world: "WorldState", tick: int
+        self, proposal: "ActionProposal", world: "GuardedWorldState", tick: int
     ) -> ExecutorResult:
         handler = {
             "adjust_reading": self._adjust_reading,
@@ -124,7 +144,7 @@ class ActionsExecutor:
     def _effect(
         self,
         proposal: "ActionProposal",
-        world: "WorldState",
+        world: "GuardedWorldState",
         effect_type: EffectTypeId,
         target,
         payload: dict,
@@ -144,7 +164,7 @@ class ActionsExecutor:
 
     # —— 动作面 ——
 
-    def _adjust_reading(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _adjust_reading(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         gauge = _entity(world, GAUGE_SLUG)
         if gauge is None:
             return ExecutorResult((), "gauge 实体缺席（contract 前置不满足）", 0)
@@ -162,7 +182,7 @@ class ActionsExecutor:
         )
         return ExecutorResult((effect,), None, 0)
 
-    def _multi_write(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _multi_write(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         gauge = _entity(world, GAUGE_SLUG)
         operator = _entity(world, OPERATOR_SLUG)
         if gauge is None or operator is None:
@@ -202,7 +222,7 @@ class ActionsExecutor:
         )
         return ExecutorResult(effects, None, 0)
 
-    def _set_time_scale(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _set_time_scale(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         scale = _arg_num(proposal.arguments, "scale", 1.0)
         effect = self._effect(
             proposal,
@@ -214,7 +234,7 @@ class ActionsExecutor:
         )
         return ExecutorResult((effect,), None, 0)
 
-    def _set_lock(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _set_lock(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         value = proposal.arguments.get("value", True)
         effect = self._effect(
             proposal,
@@ -226,7 +246,7 @@ class ActionsExecutor:
         )
         return ExecutorResult((effect,), None, 0)
 
-    def _fail_when_locked(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _fail_when_locked(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         if bool(world.world_variables.get("lock")):
             return ExecutorResult((), "world locked（确定性 failure 路径：零效果、零状态变更）", 0)
         effect = self._effect(
@@ -248,7 +268,7 @@ class UngrantedExecutor:
     """
 
     def execute(
-        self, proposal: "ActionProposal", world: "WorldState", tick: int
+        self, proposal: "ActionProposal", world: "GuardedWorldState", tick: int
     ) -> ExecutorResult:
         gauge = _entity(world, GAUGE_SLUG)
         if gauge is None:

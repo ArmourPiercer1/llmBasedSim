@@ -38,7 +38,7 @@ from src.engine_v2.runtime.extensions import ExtensionBundle, ProducerGrant
 
 if TYPE_CHECKING:  # 类型引用面（contract §3：ExtensionContext = project_root + ir）
     from src.engine_v2.core.actions import ActionProposal
-    from src.engine_v2.core.state import WorldState
+    from src.engine_v2.core.reducer import GuardedWorldState
     from src.engine_v2.dynamics.backend import (
         DynamicsContext,
         Stimulus,
@@ -114,7 +114,7 @@ _EPSILON: Final[float] = 1e-9
 
 
 def _resolve_entity_id(
-    world: "WorldState", slug: str, component_type: ComponentTypeId
+    world: "GuardedWorldState", slug: str, component_type: ComponentTypeId
 ) -> "EntityId | None":
     """authoring slug → 实体 id。
 
@@ -132,7 +132,7 @@ def _resolve_entity_id(
 
 
 def _read_component(
-    world: "WorldState", entity_id: "EntityId", component_type: ComponentTypeId
+    world: "GuardedWorldState", entity_id: "EntityId", component_type: ComponentTypeId
 ) -> dict:
     """读组件数据快照（只读；缺失 → 空 dict）。"""
     data = world.entities[entity_id].components.get(component_type)
@@ -144,7 +144,7 @@ def _valid_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _initial_power(world: "WorldState") -> int:
+def _initial_power(world: "GuardedWorldState") -> int:
     """machine 初始功率（alpha.1 M1：authoring-sourced 优先）。
 
     首选 = 锅炉实体 ``item`` 组件的 ``properties.initial_power``（tick-0
@@ -191,7 +191,7 @@ class BoilerMachineExecutor:
     """
 
     def execute(
-        self, proposal: "ActionProposal", world: "WorldState", tick: int
+        self, proposal: "ActionProposal", world: "GuardedWorldState", tick: int
     ) -> ExecutorResult:
         """执行动作提案（协议签名；tick 仅参与签名面，分派按 action_id）。"""
         del tick  # 最小闭环：effect 身份由 proposal_id 派生（见 _set_component）
@@ -207,7 +207,7 @@ class BoilerMachineExecutor:
     # —— 内部面 ——
 
     def _machine_state(
-        self, world: "WorldState"
+        self, world: "GuardedWorldState"
     ) -> "tuple[EntityId | None, int | None, str | None]":
         """(锅炉实体 id, 当前功率, 失败面)；成功时 error = None。
 
@@ -226,7 +226,7 @@ class BoilerMachineExecutor:
             return entity_id, None, f"machine 组件 power 字段非法：{power!r}"
         return entity_id, power, None
 
-    def _inject_heat(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _inject_heat(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         entity_id, power, error = self._machine_state(world)
         if error is not None:
             return ExecutorResult((), error, 0)
@@ -247,7 +247,7 @@ class BoilerMachineExecutor:
         )
         return ExecutorResult((effect,), None, 0)
 
-    def _toggle_machine(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _toggle_machine(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         entity_id, power, error = self._machine_state(world)
         if error is not None:
             return ExecutorResult((), error, 0)
@@ -262,7 +262,7 @@ class BoilerMachineExecutor:
         )
         return ExecutorResult((effect,), None, 0)
 
-    def _cool(self, proposal: "ActionProposal", world: "WorldState") -> ExecutorResult:
+    def _cool(self, proposal: "ActionProposal", world: "GuardedWorldState") -> ExecutorResult:
         """F2：冷却 = 功率档位减一（machine 侧单写权；温度由 dynamics 按
         功率积分自然回落，平衡温度 = AMBIENT + POWER_HEAT_RATE * power）。"""
         entity_id, power, error = self._machine_state(world)
@@ -288,7 +288,7 @@ class BoilerMachineExecutor:
     def _set_component(
         self,
         proposal: "ActionProposal",
-        world: "WorldState",
+        world: "GuardedWorldState",
         entity_id: "EntityId",
         component_type: ComponentTypeId,
         payload: dict,

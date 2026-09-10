@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from src.engine_v2.core.action_registry import (
     ActionRegistry,
@@ -61,6 +61,9 @@ from src.engine_v2.core.space import (
 )
 from src.engine_v2.core.state import WorldState
 from src.engine_v2.modules.base import OFFICIAL_MODULE_VERSION, ModuleIdentity
+
+if TYPE_CHECKING:  # 仅注解面（P0-A；运行时 import 闭集不变）
+    from src.engine_v2.core.reducer import GuardedWorldState
 
 __all__ = [
     "STANDARD_ACTION_IDS",
@@ -104,12 +107,18 @@ class ActionExecutor(Protocol):
 
     ``execute`` 不得修改 ``world`` / ``proposal`` 入参（K2）；结果 =
     :class:`ExecutorResult`（committed 效果清单 / failure 面二选一）。
+
+    P0-A（K2 机械闭合，审计发布前修复轮）：production 管道传入的
+    ``world`` = :class:`~src.engine_v2.core.reducer.GuardedWorldState`
+    只读门面（``guard(instance.world)`` 产物）——嵌套容器深冻结视图，
+    任何 ``__setitem__`` / 属性赋值物理抛错（``TypeError`` /
+    ``WriteBarrierError``）；执行器不再有机会持有裸权威 WorldState。
     """
 
     def execute(
         self,
         proposal: ActionProposal,
-        world: WorldState,
+        world: "GuardedWorldState",
         tick: int,
     ) -> ExecutorResult:
         """执行动作提案：零直写，产 committed 效果或确定性 failure。"""

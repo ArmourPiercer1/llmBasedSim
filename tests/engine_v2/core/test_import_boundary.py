@@ -3313,3 +3313,16 @@ TestP9Boundary._V1_FROZEN_MANIFEST["pyproject.toml"] = (
 TestP10Boundary._V1_P10_MANIFEST["pyproject.toml"] = (
     "9f606e79d659701d8aad01248f2427387ffa3de3f661682c5a0140361895ff91"
 )
+
+
+# ── 0.1.0-alpha.1 发布前修复 · 治理 errata 段 A：P0-A（纯追加；ERR 记录）──
+# 审计面：docs/plans/0.1.0-alpha.1-发布前修复-LLM-native Playability
+# Closure.md（P0-A）。executor 面 = guard() 深冻结视图（engine.py 机械闭合）
+# 后，modules/actions.py 执行器协议 world 型面 = GuardedWorldState，fixture
+# extension.py 组件读面（_component_data）递归 JSON plain 转换（嵌套
+# _FrozenMapping 非 JSON 原生值，不得入 ProposedEffect payload）+ 全部
+# executor 面注解同步 GuardedWorldState。冻结前缀零改动（锚头 sha 面保持）；
+# 后赋值覆盖先值（house 纯追加纪律）。
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/extension.py"] = "a2a6ce43d1acd82bd31355559a9d015f87433507d3f1d4bb4601b0861e4d50b7"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/extension.py"] = "a2a6ce43d1acd82bd31355559a9d015f87433507d3f1d4bb4601b0861e4d50b7"
+TestP10Boundary._SUBTREE_MANIFEST["src/engine_v2/modules"] = "adbde29e9cb4aa149ff793f1fb0f2cf96709d00743053bdb93627e87b4b180ca"

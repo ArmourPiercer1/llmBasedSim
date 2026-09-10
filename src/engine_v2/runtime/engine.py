@@ -87,6 +87,7 @@ from src.engine_v2.core.clock import rebuild_runtime, set_logical_tick
 from src.engine_v2.core.effects import ProposedEffect
 from src.engine_v2.core.ids import EntityId, ProducerId, new_action_instance_id
 from src.engine_v2.core.provenance import OriginKind, Provenance
+from src.engine_v2.core.reducer import guard
 from src.engine_v2.core.revision import Revision
 from src.engine_v2.core.snapshot import snapshot
 from src.engine_v2.core.state import ActorWakeup, WorldState
@@ -393,7 +394,10 @@ class EngineInstance:
 
         守卫序（显式诊断不静默）：1) 注册表检查（未注册 →
         ``unknown_action:<id>``）；2) 执行器查找（缺 → ``no_executor:<id>``）；
-        3) ``executor.execute(proposal, world, tick)``（异常 →
+        3) ``executor.execute(proposal, guard(world), tick)``——执行器面
+        = :class:`~src.engine_v2.core.reducer.GuardedWorldState` 只读门面
+        （K2 机械闭合：嵌套容器深冻结，任何原地修改抛 ``TypeError`` /
+        ``WriteBarrierError``；审计 P0-A）（异常 →
         ``executor_error`` 诊断）；4) ``ExecutorResult.failure`` 非 None →
         ``action_failed`` 诊断 + 零世界变更；5) committed effects →
         :meth:`_apply_effects`（空批次零提交）。
@@ -416,7 +420,9 @@ class EngineInstance:
             )
         tick = at_tick if at_tick is not None else instance.runtime.logical_tick
         try:
-            result = executor.execute(proposal, instance.world, tick)
+            # P0-A（K2 机械闭合）：执行器面只读——guard() 发放深冻结门面，
+            # 裸 WorldState 不入 executor（容器级原地修改物理不可达）。
+            result = executor.execute(proposal, guard(instance.world), tick)
         except Exception as exc:
             return StepResult(
                 False,
