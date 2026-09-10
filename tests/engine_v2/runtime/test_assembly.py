@@ -455,7 +455,7 @@ def _m2_entity_effect(producer: str = "alpha.dynamics") -> ProposedEffect:
             entity_id=EntityId("ent_authoring_p"),
             component_type=ComponentTypeId("temperature"),
         ),
-        payload={"data": {"celsius": 20.0}},
+        payload={"celsius": 20.0},
         base_revision=INITIAL_WORLD_REVISION,
     )
 
