@@ -1,0 +1,53 @@
+# alpha_contract 项目（0.1.0-alpha.1 M3.5/M4 中性 contract 验证项目；
+# 零玩法语义——通用「测量实验室」题材仅用于给实体一个可辨识身份）。
+manifest:
+  schema_version: "2"
+  project_id: alpha_contract
+  name: alpha contract lab
+  description: 0.1.0-alpha.1 contract 验证项目（中性；M4 production-only E2E 数据面）。
+  engine_version: ">=0.5.0"
+scenario:
+  id: scenario_lab
+  max_ticks: 64
+  ticks_per_game_minute: 1.0
+  game_time:
+    hour: 9
+    minute: 0
+  starting_scene_description: 中性的测量实验室，测试台整齐排列。
+  narrative_style: 中性记录。
+player:
+  player_id: operator
+  name: 操作员
+  persona: 中性实验室操作员。
+  position:
+    x: 1.0
+    y: 1.0
+  attributes:
+    calibration_skill:
+      name: calibration_skill
+      value: 6.0
+      min: 0.0
+      max: 10.0
+      description: contract 测试属性（语义归游戏侧，engine 不消费）。
+    shift_minutes:
+      name: shift_minutes
+      value: 0.0
+      min: 0.0
+      max: 480.0
+      description: 累计工作分钟（contract 动作写入面）。
+  inventory:
+    - gauge
+    - kit
+component_schemas:
+  - id: gauge_reading
+    description: 仪表读数组件（contract 测试写面）。
+    fields:
+      - name: value
+        type: number
+        required: true
+        default: 0.0
+        description: 读数（数值后端离散积分 + executor 调整）。
+plugin_descriptors:
+  - id: contract
+    source: local
+    description: alpha.1 contract 验证扩展（中性 executor + 数值后端）。

@@ -1,0 +1,14 @@
+# alpha_contract 项目根包声明（trust_python 面：plugins/ 存在 ⇒ pyproject.toml
+# 必须存在——LLMSIM_PLUGIN_NO_PYPROJECT 前置；保持最小）。
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alpha_contract"
+version = "0.1.0"
+description = "0.1.0-alpha.1 中性 contract 验证项目（M3.5/M4）。"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["alpha_contract"]

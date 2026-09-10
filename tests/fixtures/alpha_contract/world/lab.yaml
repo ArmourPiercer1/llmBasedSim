@@ -1,0 +1,11 @@
+# alpha_contract world 节：单一地点（无位置声明 → 地点实体不挂 spaces）。
+world:
+  name: lab
+  description: 中性测量实验室。
+  environment:
+    time_of_day: morning
+    weather: indoor
+  locations:
+    - id: lab
+      name: 实验台
+      description: 一张开阔的测试台。

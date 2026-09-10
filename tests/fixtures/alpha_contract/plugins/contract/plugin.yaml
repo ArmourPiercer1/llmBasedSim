@@ -1,0 +1,8 @@
+# 本地插件 manifest（alpha.1 M3.5 通用 contract 验证扩展）。
+id: contract
+version: 0.1.0
+entrypoint: alpha_contract.extension:build_extension
+engine_version: ">=0.5.0"
+requires: []
+optional: []
+conflicts: []

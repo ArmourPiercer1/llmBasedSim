@@ -1,0 +1,7 @@
+# alpha_contract 物品节：工具包（最小字段面：无 state / 无 properties →
+# item 组件键缺席的确定性空值行为验证面）。
+items:
+  - id: kit
+    object_type: toolset
+    name: 工具包
+    description: 最小中性工具包。

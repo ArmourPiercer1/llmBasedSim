@@ -3275,3 +3275,41 @@ TestP10Boundary._SUBTREE_MANIFEST["tests/engine_v2/core"] = (
 TestP9Boundary._PLACEHOLDER_MANIFEST["src/engine_v2/runtime/__init__.py"] = (
     "146734b74ac1edf36b867715e58fdeedbf543a051baa1ced448586908363177d"
 )
+
+# ── alpha.1 M4/M5 冻结面刷新（行 36 M 模式纯追加；先例 ERR-P10-09/10）────
+# 授权面：docs/plans/llmBasedSim_0.1.0-alpha.1_development_plan.md
+# M3.5/M4（中性 contract 验证项目 tests/fixtures/alpha_contract/ 新增 10 文件）
+# + M5.1（root pyproject.toml：version 0.1.0→0.1.0a1 + [build-system]/
+# [tool.setuptools] 打包面——clean install 可复跑修复）。P9 块 L1–2625 与
+# P10 块字面量零修改；最后赋值生效。哈希 = 本 commit 工作树 sha256。
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/game.yaml"] = "c63ba166e4fe505be20a65408bec325ce442786f246371beb5c61de64cb4b58b"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/pyproject.toml"] = "7ecce491deaf8a5d709e68c192ed49e1b5bb173fdad3a3100d62cf78e0918cd8"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/world/lab.yaml"] = "cb018275df2de2651a213fc7f013c3616de22b1a44bb2092f8fc2124ce8200f9"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/characters/responder.yaml"] = "d7d181632939f6ea99a3148e9db11e72cc55c19d1971e37bd1f3ec019f282e67"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/items/gauge.yaml"] = "bda83d0120a99207b027f2cece0fbf1b60c5b243d66dc3f590e327d73debc1d7"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/items/kit.yaml"] = "5d170fcb2556fe4ac19c88805a81e2fd0895d6a84ad957ccd4aa06cf2c14e59c"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/actions/contract_actions.yaml"] = "2cc72ccf4bad769001dc5712e9556aa2e101f41b430d31cffa1bbfd92e6e2499"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/plugins/contract/plugin.yaml"] = "c9997f9f8f8fb37f445732b61fce0885d01b5c3a5a697e36c834903aef269a0c"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/__init__.py"] = "11377a22fadfdff3d5200241510f1c2cf7265c2d8a4b1a02952deb8ad0c457cd"
+TestP9Boundary._V1_FROZEN_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/extension.py"] = "e0c441b1682867e2f2749d684ad9da27755ba2b3ff821e0e6c76b8cffc5823d3"
+TestP9Boundary._PYPROJECT_SHA = "9f606e79d659701d8aad01248f2427387ffa3de3f661682c5a0140361895ff91"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/game.yaml"] = "c63ba166e4fe505be20a65408bec325ce442786f246371beb5c61de64cb4b58b"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/pyproject.toml"] = "7ecce491deaf8a5d709e68c192ed49e1b5bb173fdad3a3100d62cf78e0918cd8"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/world/lab.yaml"] = "cb018275df2de2651a213fc7f013c3616de22b1a44bb2092f8fc2124ce8200f9"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/characters/responder.yaml"] = "d7d181632939f6ea99a3148e9db11e72cc55c19d1971e37bd1f3ec019f282e67"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/items/gauge.yaml"] = "bda83d0120a99207b027f2cece0fbf1b60c5b243d66dc3f590e327d73debc1d7"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/items/kit.yaml"] = "5d170fcb2556fe4ac19c88805a81e2fd0895d6a84ad957ccd4aa06cf2c14e59c"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/actions/contract_actions.yaml"] = "2cc72ccf4bad769001dc5712e9556aa2e101f41b430d31cffa1bbfd92e6e2499"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/plugins/contract/plugin.yaml"] = "c9997f9f8f8fb37f445732b61fce0885d01b5c3a5a697e36c834903aef269a0c"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/__init__.py"] = "11377a22fadfdff3d5200241510f1c2cf7265c2d8a4b1a02952deb8ad0c457cd"
+TestP10Boundary._V1_P10_MANIFEST["tests/fixtures/alpha_contract/alpha_contract/extension.py"] = "e0c441b1682867e2f2749d684ad9da27755ba2b3ff821e0e6c76b8cffc5823d3"
+TestP10Boundary._PYPROJECT_SHA = "9f606e79d659701d8aad01248f2427387ffa3de3f661682c5a0140361895ff91"
+# alpha.1 续（M 模式纯追加）：v1 路径集内 root pyproject.toml 键刷新——
+# 上段漏订（_PYPROJECT_SHA 常量与 _V1_FROZEN_MANIFEST["pyproject.toml"]
+# 键为两独立钉面；方法 5 走 dict 键）。
+TestP9Boundary._V1_FROZEN_MANIFEST["pyproject.toml"] = (
+    "9f606e79d659701d8aad01248f2427387ffa3de3f661682c5a0140361895ff91"
+)
+TestP10Boundary._V1_P10_MANIFEST["pyproject.toml"] = (
+    "9f606e79d659701d8aad01248f2427387ffa3de3f661682c5a0140361895ff91"
+)

@@ -1,0 +1,19 @@
+# alpha_contract 角色节：中性 assistant（attributes + starting_inventory
+# 的 M1 tick-0 物化验证面）。
+characters:
+  - id: responder
+    name: 响应单元
+    personality:
+      background: 中性的辅助单元，只做记录与确认。
+    position:
+      x: 2.0
+      y: 1.0
+    starting_inventory:
+      - kit
+    attributes:
+      attentiveness:
+        name: attentiveness
+        value: 5.0
+        min: 0.0
+        max: 10.0
+        description: contract 测试属性（语义归游戏侧）。

@@ -1,0 +1,30 @@
+# alpha_contract 动作节：六动作（语义全部由 alpha_contract.extension 实现；
+# 零玩法语义——仅覆盖 contract 面：0..N 效果 / 纯 solver / failure /
+# state-domain 写 / 无授权 producer）。
+actions:
+  - id: adjust_reading
+    name: 调整读数
+    verb: adjust
+    description: gauge_reading.value += arguments.delta（纯 solver clamp_add 夹取；上界读 item 组件 properties.scale_max）。
+    requires_components:
+      - gauge_reading
+  - id: multi_write
+    name: 多写
+    verb: write
+    description: 单动作三效果（gauge 组件 + 操作者 attributes 组件 + world 变量）。
+  - id: set_time_scale
+    name: 设时间标度
+    verb: set
+    description: world 变量 time_scale = arguments.scale（驱动世界时间增量 = WorldState 函数）。
+  - id: set_lock
+    name: 设锁
+    verb: set
+    description: world 变量 lock = arguments.value（failure 路径前置）。
+  - id: fail_when_locked
+    name: 锁定时失败
+    verb: fail
+    description: lock 为 truthy → 确定性 failure（零效果、零状态变更）。
+  - id: ungranted_write
+    name: 无授权写
+    verb: write
+    description: 无 grant producer 的组件写（authority deny 路径）。

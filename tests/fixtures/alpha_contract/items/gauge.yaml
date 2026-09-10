@@ -1,0 +1,14 @@
+# alpha_contract 物品节：仪表（state + properties 全量；properties 承载
+# solver 上界 scale_max = executor 经 item 组件读取的 tick-0 作者数据）。
+items:
+  - id: gauge
+    object_type: instrument
+    name: 压力仪表
+    description: 中性测量仪表。
+    position:
+      x: 1.0
+      y: 2.0
+    state: "calibrated"
+    properties:
+      scale_max: 100.0
+      bias: 1.5
