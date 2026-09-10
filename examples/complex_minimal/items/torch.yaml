@@ -1,0 +1,13 @@
+# complex_minimal 物品节：手电（玩家初始 inventory 的 item 引用目标；
+# alpha.1 M1 面——inventory 引用在 tick 0 落为 authoritative entity ID）。
+items:
+  - id: torch
+    object_type: tool
+    name: 手电
+    description: 值班用的老式手电，电池还有半格。
+    position:
+      x: 2.0
+      y: 2.0
+    state: "on"
+    properties:
+      battery_pct: 50.0

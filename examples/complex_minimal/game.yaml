@@ -25,6 +25,15 @@ player:
   capabilities:
     sight_range_m: 6.0
     hearing_range_m: 10.0
+  attributes:
+    shift_focus:
+      name: shift_focus
+      value: 8.0
+      min: 0.0
+      max: 10.0
+      description: 值班专注度（游戏侧解释字段，engine 不消费）。
+  inventory:
+    - torch
   speech_examples:
     - 我盯着表。
     - 数值越界你就喊我。

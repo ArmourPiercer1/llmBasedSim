@@ -77,6 +77,10 @@ DYNAMICS_PRODUCER_ID: Final[ProducerId] = ProducerId("complex_minimal.dynamics")
 #: 本扩展消费的唯一结构 effect 类型。
 _SET_COMPONENT: Final[EffectTypeId] = EffectTypeId("core.set_component")
 
+#: item 组件类型 id（alpha.1 M1 canonical 投影：name/description/
+#: object_type/state/properties；materialize tick-0 物化）。
+ITEM_COMPONENT: Final[ComponentTypeId] = ComponentTypeId("item")
+
 # —— 机器功率边界（executor 权威校验面）——
 
 #: 功率上限（超过 = 参数越界 failure）。
@@ -140,6 +144,26 @@ def _valid_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _initial_power(world: "WorldState") -> int:
+    """machine 初始功率（alpha.1 M1：authoring-sourced 优先）。
+
+    首选 = 锅炉实体 ``item`` 组件的 ``properties.initial_power``（tick-0
+    物化的 authoritative 作者数据——items/boiler.yaml）；缺席 = schema
+    缺省 DEFAULT_POWER（确定性 fallback，与 game.yaml component_schemas
+    default 一致）。零随机、零 I/O。
+    """
+    boiler_id = EntityId(f"ent_authoring_{BOILER_SLUG}")
+    if world.has_entity(boiler_id):
+        item_payload = world.entities[boiler_id].components.get(ITEM_COMPONENT)
+        if isinstance(item_payload, dict):
+            properties = item_payload.get("properties")
+            if isinstance(properties, dict):
+                candidate = properties.get("initial_power")
+                if isinstance(candidate, int) and not isinstance(candidate, bool):
+                    return candidate
+    return DEFAULT_POWER
+
+
 # —— 动作执行器（K2 纯函数对象：world 只读）——
 
 
@@ -160,9 +184,10 @@ class BoilerMachineExecutor:
     - ``toggle_machine``：开机 → power 置 OFF_POWER；停机 → 置 DEFAULT_POWER。
 
     machine 组件缺位（F1 修复窗：P5 作者面无组件挂载面、materialize 不产
-    machine）→ 首个动作自举：power 取 schema 缺省（DEFAULT_POWER = 2，与
-    game.yaml component_schemas default 一致），由效果经管道落位（与
-    dynamics 温度自举同款）。
+    machine）→ 首个动作自举：power 取 authoring 初始值（item 组件
+    ``properties.initial_power``，alpha.1 M1 tick-0 物化数据；缺席 =
+    schema 缺省 DEFAULT_POWER = 2），由效果经管道落位（与 dynamics
+    温度自举同款）。
     """
 
     def execute(
@@ -186,8 +211,9 @@ class BoilerMachineExecutor:
     ) -> "tuple[EntityId | None, int | None, str | None]":
         """(锅炉实体 id, 当前功率, 失败面)；成功时 error = None。
 
-        F1：machine 组件缺位 → power 取 schema 缺省 DEFAULT_POWER（自举
-        口径，见类 docstring）；组件在场但 power 非法（非 int / bool）→
+        F1 + alpha.1 M1：machine 组件缺位 → power 取 authoring 初始值
+        （``_initial_power``：item 组件 properties.initial_power 优先，
+        缺席 = schema 缺省）；组件在场但 power 非法（非 int / bool）→
         显式 failure（不猜）。
         """
         entity_id = _resolve_entity_id(world, BOILER_SLUG, MACHINE_COMPONENT)
@@ -195,7 +221,7 @@ class BoilerMachineExecutor:
             return None, None, "锅炉房缺少锅炉实体（machine 组件）"
         power = _read_component(world, entity_id, MACHINE_COMPONENT).get("power")
         if power is None:
-            return entity_id, DEFAULT_POWER, None
+            return entity_id, _initial_power(world), None
         if not isinstance(power, int) or isinstance(power, bool):
             return entity_id, None, f"machine 组件 power 字段非法：{power!r}"
         return entity_id, power, None
@@ -301,8 +327,9 @@ class BoilerThermalBackend:
         celsius'    = celsius + THERMAL_COEFFICIENT * (heat_source - celsius) * dt
 
     - 平衡态（|delta| < epsilon）→ 零效果（不浪费 revision）；
-    - 组件缺位 → 取 schema 缺省（power = 2 / celsius = 20.0）参与积分，
-      变化时产出 set_component 效果完成组件落位；
+    - 组件缺位 → 取 authoring 初始值（power = item 组件
+      properties.initial_power 优先，缺席 = schema 缺省 2；celsius =
+      20.0）参与积分，变化时产出 set_component 效果完成组件落位；
     - ``stimuli`` 接受但不消费（纯状态函数；事件刺激面留 follow-up）。
     """
 
@@ -333,7 +360,7 @@ class BoilerThermalBackend:
         world = snapshot.world_state
 
         boiler_id = _resolve_entity_id(world, BOILER_SLUG, MACHINE_COMPONENT)
-        power = DEFAULT_POWER
+        power = _initial_power(world)
         if boiler_id is not None:
             candidate = _read_component(world, boiler_id, MACHINE_COMPONENT).get("power")
             if isinstance(candidate, int) and not isinstance(candidate, bool):

@@ -104,6 +104,7 @@ from src.engine_v2.content.project_ir import build_ir
 from src.engine_v2.content.schemas import Diagnostic, DiagnosticSeverity
 from src.engine_v2.content.validator import validate_project
 from src.engine_v2.core.authority import (
+    KERNEL_STATE_DOMAINS,
     AuthorityDecision,
     AuthorityPolicy,
     AuthorityRule,
@@ -112,6 +113,7 @@ from src.engine_v2.core.authority import (
     ProducerRegistry,
 )
 from src.engine_v2.core.components import ComponentTypeId
+from src.engine_v2.core.effects import StateDomainId
 from src.engine_v2.core.ids import ProducerId
 from src.engine_v2.core.provenance import OriginKind
 from src.engine_v2.llm.adapter import InferenceBackend
@@ -293,6 +295,9 @@ def _build_write_grants(
     - rules：每 grant × 每 component_type 一条（grant 序 = 同上注册序；
       ``rule_id = f"rtclosure.<pid>.<ct>"``；卡面钉字面），按
       ``(pid, ct)`` 去重首现胜 + 每重复 1 条 warning（assumption A4）；
+      selector 分派（alpha.1 M2）：名 ∈ ``KERNEL_STATE_DOMAINS`` →
+      ``domain_tag`` 维（StateDomainTarget 效果匹配）；否则 →
+      ``component_type`` 维（EntityTarget 效果匹配）；
     - IR 层 authority 声明零消费（assumption A7）。
     """
     diagnostics: list[Diagnostic] = []
@@ -371,11 +376,23 @@ def _build_write_grants(
                 )
                 continue
             seen.add(key)
+            # alpha.1 M2：grant 名按 KERNEL_STATE_DOMAINS membership 分派——
+            # Kernel 内置状态域（world_variables / scenario）→
+            # ``AuthoritySelector(domain_tag=...)``（经 core match_selector
+            # 的 StateDomainTarget 维匹配 StateDomainTarget 效果）；其余 =
+            # component 域 → ``component_type`` 维。不放宽 core 匹配严格性
+            # （本层只产 selector，零 core 改动）。
+            if StateDomainId(component_type) in KERNEL_STATE_DOMAINS:
+                selector = AuthoritySelector(
+                    domain_tag=StateDomainId(component_type)
+                )
+            else:
+                selector = AuthoritySelector(
+                    component_type=ComponentTypeId(component_type)
+                )
             rules.append(
                 AuthorityRule(
-                    selector=AuthoritySelector(
-                        component_type=ComponentTypeId(component_type)
-                    ),
+                    selector=selector,
                     allowed_writers=[ProducerId(grant.producer_id)],
                     priority=grant.priority,
                     description=_GRANT_RULE_DESCRIPTION,

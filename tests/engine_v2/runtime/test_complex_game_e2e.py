@@ -85,6 +85,7 @@ PLAYER_ENTITY = "ent_authoring_operator"
 WATCHMAN_ENTITY = "ent_authoring_watchman"
 BOILER_ENTITY = "ent_authoring_boiler"
 ROOM_ENTITY = "ent_authoring_boiler_room"
+TORCH_ENTITY = "ent_authoring_torch"  # alpha.1 M1 样例数据（player inventory）
 
 # —— C7 脚本（卡面字面 wire JSON；LLMActionProposal extra="ignore"，
 #    arguments/intent/confidence 缺省合法——字段名经 llm/policy.py 解析面确认）——
@@ -609,7 +610,8 @@ def test_c9a_actor_context_visibility() -> None:
     ``global_entity_views is None``（T4 结果钉：默认能力表不授予
     world.read.global）+ watchman 自身在可见面（self_view + visible）。
     感知并集精确面（T4 物化 + 曼哈顿 L1 ≤ 视觉半径 5）：watchman(1,1)
-    可见 boiler(3,1) / operator(2,2)；boiler_room 无位置声明 → 不可见。
+    可见 boiler(3,1) / operator(2,2) / torch(2,2)（alpha.1 M1 样例
+    inventory item）；boiler_room 无位置声明 → 不可见。
     candidate_actions 含 3 个扩展动作（T6 注册面投影）。"""
     result = _assemble_trust()
     ctx = build_actor_context(result.instance, WATCHMAN_ENTITY)
@@ -622,6 +624,7 @@ def test_c9a_actor_context_visibility() -> None:
         WATCHMAN_ENTITY,
         BOILER_ENTITY,
         PLAYER_ENTITY,
+        TORCH_ENTITY,
     }
     assert {str(a) for a in ctx.candidate_actions} == {
         "cool",

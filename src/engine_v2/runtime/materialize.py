@@ -32,6 +32,23 @@ authority / producer / trace 由 T9 注入，本模块不触碰。
   flow：``authority_domain=None``（不进 authority 授予）+ ``payload_model=
   None``（D-8 不透明存储，零校验钩子）。注册入 component_registry，诊断中
   披露（warning 汇总条）。
+- **alpha.1 M1 初始状态物化**（0.1.0-alpha.1 计划 M1：tick-0 authoritative
+  投影，零首次访问自举）：
+  - ``attributes`` 组件（player + character）：作者 AttributeSpec 映射 →
+    ``{attr_name: {value, min, max, natural_delta_per_minute,
+    description}}``——JSON-clean 开放数据，engine 不解释字段语义（无 RPG
+    专属字段）；空映射 = 不挂组件（确定）。
+  - ``inventory`` 组件（player.inventory / character.starting_inventory）：
+    声明序 ``{"items": [ent_authoring_<item_slug>, ...]}``——引用**必须**
+    落为 authoritative entity ID（不保留 slug 第二身份）；悬空引用 = 显式
+    ``LLMSIM_UNRESOLVED_REF`` error（不静默丢弃；该引用不入组件）；全悬空
+    = 不挂组件。engine 不规定容量 / 堆叠 / 槽位等玩法语义。
+  - ``item`` 组件（每 ObjectSpec）：``{name, description, object_type[,
+    state][, properties]}``——state 为 None / properties 为空 = 键缺席
+    （确定）；properties 开放 JSON，engine 不理解内部业务含义（自定义
+    executor / 数值后端自行解释）。
+  三者注册入 component_registry（``authority_domain=None``——写授权经
+  extension producer grant 的 component_type 维，注册面不隐含权限）。
 - **world_variables**：environment 投影（location = sorted 首 location id、
   无 locations 时 = WorldSpec.name；description / time_of_day / weather /
   temperature_c[声明时]）+ 时钟初始值 ``game_time = {"hour", "minute"}``
@@ -68,9 +85,11 @@ from typing import Any, Final
 from pydantic import JsonValue, TypeAdapter
 
 from src.engine_v2.content.schemas import (
+    AttributeSpec,
     CharacterSpec,
     Diagnostic,
     DiagnosticSeverity,
+    ObjectSpec,
     PositionSpec,
     ProjectIR,
 )
@@ -98,7 +117,10 @@ from src.engine_v2.core.state import RuntimeState, WorldState
 from src.engine_v2.modules.space import register_standard_space
 
 __all__ = [
+    "ATTRIBUTES_COMPONENT",
     "CHARACTER_PROFILE_COMPONENT",
+    "INVENTORY_COMPONENT",
+    "ITEM_COMPONENT",
     "WorldMaterialization",
     "materialize_world",
 ]
@@ -106,6 +128,13 @@ __all__ = [
 #: NPC read-only authoring/profile 组件类型（T1 投影面；P6 self_view 消费）。
 #: 无 mutation flow：注册时 ``authority_domain=None`` + ``payload_model=None``。
 CHARACTER_PROFILE_COMPONENT: Final[ComponentTypeId] = ComponentTypeId("character_profile")
+
+#: alpha.1 M1 canonical 组件类型（tick-0 作者数据投影；计划 §3.2 A/B/C）。
+#: 注册时 ``authority_domain=None``（写授权 = extension grant 显式声明）+
+#: ``payload_model=None``（D-8 不透明 JSON 存储；engine 零语义解释）。
+ATTRIBUTES_COMPONENT: Final[ComponentTypeId] = ComponentTypeId("attributes")
+INVENTORY_COMPONENT: Final[ComponentTypeId] = ComponentTypeId("inventory")
+ITEM_COMPONENT: Final[ComponentTypeId] = ComponentTypeId("item")
 
 #: 内容侧确定性命名前缀（core ids.py:68-69 ``ent_authoring_<slug>`` 约定）。
 _CANONICAL_PREFIX: Final[str] = "ent_authoring_"
@@ -211,26 +240,108 @@ def _profile_payload(spec: CharacterSpec) -> dict[str, Any]:
         "personality": spec.personality,
         "speech_examples": list(spec.speech_examples),
     }
-    return _PROFILE_ADAPTER.validate_python(payload)
+    return _JSON_ADAPTER.validate_python(payload)
 
 
-#: profile 载荷 JSON-clean 深拷贝校验器（pydantic JsonValue 封闭类型集）。
-_PROFILE_ADAPTER: Final[TypeAdapter[dict[str, JsonValue]]] = TypeAdapter(dict[str, JsonValue])
+def _attributes_payload(attributes: dict[str, AttributeSpec]) -> dict[str, Any]:
+    """AttributeSpec 映射 → ``attributes`` 组件载荷（alpha.1 M1 §3.2 A）。
+
+    ``{attr_name: {value, min, max, natural_delta_per_minute,
+    description}}``——封闭 5 键 × 每属性；JSON-clean 校验重建（同
+    ``_profile_payload`` 口径）。engine 零语义解释（玩家 / 角色同款
+    canonical 组件；无 RPG 专属字段）。键序 = 作者声明序（dict 序）；
+    WorldState 序列化面另按键排序（确定性两层同保）。
+    """
+    payload = {
+        name: {
+            "value": spec.value,
+            "min": spec.min,
+            "max": spec.max,
+            "natural_delta_per_minute": spec.natural_delta_per_minute,
+            "description": spec.description,
+        }
+        for name, spec in attributes.items()
+    }
+    return _JSON_ADAPTER.validate_python(payload)
+
+
+def _resolve_inventory(
+    slug_refs: list[str],
+    known_item_ids: frozenset[str],
+    owner: str,
+    diagnostics: list[Diagnostic],
+) -> list[str] | None:
+    """inventory 声明 → authoritative entity ID 列表（alpha.1 M1 §3.2 B）。
+
+    声明序逐条解析：命中 items 节 → ``ent_authoring_<slug>``；悬空 = 显式
+    ``LLMSIM_UNRESOLVED_REF`` error（不静默丢弃；该引用**不入**组件——
+    WorldState 内不保留 slug 第二身份）。全悬空 / 空声明 → ``None``
+    （不挂组件；确定）。
+    """
+    resolved: list[str] = []
+    for ref in slug_refs:
+        if ref in known_item_ids:
+            resolved.append(_canonical(ref))
+        else:
+            diagnostics.append(
+                Diagnostic(
+                    code="LLMSIM_UNRESOLVED_REF",
+                    severity=DiagnosticSeverity.ERROR,
+                    path=f"inventory:{owner}",
+                    message=(
+                        f"inventory 引用 {ref!r}（owner={owner!r}）未解析到 items "
+                        "节 item 实体：不静默丢弃（该引用不入 inventory 组件）"
+                    ),
+                    refs=(owner, ref),
+                )
+            )
+    return resolved or None
+
+
+def _item_payload(spec: ObjectSpec) -> dict[str, Any]:
+    """ObjectSpec → ``item`` 组件载荷（alpha.1 M1 §3.2 C）。
+
+    封闭键集：``name`` / ``description`` / ``object_type`` 恒在；``state``
+    非 None 时在；``properties`` 非空时在（开放 JSON；engine 不理解内部
+    业务含义——自定义 executor / 数值后端读取自行解释）。
+    """
+    payload: dict[str, Any] = {
+        "name": spec.name,
+        "description": spec.description,
+        "object_type": spec.object_type,
+    }
+    if spec.state is not None:
+        payload["state"] = spec.state
+    if spec.properties:
+        payload["properties"] = spec.properties
+    return _JSON_ADAPTER.validate_python(payload)
+
+
+#: 组件载荷 JSON-clean 深拷贝校验器（pydantic JsonValue 封闭类型集）。
+_JSON_ADAPTER: Final[TypeAdapter[dict[str, JsonValue]]] = TypeAdapter(dict[str, JsonValue])
 
 
 def _build_component_registry(ir: ProjectIR, diagnostics: list[Diagnostic]) -> ComponentRegistry:
-    """IR 全部 ComponentSchema + character_profile 注册（确定性序：profile
-    先、IR 声明序；同 id 重复 = LLMSIM_DUPLICATE_ID 显式、不 raise）。"""
+    """canonical 组件（character_profile + M1 三组件）+ IR 全部
+    ComponentSchema 注册（确定性序：canonical 先、IR 声明序；同 id 重复 =
+    ``LLMSIM_DUPLICATE_ID`` 显式、不 raise）。"""
     registry = ComponentRegistry()
-    registry.register(
-        ComponentSchema(
-            component_type=CHARACTER_PROFILE_COMPONENT,
-            version=1,
-            description="NPC read-only authoring/profile 投影（T1）；无 mutation flow",
-            payload_model=None,
-            authority_domain=None,
-        )
+    canonical: tuple[ComponentTypeId, str] = (
+        (CHARACTER_PROFILE_COMPONENT, "NPC read-only authoring/profile 投影（T1）；无 mutation flow"),
+        (ATTRIBUTES_COMPONENT, "alpha.1 M1：作者 attributes 投影（JSON-clean；engine 零语义）"),
+        (INVENTORY_COMPONENT, "alpha.1 M1：初始 inventory 投影（authoritative entity ID 列表）"),
+        (ITEM_COMPONENT, "alpha.1 M1：item/object 作者数据投影（state/properties 开放 JSON）"),
     )
+    for component_type, description in canonical:
+        registry.register(
+            ComponentSchema(
+                component_type=component_type,
+                version=1,
+                description=description,
+                payload_model=None,
+                authority_domain=None,
+            )
+        )
     for schema in ir.component_schemas:
         ct = parse_component_type_id(schema.id)
         if registry.get(ct) is not None:
@@ -401,16 +512,31 @@ def materialize_world(
             _add(location.id, "location", {})
 
     profiled: list[str] = []
+    known_item_ids = frozenset(o.id for o in ir.items)
     for character in sorted(ir.characters, key=lambda c: c.id):
         components: dict = {}
         _attach_spaces(character.id, components, character.position)
         components[CHARACTER_PROFILE_COMPONENT] = _profile_payload(character)
+        if character.attributes:
+            components[ATTRIBUTES_COMPONENT] = _attributes_payload(character.attributes)
+        inventory = _resolve_inventory(
+            character.starting_inventory, known_item_ids, character.id, diagnostics
+        )
+        if inventory is not None:
+            components[INVENTORY_COMPONENT] = {"items": inventory}
         _add(character.id, "character", components)
         profiled.append(character.id)
 
     if ir.player is not None:
         components = {}
         _attach_spaces(ir.player.player_id, components, ir.player.position)
+        if ir.player.attributes:
+            components[ATTRIBUTES_COMPONENT] = _attributes_payload(ir.player.attributes)
+        inventory = _resolve_inventory(
+            ir.player.inventory, known_item_ids, ir.player.player_id, diagnostics
+        )
+        if inventory is not None:
+            components[INVENTORY_COMPONENT] = {"items": inventory}
         _add(ir.player.player_id, "player", components)
     else:
         diagnostics.append(
@@ -426,9 +552,10 @@ def materialize_world(
     for item in sorted(ir.items, key=lambda o: o.id):
         components = {}
         _attach_spaces(item.id, components, item.position)
+        components[ITEM_COMPONENT] = _item_payload(item)
         _add(item.id, "item", components)
 
-    # —— 4. component_registry（IR schemas + character_profile）——
+    # —— 4. component_registry（canonical + IR schemas）——
     component_registry = _build_component_registry(ir, diagnostics)
     if profiled:
         diagnostics.append(

@@ -27,10 +27,13 @@ import pytest
 from src.engine_v2.content.loader import load_project
 from src.engine_v2.content.project_ir import build_ir
 from src.engine_v2.content.schemas import (
+    AttributeSpec,
+    CharacterSpec,
     ComponentField,
     ComponentType,
     Diagnostic,
     DiagnosticSeverity,
+    ObjectSpec,
     PlayerSpec,
     ProjectIR,
     ProjectManifest,
@@ -50,7 +53,10 @@ from src.engine_v2.core.space import (
 from src.engine_v2.core.state import RuntimeLifecycle
 from src.engine_v2.modules.space import HexGrid, hex_adjacency
 from src.engine_v2.runtime.materialize import (
+    ATTRIBUTES_COMPONENT,
     CHARACTER_PROFILE_COMPONENT,
+    INVENTORY_COMPONENT,
+    ITEM_COMPONENT,
     WorldMaterialization,
     materialize_world,
 )
@@ -447,3 +453,181 @@ def test_explicit_grid_backend_registered_identity(galgame_ir: ProjectIR) -> Non
     )
     assert _error_diagnostics(mat) == []
     assert mat.spaces.backend("world") is backend
+
+
+# —— alpha.1 M1：tick-0 初始状态物化（attributes / inventory / item）——
+
+
+def _m1_ir() -> ProjectIR:
+    """M1 测试用 IR：player（attributes + 2 件 inventory）+ character
+    （attributes + 1 件 + 1 悬空）+ 2 item（state/properties 全/简）。"""
+    return _mini_ir(
+        player=PlayerSpec(
+            player_id="p",
+            name="player",
+            attributes={
+                "alertness": AttributeSpec(
+                    name="alertness", value=7.0, min=0.0, max=10.0
+                ),
+            },
+            inventory=["tool", "note"],
+        ),
+        characters=(
+            CharacterSpec(
+                id="npc",
+                name="npc",
+                starting_inventory=["tool", "ghost"],
+                attributes={
+                    "patience": AttributeSpec(
+                        name="patience",
+                        value=3.0,
+                        min=0.0,
+                        max=5.0,
+                        natural_delta_per_minute=-0.1,
+                        description="随时间衰减",
+                    )
+                },
+            ),
+        ),
+        items=(
+            ObjectSpec(
+                id="tool",
+                object_type="instrument",
+                name="caliper",
+                description="measuring tool",
+                state="calibrated",
+                properties={"weight_kg": 0.4, "calibrated": True},
+            ),
+            ObjectSpec(id="note", object_type="paper", name="note"),
+        ),
+    )
+
+
+def _record_components(world, entity_id: str) -> dict:
+    record = world.entities.get(EntityId(entity_id))
+    assert record is not None, f"实体缺席：{entity_id}"
+    return record.components
+
+
+class TestM1Attributes:
+    def test_player_attributes_component(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_player_attrs")
+        payload = _record_components(mat.world, "ent_authoring_p")[ATTRIBUTES_COMPONENT]
+        assert payload == {
+            "alertness": {
+                "value": 7.0,
+                "min": 0.0,
+                "max": 10.0,
+                "natural_delta_per_minute": 0.0,
+                "description": "",
+            }
+        }
+
+    def test_character_attributes_component(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_char_attrs")
+        payload = _record_components(mat.world, "ent_authoring_npc")[ATTRIBUTES_COMPONENT]
+        assert payload["patience"] == {
+            "value": 3.0,
+            "min": 0.0,
+            "max": 5.0,
+            "natural_delta_per_minute": -0.1,
+            "description": "随时间衰减",
+        }
+
+    def test_empty_attributes_no_component(self) -> None:
+        ir = _mini_ir(player=PlayerSpec(player_id="p", name="p"))
+        mat = materialize_world(ir, world_instance_id="m1_no_attrs")
+        components = _record_components(mat.world, "ent_authoring_p")
+        assert ATTRIBUTES_COMPONENT not in components
+        assert INVENTORY_COMPONENT not in components
+
+
+class TestM1Inventory:
+    def test_player_inventory_resolves_to_entity_ids(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_player_inv")
+        payload = _record_components(mat.world, "ent_authoring_p")[INVENTORY_COMPONENT]
+        assert payload == {"items": ["ent_authoring_tool", "ent_authoring_note"]}
+
+    def test_character_starting_inventory_resolves_to_entity_ids(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_char_inv")
+        payload = _record_components(mat.world, "ent_authoring_npc")[INVENTORY_COMPONENT]
+        assert payload["items"] == ["ent_authoring_tool"]
+
+    def test_dangling_reference_explicit_diagnostic_not_silent(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_dangling")
+        dangling = [
+            d
+            for d in mat.diagnostics
+            if d.code == "LLMSIM_UNRESOLVED_REF"
+            and d.severity is DiagnosticSeverity.ERROR
+        ]
+        assert len(dangling) == 1
+        assert dangling[0].path == "inventory:npc"
+        assert dangling[0].refs == ("npc", "ghost")
+        # 悬空引用不入组件（不保留 slug 第二身份）
+        payload = _record_components(mat.world, "ent_authoring_npc")[INVENTORY_COMPONENT]
+        assert "ent_authoring_ghost" not in payload["items"]
+        assert "ghost" not in str(payload)
+
+    def test_all_dangling_inventory_no_component(self) -> None:
+        ir = _mini_ir(
+            player=PlayerSpec(player_id="p", name="p", inventory=["ghost"])
+        )
+        mat = materialize_world(ir, world_instance_id="m1_all_dangling")
+        components = _record_components(mat.world, "ent_authoring_p")
+        assert INVENTORY_COMPONENT not in components
+        assert any(
+            d.code == "LLMSIM_UNRESOLVED_REF"
+            and d.severity is DiagnosticSeverity.ERROR
+            for d in mat.diagnostics
+        )
+
+
+class TestM1Item:
+    def test_item_component_full_payload(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_item_full")
+        payload = _record_components(mat.world, "ent_authoring_tool")[ITEM_COMPONENT]
+        assert payload == {
+            "name": "caliper",
+            "description": "measuring tool",
+            "object_type": "instrument",
+            "state": "calibrated",
+            "properties": {"weight_kg": 0.4, "calibrated": True},
+        }
+
+    def test_item_component_minimal_payload(self) -> None:
+        mat = materialize_world(_m1_ir(), world_instance_id="m1_item_min")
+        payload = _record_components(mat.world, "ent_authoring_note")[ITEM_COMPONENT]
+        assert payload == {
+            "name": "note",
+            "description": "",
+            "object_type": "paper",
+        }
+        # state=None / properties={} = 键缺席（确定）
+        assert "state" not in payload
+        assert "properties" not in payload
+
+
+class TestM1RegistrationAndDeterminism:
+    def test_canonical_components_registered_unconditionally(self) -> None:
+        mat = materialize_world(_mini_ir(), world_instance_id="m1_registry")
+        for component_type in (
+            CHARACTER_PROFILE_COMPONENT,
+            ATTRIBUTES_COMPONENT,
+            INVENTORY_COMPONENT,
+            ITEM_COMPONENT,
+        ):
+            schema = mat.component_registry.get(component_type)
+            assert schema is not None, f"canonical 组件未注册：{component_type}"
+            assert schema.authority_domain is None
+
+    def test_materialization_deterministic_serialization(self) -> None:
+        ir = _m1_ir()
+        a = materialize_world(ir, world_instance_id="m1_det_a")
+        b = materialize_world(ir, world_instance_id="m1_det_b")
+        assert dump_json(a.world) == dump_json(b.world)
+        # 同 payload 值级相等（键序 / 值序确定性）
+        assert (
+            _record_components(a.world, "ent_authoring_p")[ATTRIBUTES_COMPONENT]
+            == _record_components(b.world, "ent_authoring_p")[ATTRIBUTES_COMPONENT]
+        )

@@ -19,3 +19,10 @@ characters:
       - 温度过了六十就得先降，这是规矩。
       - 机器的状态看仪表，不用猜。
     starting_inventory: []
+    attributes:
+      alertness:
+        name: alertness
+        value: 7.0
+        min: 0.0
+        max: 10.0
+        description: 对温度异常的反应敏锐度（游戏侧解释字段，engine 不消费）。

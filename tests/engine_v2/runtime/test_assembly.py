@@ -48,14 +48,31 @@ from src.engine_v2.content.schemas import (
     DIAGNOSTIC_CODES,
     DiagnosticSeverity,
 )
-from src.engine_v2.core.authority import AuthorityDecision
-from src.engine_v2.core.ids import ProducerId
+from src.engine_v2.core.authority import (
+    AuthorityDecision,
+    check_authority,
+    match_selector,
+)
+from src.engine_v2.core.components import ComponentTypeId
+from src.engine_v2.core.effects import (
+    EffectTypeId,
+    EntityTarget,
+    ProposedEffect,
+    StateDomainTarget,
+)
+from src.engine_v2.core.ids import EffectId, EntityId, ProducerId
 from src.engine_v2.core.provenance import OriginKind
+from src.engine_v2.core.revision import INITIAL_WORLD_REVISION
 from src.engine_v2.core.serialization import dump_json
 from src.engine_v2.llm.adapter import FakeInferenceBackend
 from src.engine_v2.llm.deployment import DeploymentEntry, DeploymentProfile
 from src.engine_v2.llm.profiles import ModelCapabilityProfile
-from src.engine_v2.runtime.assembly import AssemblyResult, assemble_project
+from src.engine_v2.runtime.assembly import (
+    AssemblyResult,
+    _build_write_grants,
+    assemble_project,
+)
+from src.engine_v2.runtime.extensions import ProducerGrant
 from src.engine_v2.runtime.world_instance import WorldInstance
 
 # —— 路径面（repo 根 = tests/engine_v2/runtime 的 parents[3]）——
@@ -407,3 +424,129 @@ def test_diagnostics_step_order_preserved() -> None:
     )
     trust_error = codes.index("LLMSIM_PLUGIN_ENTRY_UNRESOLVED")
     assert grid_warning < trust_error
+
+
+# —— alpha.1 M2：state-domain authority grant（domain_tag selector 分派）——
+
+
+def _m2_state_domain_effect(
+    domain: str,
+    effect_type: str = "core.set_world_variable",
+    producer: str = "alpha.dynamics",
+) -> ProposedEffect:
+    """StateDomainTarget 结构性效果构造（M2 匹配面测试用）。"""
+    return ProposedEffect(
+        effect_id=EffectId(f"m2_{domain}_{effect_type}"),
+        effect_type=EffectTypeId(effect_type),
+        source=ProducerId(producer),
+        target=StateDomainTarget(domain=domain),
+        payload={"key": "k", "value": 1},
+        base_revision=INITIAL_WORLD_REVISION,
+    )
+
+
+def _m2_entity_effect(producer: str = "alpha.dynamics") -> ProposedEffect:
+    """EntityTarget 结构性效果构造（M2 维度不相容测试用）。"""
+    return ProposedEffect(
+        effect_id=EffectId("m2_entity_set_component"),
+        effect_type=EffectTypeId("core.set_component"),
+        source=ProducerId(producer),
+        target=EntityTarget(
+            entity_id=EntityId("ent_authoring_p"),
+            component_type=ComponentTypeId("temperature"),
+        ),
+        payload={"data": {"celsius": 20.0}},
+        base_revision=INITIAL_WORLD_REVISION,
+    )
+
+
+class TestM2StateDomainGrant:
+    def test_state_domain_grant_produces_domain_tag_selector(self) -> None:
+        """grant 名 ∈ KERNEL_STATE_DOMAINS → AuthoritySelector(domain_tag=…)。"""
+        grants = (
+            ProducerGrant(
+                producer_id="alpha.dynamics",
+                component_types=("world_variables", "scenario"),
+            ),
+        )
+        registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        rules = policy.rules
+        assert [str(r.selector.domain_tag) for r in rules] == [
+            "world_variables",
+            "scenario",
+        ]
+        for rule in rules:
+            assert rule.selector.component_type is None
+            assert str(rule.allowed_writers[0]) == "alpha.dynamics"
+            assert registry.get(ProducerId("alpha.dynamics")) is not None
+
+    def test_component_grant_regression_component_type_selector(self) -> None:
+        """grant 名 ∉ KERNEL_STATE_DOMAINS → component_type 维（回归面）。"""
+        grants = (
+            ProducerGrant(producer_id="alpha.actions", component_types=("machine",)),
+        )
+        _registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        (rule,) = policy.rules
+        assert rule.selector.component_type == ComponentTypeId("machine")
+        assert rule.selector.domain_tag is None
+
+    def test_mixed_grant_dispatches_per_name(self) -> None:
+        grants = (
+            ProducerGrant(
+                producer_id="alpha.dynamics",
+                component_types=("machine", "world_variables"),
+            ),
+        )
+        _registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        by_name = {
+            (r.selector.component_type, r.selector.domain_tag): r
+            for r in policy.rules
+        }
+        assert (ComponentTypeId("machine"), None) in by_name
+        assert (None, "world_variables") in by_name
+
+    def test_domain_tag_rule_matches_state_domain_target(self) -> None:
+        """domain_tag 规则经 check_authority 放行 StateDomainTarget 效果。"""
+        grants = (
+            ProducerGrant(producer_id="alpha.dynamics", component_types=("world_variables",)),
+        )
+        _registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        effect = _m2_state_domain_effect("world_variables")
+        decision = check_authority(effect, policy)
+        assert decision.decision is AuthorityDecision.ALLOW
+        assert decision.matched_rule_id == policy.rules[0].rule_id
+        assert effect.source in policy.rules[0].allowed_writers
+
+    def test_domain_tag_rule_denies_other_domain(self) -> None:
+        """world_variables 规则不匹配 scenario 域效果（维度全等语义）。"""
+        grants = (
+            ProducerGrant(producer_id="alpha.dynamics", component_types=("world_variables",)),
+        )
+        _registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        effect = _m2_state_domain_effect("scenario")
+        assert not match_selector(policy.rules[0].selector, effect)
+        decision = check_authority(effect, policy)
+        assert decision.decision is AuthorityDecision.DENY
+
+    def test_domain_tag_rule_never_matches_entity_target(self) -> None:
+        """维度不相容：domain_tag 规则 vs EntityTarget 效果 → 不匹配。"""
+        grants = (
+            ProducerGrant(producer_id="alpha.dynamics", component_types=("world_variables",)),
+        )
+        _registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        assert not match_selector(policy.rules[0].selector, _m2_entity_effect())
+
+    def test_component_rule_never_matches_state_domain_target(self) -> None:
+        """维度不相容：component_type 规则 vs StateDomainTarget → 不匹配。"""
+        grants = (ProducerGrant(producer_id="alpha.actions", component_types=("machine",)),)
+        _registry, policy, _diagnostics = _build_write_grants(grants, (), None)
+        assert not match_selector(
+            policy.rules[0].selector, _m2_state_domain_effect("world_variables")
+        )
+
+    def test_closed_by_default_no_grant_denied(self) -> None:
+        """无 grant → state-domain 写 closed-by-default DENY（零匹配回落）。"""
+        _registry, policy, _diagnostics = _build_write_grants((), (), None)
+        effect = _m2_state_domain_effect("world_variables", producer="ungranted")
+        decision = check_authority(effect, policy)
+        assert decision.decision is AuthorityDecision.DENY

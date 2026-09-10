@@ -10,3 +10,4 @@ items:
     state: running
     properties:
       weight_kg: 800.0
+      initial_power: 2
